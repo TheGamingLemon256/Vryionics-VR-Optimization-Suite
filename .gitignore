@@ -9,6 +9,18 @@ update-server/.gh-token
 update-server/webhook.txt
 **/.gh-token
 
+# Publisher scripts — local-only, never pushed to public repo. The
+# maintainer is the only person who should be able to publish releases;
+# making the publisher source visible suggests "this is how to push to
+# the main repo" even though anyone using it would need their own PAT.
+# (The build still needs ps-helpers/ and storage-categories.json from
+# this folder — those stay tracked because they ship to clients via
+# electron-builder extraResources.)
+update-server/publish.js
+update-server/server.js
+update-server/package.json
+update-server/package-lock.json
+
 # Local-only update-server state
 update-server/crashes/
 update-server/builds/
