@@ -21,6 +21,11 @@ update-server/server.js
 update-server/package.json
 update-server/package-lock.json
 
+# Maintainer-only launcher — depends on the gitignored server.js
+# and contains a hardcoded local-machine path that's useless to anyone
+# else and reveals the maintainer's directory layout.
+Run Updater.bat
+
 # Local-only update-server state
 update-server/crashes/
 update-server/builds/

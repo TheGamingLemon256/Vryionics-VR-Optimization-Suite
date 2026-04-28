@@ -87,9 +87,11 @@ PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contribu
 
 For security vulnerabilities, see [SECURITY.md](SECURITY.md) — please disclose privately rather than via public issues.
 
-## License
+## License & trademarks
 
-MIT — see [LICENSE](LICENSE). Use it however you want; just don't blame us if your registry edit goes sideways.
+The **code** is licensed under MIT — see [LICENSE](LICENSE). Use it however you want; just don't blame us if your registry edit goes sideways.
+
+The **name "Vryionics" and the project's logo / visual identity** are trademarks. You can fork the code freely; you can't ship your fork *as* Vryionics. See [TRADEMARKS.md](TRADEMARKS.md) for the specifics — TL;DR: rename your fork, swap the icon, you're good.
 
 ---
 
