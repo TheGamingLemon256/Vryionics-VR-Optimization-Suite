@@ -4,6 +4,16 @@ All notable changes to Vryionics VR Optimization Suite. Each release is also pub
 
 This file tracks the user-facing changes; for the full commit history see the repo.
 
+## v0.2.8
+- **Security:** removed the bundled Discord webhook URL. Bug reports now open pre-filled GitHub Issues in the user's browser instead of POSTing to a Discord webhook. The previous approach (a webhook URL shipped inside the installer) was reported as an abuse vector via responsible disclosure on 2026-04-28 — anyone who unpacked the installer could spam the support channel. The v0.2.4–v0.2.7 webhook URL has been deleted and is non-functional. No replacement webhook is shipped; bug reports route through GitHub Issues using each user's own GitHub account.
+- A copy of every report bundle is saved locally to `%APPDATA%\vryionics-vr-optimization-suite\bug-reports\` so you can attach it to your issue manually if the bundle exceeds the URL length limit.
+- Removed `resources/webhook.txt` from the installer payload.
+- Deleted `src/main/support/webhook-reporter.ts` from source.
+
+## v0.2.7
+- **Auto-updater self-heals.** Follows GitHub 301 redirects (handles repo transfers / renames transparently) and falls back to unauthenticated requests when authenticated calls fail (401/403). Existing installs that get caught by infrastructure changes recover on the next poll cycle.
+- **Removed bundled GitHub PAT from installers.** The updater no longer requires a token to fetch public release metadata. Older versions (v0.2.6 and earlier) shipped a token in `resources/.gh-token`; that token has been revoked. v0.2.7 ships clean.
+
 ## v0.2.6
 - **AV false-positive hardening (final pass).** Externalised every remaining stealer-template pattern from the compiled JS bundle: all `Add-Type` blocks with kernel32/ntdll/advapi32/atiadlxx P/Invoke moved to `resources/ps-helpers/vros-helpers.ps1`; `Win32_DeviceGuard` query replaced with registry reads; `netsh wlan` calls wrapped in PS helper functions; Discord URL validation built from string fragments. Verified zero matches for every PSW signature pattern in the bundle.
 
