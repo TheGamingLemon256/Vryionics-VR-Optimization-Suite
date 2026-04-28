@@ -28,6 +28,8 @@ The following is a chronological inventory of every code change we've made speci
 | **v0.2.4** | Removed XOR/base64 obfuscation of the support webhook URL. The previous obfuscation pattern (encrypted blob + decoder function) is identical to what credential-stealing malware uses to hide command-and-control URLs. The URL now lives as plain text in `resources/webhook.txt`. |
 | **v0.2.5** | Moved the entire Storage Cleanup category list out of the compiled JS bundle into `resources/storage-categories.json`. Strings like `Mozilla\Firefox\Profiles`, `Google\Chrome\User Data\Default\Cache`, `discord\Cache`, and `Steam\htmlcache` are credential-store path strings that match Trojan-PSW signatures regardless of the actual code intent. Also removed a spoofed Chrome User-Agent (`Mozilla/5.0 ... Chrome/130.0.0.0`) we'd been using on NVIDIA driver fetches; replaced with an identifying `Vryionics-VROS-DriverCheck/0.2 (+repo URL)` UA. |
 | **v0.2.6** | Moved every `Add-Type @' ... '@` C# block (containing `[DllImport("kernel32.dll")]`, `[DllImport("ntdll.dll")]`, `[DllImport("advapi32.dll")]`, `[DllImport("atiadlxx.dll")]`) out of inline strings into `resources/ps-helpers/vros-helpers.ps1`, loaded via dot-source. Replaced `Win32_DeviceGuard` CIM query with plain registry reads. Wrapped `netsh wlan show` calls behind PS helper functions. Built the `discord.com` URL validation from string fragments at runtime. |
+| **v0.2.7** | Auto-updater follows GitHub 301 redirects + falls back to unauthenticated requests on 401/403. The bundled `.gh-token` was removed from `extraResources` — the updater no longer requires a per-installer secret, which means future PAT rotations / repo transfers / visibility changes are invisible to installed apps. |
+| **v0.2.8** | Removed the bundled Discord webhook URL entirely (was reported as an abuse vector via responsible disclosure on 2026-04-28). Bug reports now open pre-filled GitHub Issues in the user's browser — no client-side webhook URL anywhere, abuse mitigation handled by GitHub's normal issue-tracking infrastructure. |
 
 ## Verified post-build (v0.2.6 main bundle)
 
@@ -74,7 +76,7 @@ Subject: False positive on Vryionics VR Optimization Suite installer
 SHA-256: <paste the installer SHA-256 from the release notes>
 Vendor: Vryionics
 Product: Vryionics VR Optimization Suite (open-source VR diagnostics tool)
-Source: https://github.com/TheGamingLemon256/Vryionics-VR-Optimization-Suite/releases
+Source: https://github.com/Vryionics/Vryionics-VR-Optimization-Suite/releases
 
 Detection: HEUR:Trojan-PSW.Script.Generic (or similar)
 
