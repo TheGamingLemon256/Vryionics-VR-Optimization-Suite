@@ -2295,17 +2295,21 @@ const fixDisableDeliveryOptimization: Fix = {
   }
 }
 
-// ── Fix 27: VRChat Dynamic Bone Limits ───────────────────────
+// ── Fix 27: VRChat per-avatar physics caps ───────────────────
+// Note on naming: the config keys are still `dynamic_bone_max_*` for legacy
+// reasons — VRChat used the Dynamic Bone Unity asset before 2022 and kept
+// the keys when they swapped to their in-house PhysBones system. Same caps,
+// applied to PhysBones now.
 
 const fixVRChatDynamicBoneLimits: Fix = {
   id: 'fix-vrchat-dynamic-bone-limits',
-  name: 'Set VRChat Dynamic Bone Limits (CPU Optimization)',
+  name: 'Cap VRChat avatar physics (config.json)',
   description:
-    'Sets dynamic_bone_max_affected_transform_count = 32 and dynamic_bone_max_collider_check_count = 8 in VRChat\'s config.json. ' +
-    'These are PER-AVATAR physics caps — bones beyond the cap stop simulating, they don\'t make the avatar disappear. ' +
-    'You can still see and interact with avatars normally; only the unsimulated bones stop wiggling. ' +
-    'Clicking the "Show Avatar" eye in the VRChat menu OR setting an avatar to "Always Show" overrides these caps for that one avatar — useful for friends whose avatars exceed the limits. ' +
-    'Reverses cleanly via Undo. Reduces CPU usage by 60–80% in populated VRChat worlds.',
+    'Writes dynamic_bone_max_affected_transform_count = 32 and dynamic_bone_max_collider_check_count = 8 to VRChat\'s config.json. ' +
+    'The key names are legacy (Dynamic Bones was renamed to PhysBones in 2022); the caps still apply per-avatar. ' +
+    'Bones over the cap stop simulating — the avatar still renders, the unsimulated bones just don\'t wiggle. ' +
+    'Clicking the "Show Avatar" eye in VRChat\'s menu, or marking a friend "Always Show", overrides the cap for that one avatar. ' +
+    'Reverses cleanly via Undo. Cuts main-thread CPU usage by 60–80% in busy worlds.',
   requiresAdmin: false,
   requiresReboot: false,
 
@@ -2315,8 +2319,8 @@ const fixVRChatDynamicBoneLimits: Fix = {
     const currentCollider = config.dynamic_bone_max_collider_check_count as number | undefined
     return {
       fixId: 'fix-vrchat-dynamic-bone-limits',
-      name: 'Set VRChat Dynamic Bone Limits',
-      description: 'Caps dynamic bone simulation per avatar. Reduces CPU usage by 60-80% in worlds with many players.',
+      name: 'Cap VRChat avatar physics (config.json)',
+      description: 'Caps PhysBones simulation per avatar (config keys are still named dynamic_bone_* for legacy reasons). Reduces CPU usage by 60-80% in busy worlds.',
       changes: [
         {
           target: `${getVRChatConfigPath()} → dynamic_bone_max_affected_transform_count`,
@@ -2360,7 +2364,7 @@ const fixVRChatDynamicBoneLimits: Fix = {
       writeVRChatConfig(config)
       recordHistory({
         fixId: 'fix-vrchat-dynamic-bone-limits',
-        name: 'Set VRChat Dynamic Bone Limits',
+        name: 'Cap VRChat avatar physics (config.json)',
         appliedAt: Date.now(),
         changes: [
           { target: 'dynamic_bone_max_affected_transform_count', currentValue: 'unlimited', newValue: '32' },

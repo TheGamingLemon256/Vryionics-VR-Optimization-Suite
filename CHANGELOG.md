@@ -36,7 +36,7 @@ This file tracks the user-facing changes; for the full commit history see the re
 - First-launch tour now sets its "seen" flag the moment it appears (was only on Finish — appeared every launch). Added a "Replay tour" button in Settings.
 - AMD / Intel GPU live-fetch results now flagged `installable: false` because their downloadUrl is the HTML support page, not a real installer. UI shows "Open vendor page" instead of "Update", no more "file too small" false positive.
 - Default Live Optimizer activation delay raised 15 s → 30 s. Added Steam Link streaming binaries to the never-throttle list — addresses headset-disconnects-on-first-launch with SteamLink.
-- Dynamic Bone fix description now explains capped bones stop simulating (not disappearing) and the "Show Avatar" eye in the VRChat menu overrides the cap per-avatar.
+- Avatar physics fix description now explains capped bones stop simulating (not disappearing) and the "Show Avatar" eye in the VRChat menu overrides the cap per-avatar.
 
 ## v0.2.0
 Major feature pass — 10 phases:

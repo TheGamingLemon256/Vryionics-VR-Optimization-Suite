@@ -9,6 +9,18 @@
 
 Vryionics VR Optimization Suite (VROS) scans your Windows PC for the configuration issues that hurt VR performance, explains every finding in both plain English and technical detail, and offers reversible one-click fixes. It's built specifically for VR — every rule and recommendation is informed by VR-specific bottleneck patterns (CPU-bound social VR, GPU-bound flight sims, wireless streaming jitter, etc.) rather than generic "system optimizer" snake-oil.
 
+## Heads up: this project is AI-assisted
+
+I'm a solo dev and I built VROS with heavy use of an AI coding assistant (Claude). The diagnostic rules, fix logic, UI, and most of the code comments were written or co-written with AI, then reviewed, tested, and refined by me. The choice of *what* to build, the VR-specific knowledge that shapes the rules, the hardware database, and every fix that ships are mine — but the prose around them was very often drafted by a model.
+
+I'm calling this out because:
+
+- **You deserve to know** what you're running. If "vibe-coded with an LLM" is a dealbreaker, this isn't the project for you, and that's a fair call.
+- **Bugs from AI assistance are still my bugs.** If something breaks your config, that's on me to fix, not on the model. File an issue.
+- **Some copy will read AI-flavoured.** Em-dashes, neat parallel sentences, table-of-features format. I'm working on cleaning the most LLM-sounding stuff up over time. If you spot something that's flat-out wrong (like a dated reference), please open an issue — that's exactly how the avatar-physics rule got fixed.
+
+The codebase is fully open under MIT. Read the source, audit any fix before you apply it, build it yourself if you don't trust the binary. I'd rather you do that than take my word for it.
+
 ## What it does
 
 | Surface | Purpose |

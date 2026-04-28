@@ -61,7 +61,7 @@ const socialVr: VrGameProfile[] = [
     ],
     knownIssues: [
       'Cache exhaustion: %AppData%\\..\\LocalLow\\VRChat\\VRChat cache can bloat to 20+ GB and slow world loads.',
-      'Dynamic bones with default "max affected transforms" (0 = unlimited) are the #1 CPU killer.',
+      'Avatar physics with default "max affected transforms" (0 = unlimited) is the #1 CPU killer. The config key is still named dynamic_bone_max_affected_transform_count for legacy reasons but actually controls PhysBones since the 2022 conversion.',
       'Populated clubs (30+ avatars) are CPU-bound — a 5800X3D / 7800X3D V-Cache chip is the biggest possible upgrade.',
       'Windows 10 pre-Thread-Director routes VRChat.exe to E-cores on 12/13/14th gen Intel — upgrade to Win 11 for hybrid scheduling.',
     ],
@@ -70,7 +70,7 @@ const socialVr: VrGameProfile[] = [
     minRamGB: 16,
     notes: [
       'The most CPU-demanding mainstream VR title. CPU matters more than GPU.',
-      'Our suite has VRChat-specific rules (dynamic bones, cache, MSAA) that fire for deep diagnosis.',
+      'Our suite has VRChat-specific rules (avatar physics caps, cache, MSAA) that fire for deep diagnosis.',
       'AMD V-Cache (X3D) CPUs give 30-50% better frame times in populated worlds.',
     ],
   },

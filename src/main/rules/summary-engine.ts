@@ -1517,29 +1517,29 @@ function buildVRChatDynamicBonePlan(data: ScanData): ActionPlan | null {
   if (!hasIssue) return null
 
   const summaryParts: string[] = []
-  if (affected === 0 || affected === null) summaryParts.push('unlimited dynamic bones')
-  else if (affected > 64) summaryParts.push(`${affected} dynamic bone cap (high)`)
-  if (colliders === 0) summaryParts.push('unlimited collider checks')
+  if (affected === 0 || affected === null) summaryParts.push('uncapped avatar physics')
+  else if (affected > 64) summaryParts.push(`${affected} bone-transform cap (high)`)
+  if (colliders === 0) summaryParts.push('uncapped collider checks')
   if (!configPresent) summaryParts.push('no config.json (running on defaults)')
 
   return {
     id: 'action-vrchat-dynamic-bones',
     priority: 3,
     category: 'VR App',
-    title: 'Fix VRChat Dynamic Bone Limits — Critical for Populated Worlds',
-    summary: `VRChat is simulating ${summaryParts.join(', ')}. In public worlds with 20+ players, this alone can consume 30-60% of your CPU, causing constant VR reprojection.`,
+    title: 'Cap VRChat avatar physics — biggest single CPU win in busy worlds',
+    summary: `Your config.json shows ${summaryParts.join(', ')}. In a public world with 20+ players this is usually the difference between locked 90 fps and constant reprojection.`,
     impact: 'critical',
     effort: 'instant',
-    expectedGain: 'Reduces CPU usage by 60-80% in populated worlds. The single most impactful VRChat optimization for VR performance.',
+    expectedGain: 'Cuts CPU usage 60-80% in populated worlds. Most impactful VRChat-side change you can make.',
     fixId: 'fix-vrchat-dynamic-bone-limits',
     steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets dynamic_bone_max_affected_transform_count = 32 (per avatar bone cap)', 'setting'),
-      step('Sets dynamic_bone_max_collider_check_count = 8 (per bone collision check cap)', 'setting'),
-      step('Also enables avatar culling at 25m (stops rendering avatars you can\'t see)', 'setting'),
-      step('Located at: %USERPROFILE%\\AppData\\LocalLow\\VRChat\\VRChat\\config.json', 'info'),
-      step('In-game: Safety Settings → Dynamic Bone Limits (overrides config when set to "Limited" or "Performance")', 'info'),
-      step('No restart required — changes take effect when you join the next world')
+      step('Applied automatically via the "Apply Fix" button below', 'info'),
+      step('dynamic_bone_max_affected_transform_count = 32 (per-avatar PhysBones cap; key name is legacy)', 'setting'),
+      step('dynamic_bone_max_collider_check_count = 8 (per-bone collider check cap)', 'setting'),
+      step('Also enables avatar culling at 25m (avatars outside that range stop rendering)', 'setting'),
+      step('File: %USERPROFILE%\\AppData\\LocalLow\\VRChat\\VRChat\\config.json', 'info'),
+      step('Equivalent in-game: Settings → Performance Options → Avatar Performance Limiter (overrides config.json when set)', 'info'),
+      step('No restart needed — takes effect on your next world join.')
     ],
     relatedRuleIds: ['vrchat-dynamic-bone-unlimited', 'vrchat-dynamic-bone-high', 'vrchat-collider-unlimited', 'vrchat-no-config-file']
   }
@@ -1578,8 +1578,8 @@ function buildVRChatNoConfigPlan(data: ScanData): ActionPlan | null {
     id: 'action-vrchat-create-config',
     priority: 4,
     category: 'VR App',
-    title: 'Create VRChat Performance Config — You\'re on Factory Defaults',
-    summary: 'VRChat has no config.json file. You\'re running with unlimited dynamic bones, small cache, and no avatar culling — the worst possible settings for populated worlds.',
+    title: 'Create a VRChat config.json — you\'re on stock defaults',
+    summary: 'No config.json found. That means uncapped avatar physics, a small cache, and no avatar culling — fine in an empty world, the worst possible setup in a busy one.',
     impact: 'critical',
     effort: 'instant',
     expectedGain: 'Applying the recommended config provides immediate CPU relief in any world with more than 5 players. Essential for VRChat VR performance.',
@@ -1602,7 +1602,7 @@ function buildCpuThermalThrottlePlan(data: ScanData): ActionPlan | null {
     priority: 2,
     category: 'CPU',
     title: 'Fix CPU Thermal Throttle — Running Below Base Clock in VR',
-    summary: 'Your CPU is overheating and reducing clock speed to protect itself. In VRChat with many players, this causes the dynamic bone physics and game logic to run slower — resulting in constant reprojection.',
+    summary: 'Your CPU is throttling itself to avoid overheating. In a busy VRChat instance that means avatar physics and game logic fall behind frame budget — which is what you feel as constant reprojection.',
     impact: 'critical',
     effort: 'minutes',
     expectedGain: 'Restores full CPU boost clock, improving VRChat physics FPS and frame delivery consistency.',
@@ -1630,7 +1630,7 @@ function buildRamSingleChannelPlan(data: ScanData): ActionPlan | null {
     summary: 'RAM may be in single-channel mode, halving the memory bandwidth available for VRChat\'s physics simulation, asset streaming, and GPU transfers.',
     impact: 'medium',
     effort: 'hours',
-    expectedGain: 'Doubles memory bandwidth — improves VRChat dynamic bone physics speed and reduces asset stream stalls.',
+    expectedGain: 'Doubles memory bandwidth, which directly speeds up VRChat\'s avatar physics work on the main thread and cuts asset-stream stalls.',
     steps: [
       step('Power off and unplug your PC before touching RAM', 'info'),
       step('Check your motherboard manual for dual-channel slot configuration — typically A2+B2 (2nd and 4th slots)', 'open'),

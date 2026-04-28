@@ -17,10 +17,10 @@ export const vrchatRules: Rule[] = [
         ruleId: 'vrchat-dynamic-bone-unlimited',
         severity: 'critical',
         category: 'vr-runtime',
-        title: 'VRChat Dynamic Bones Unlimited — Major CPU Usage in Populated Worlds',
+        title: 'VRChat avatar physics uncapped — heavy CPU cost in busy worlds',
         explanation: {
-          simple: 'VRChat is set to simulate unlimited dynamic bones across all avatars. In worlds with 20+ players, each with hair/clothes physics, this can consume 30-60% of your CPU alone — causing constant VR reprojection.',
-          advanced: 'dynamic_bone_max_affected_transform_count = 0 means no cap on the number of bone transforms simulated per frame. Each avatar can have 100-500+ dynamic bone transforms. At 20 players, that\'s potentially 10,000+ physics transforms per frame at 90Hz. Setting a cap of 32 per avatar reduces CPU time by 60-80% in populated public worlds with minimal visual difference.'
+          simple: 'VRChat\'s per-avatar PhysBones cap is set to unlimited in your config.json. In a world with 20+ players (each with hair, tails, clothes simulating), this is the single biggest reason VR users get CPU-bound and hit reprojection.',
+          advanced: 'The config key here is `dynamic_bone_max_affected_transform_count` — the name is legacy from when VRChat used the Dynamic Bone Unity asset. Since 2022 those components are auto-converted to VRChat\'s in-house PhysBones system, but the config key still controls the per-avatar transform-simulation cap. `0` means no cap. Avatars routinely ship with 100–500 simulating bones; at 20 players that\'s 10k+ transforms per frame at 90Hz. Capping at 32 per avatar cuts main-thread CPU 60–80% in populated worlds with very little visual difference. The in-game equivalent is Settings → Performance Options → Avatar Performance Limiter, which overrides config.json when set.'
         },
         fixId: 'fix-vrchat-dynamic-bone-limits'
       }
@@ -38,10 +38,10 @@ export const vrchatRules: Rule[] = [
         ruleId: 'vrchat-dynamic-bone-high',
         severity: 'warning',
         category: 'vr-runtime',
-        title: `VRChat Dynamic Bone Cap Set High (${affected} transforms/avatar)`,
+        title: `VRChat avatar bone cap set high (${affected} transforms/avatar)`,
         explanation: {
-          simple: `VRChat allows ${affected} dynamic bone transforms per avatar. While better than unlimited, 64 or less is recommended for consistent performance in busy worlds.`,
-          advanced: `dynamic_bone_max_affected_transform_count = ${affected}. The CPU cost scales linearly with this value × player count. At 20 players: ${affected * 20} total transforms per frame. Reducing to 32-64 provides the best balance of physics quality and CPU budget for VR's strict frame time requirements.`
+          simple: `Your config caps avatar bone simulation at ${affected} transforms each. Better than uncapped, but 64 or less is what holds up in busy worlds.`,
+          advanced: `dynamic_bone_max_affected_transform_count = ${affected} (the legacy key name — it now controls PhysBones simulation since VRChat auto-converted the old Dynamic Bone components in 2022). Cost scales linearly with cap × player count. 20 players × ${affected} = ${affected * 20} transforms/frame. 32–64 is the sweet spot for VR's frame budget.`
         },
         fixId: 'fix-vrchat-dynamic-bone-limits'
       }
@@ -59,10 +59,10 @@ export const vrchatRules: Rule[] = [
         ruleId: 'vrchat-collider-unlimited',
         severity: 'high',
         category: 'vr-runtime',
-        title: 'VRChat Dynamic Bone Colliders Unlimited — Significant CPU Overhead',
+        title: 'VRChat avatar collider checks uncapped — CPU spikes on complex avatars',
         explanation: {
-          simple: 'Collider checks per bone are uncapped. Dynamic bone colliders (used for hair/cloth to collide with body parts) are expensive — without a limit, complex avatar physics can stall the CPU.',
-          advanced: 'dynamic_bone_max_collider_check_count = 0 means no limit on collider-bone intersection tests per frame. Each test is O(n) in transforms and O(m) in colliders. Complex avatars with full-body collision meshes can generate thousands of tests per frame. Setting this to 8 eliminates the worst-case spike while preserving reasonable physics behavior.'
+          simple: 'Collider checks per bone are uncapped. PhysBone colliders are what let hair/cloth bump against an avatar\'s body — they work, but they\'re expensive, and an uncapped count is a recipe for frame-time spikes around complex avatars.',
+          advanced: 'dynamic_bone_max_collider_check_count = 0 means no limit on collider-bone intersection tests per frame. Each test is roughly O(transforms × colliders). Avatars with full-body collision meshes can generate thousands of tests per frame. Capping at 8 eliminates the worst-case spike while keeping physics looking right. The key name is legacy from the old Dynamic Bone asset — it now governs PhysBone collider checks.'
         },
         fixId: 'fix-vrchat-dynamic-bone-limits'
       }
@@ -80,10 +80,10 @@ export const vrchatRules: Rule[] = [
         ruleId: 'vrchat-no-config-file',
         severity: 'high',
         category: 'vr-runtime',
-        title: 'VRChat Has No Performance Config File — Running on Defaults',
+        title: 'No VRChat config.json — running on stock defaults',
         explanation: {
-          simple: 'VRChat has no config.json file, meaning it\'s using factory defaults — including unlimited dynamic bones, small cache, and no avatar culling. These defaults are terrible for populated worlds.',
-          advanced: 'VRChat\'s config.json controls critical performance parameters: avatar culling distance, dynamic bone limits, cache size, and particle limits. Without this file, VRChat defaults to unlimited physics simulation and small caches — optimized for visual showcase, not real-world populated use. Applying the recommended config provides immediate improvement in any world with more than 5 players.'
+          simple: 'VRChat\'s config.json is missing, so you\'re on the out-of-the-box defaults: uncapped avatar physics, small cache, no avatar culling. Fine for an empty world, painful in a populated one.',
+          advanced: 'config.json controls a handful of things VRChat doesn\'t expose in the in-game settings menu — avatar culling distance, the per-avatar PhysBones simulation/collider caps (still keyed under the legacy `dynamic_bone_max_*` names), cache size, particle limits. Without it, VRChat ships with values that prioritise looking-correct over performing-well in social instances. Applying the recommended config gives you immediate breathing room in anything 5+ players.'
         },
         fixId: 'fix-vrchat-dynamic-bone-limits'
       }
