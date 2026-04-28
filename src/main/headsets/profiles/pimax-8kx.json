@@ -1,0 +1,95 @@
+{
+  "id": "pimax-8kx",
+  "brand": "Pimax",
+  "model": "8KX",
+  "type": "tethered",
+  "releaseYear": 2021,
+
+  "display": {
+    "resolutionPerEye": [3840, 2160],
+    "refreshRates": [60, 75, 90],
+    "panelType": "LCD",
+    "fov": 170
+  },
+
+  "connections": [
+    {
+      "id": "8kx-dual-dp",
+      "name": "Dual DisplayPort 1.4",
+      "archetype": "tethered-dp",
+      "requirements": ["Two DisplayPort 1.4 outputs on GPU", "USB 3.0 Type-A", "Pimax 8KX breakout cable"],
+      "latencyProfile": { "typical": 13, "best": 9, "worst": 18 }
+    }
+  ],
+
+  "runtimes": ["pimaxxr", "openxr-steamvr", "steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Valve Index Controllers / Vive Wands",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3080 / RX 6900 XT",
+    "recommendedGPU": "RTX 3090 Ti / RX 7900 XTX",
+    "minCPU": "Intel i7-9700K / Ryzen 7 3700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4 (x2)", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "8kx-dual-dp-gpu-requirement",
+      "title": "Requires two DP 1.4 outputs — limits GPU compatibility",
+      "description": "The 8KX uses two separate DisplayPort 1.4 connections (one per eye panel) and requires a GPU with at least two DP 1.4 outputs. Multi-monitor users may run out of outputs.",
+      "affectsConnectionTypes": ["8kx-dual-dp"],
+      "severity": "critical",
+      "workaround": "Verify your GPU has two available DP 1.4 ports. Disconnect secondary monitors during VR if you have port conflicts. HDMI outputs cannot substitute."
+    },
+    {
+      "id": "8kx-pitool-instability",
+      "title": "PiTool / Pimax Play software requires careful version management",
+      "description": "The Pimax software ecosystem has historically had significant stability issues. Updates have caused regressions. The 8KX is an older product and may not receive timely fixes.",
+      "severity": "warning",
+      "workaround": "Check the Pimax community forums for stable PiTool version recommendations. Keep a backup of known-working software before updating. Run PiTool as administrator."
+    },
+    {
+      "id": "8kx-fov-peripheral-distortion",
+      "title": "Wide FOV causes edge distortion in some games",
+      "description": "The 8KX's 170° FOV requires geometry correction that some games do not implement correctly, resulting in visible warping in the peripheral vision.",
+      "severity": "info",
+      "workaround": "Use Pimax's 'Normal' or 'Large' FOV mode instead of 'Large+' to reduce distortion at the cost of some peripheral FOV. Per-game FOV profiles can be set in PiTool."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use 75Hz at Normal FOV for the best performance-to-quality ratio",
+      "simpleExplanation": "Running at 75Hz with a slightly narrower field of view makes the 8KX much more manageable for your GPU without losing much quality.",
+      "advancedExplanation": "3840x2160 per eye at 90Hz requires extraordinary GPU resources. Dropping to 75Hz reduces the frame time budget pressure by 17% and is imperceptible to most users. Normal FOV mode also reduces the render target area, saving an additional 15-20% GPU cost compared to Large+ FOV.",
+      "applicableConnections": ["8kx-dual-dp"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Do not supersample — native resolution is the render target",
+      "simpleExplanation": "The 8KX is already at the limit of what GPUs can render. Never turn supersampling above 100%.",
+      "advancedExplanation": "3840x2160 per eye is demanding enough that rendering at 100% SteamVR SS already pushes top-tier GPUs. Above 100% SS reduces framerates dramatically with no visible clarity improvement — the panel resolves no finer detail than native. Focus GPU budget on stable framerates."
+    },
+    {
+      "category": "comfort",
+      "tip": "Enable Smart Smoothing at the 45fps → 90fps ratio",
+      "simpleExplanation": "Pimax's frame smoothing feature makes the headset tolerable even when your GPU can't keep up with the demanding resolution.",
+      "advancedExplanation": "At 3840x2160 per eye, even RTX 3090-class GPUs struggle with demanding titles at 90Hz. Smart Smoothing at 45fps→90Hz is often the only way to achieve acceptable comfort. Enable in PiTool per-application. Combined with Normal FOV, this makes more titles playable.",
+      "applicableConnections": ["8kx-dual-dp"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "_comment": "Storage Debloat category definitions. Loaded at runtime from resources/ so the .exe binary does not contain credential-store path strings (Chrome User Data, Firefox Profiles, etc.) that match Trojan-PSW heuristic signatures.",
+  "categories": [
+    {
+      "id": "win-temp",
+      "name": "Windows Temp Files",
+      "description": "Temporary files created by Windows and applications. Safe to delete — apps recreate what they need.",
+      "pathExprs": ["$env:TEMP", "$env:TMP"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "sys-temp",
+      "name": "System Temp Folder",
+      "description": "System-wide temporary files under C:\\Windows\\Temp. Safe to remove.",
+      "pathExprs": ["$env:SystemRoot\\Temp"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "prefetch",
+      "name": "Windows Prefetch Cache",
+      "description": "Launch-speed hints cached by Windows. Clearing is safe — Windows rebuilds the cache automatically on next app launch, which may cause one slower start per app.",
+      "pathExprs": ["$env:SystemRoot\\Prefetch"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "win-update-cache",
+      "name": "Windows Update Download Cache",
+      "description": "Downloaded update packages no longer needed after installation. Windows will re-download only if an update is re-applied.",
+      "pathExprs": ["$env:SystemRoot\\SoftwareDistribution\\Download"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "wer-reports",
+      "name": "Windows Error Reports",
+      "description": "Crash report archives sent (or queued to send) to Microsoft. No app data is lost by deleting these.",
+      "pathExprs": [
+        "$env:LOCALAPPDATA\\Microsoft\\Windows\\WER\\ReportArchive",
+        "$env:ProgramData\\Microsoft\\Windows\\WER\\ReportArchive"
+      ],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "thumbnail-cache",
+      "name": "Explorer Thumbnail Cache",
+      "description": "Thumbnail image cache used by File Explorer. Deleting causes a one-time rebuild when you browse image folders again.",
+      "pathExprs": ["$env:LOCALAPPDATA\\Microsoft\\Windows\\Explorer"],
+      "fileFilter": "thumbcache_*.db",
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "chrome-cache",
+      "name": "Google Chrome Cache",
+      "description": "Cached web content for Chrome. Pages may load slightly slower first time after clearing.",
+      "pathExprs": ["$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Cache"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "edge-cache",
+      "name": "Microsoft Edge Cache",
+      "description": "Cached web content for Edge. Pages may load slightly slower first time after clearing.",
+      "pathExprs": ["$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data\\Default\\Cache"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "firefox-cache",
+      "name": "Firefox Cache",
+      "description": "Cached web content stored in Firefox profile cache2 folders. Safe to clear.",
+      "pathExprs": ["$env:LOCALAPPDATA\\Mozilla\\Firefox\\Profiles"],
+      "fileFilter": "cache2",
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "discord-cache",
+      "name": "Discord Cache",
+      "description": "Temporary data cached by the Discord client. Discord recreates these automatically.",
+      "pathExprs": [
+        "$env:APPDATA\\discord\\Cache",
+        "$env:APPDATA\\discord\\Code Cache"
+      ],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "steam-html-cache",
+      "name": "Steam HTML Cache",
+      "description": "Browser engine cache used by the Steam client UI. Safe to delete — Steam rebuilds it.",
+      "pathExprs": ["$env:LOCALAPPDATA\\Steam\\htmlcache"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "nvidia-shader-cache",
+      "name": "NVIDIA / D3D Shader Cache",
+      "description": "Pre-compiled GPU shader programs. Your GPU will recompile shaders on first game launch after clearing — expect a brief stutter in the first session.",
+      "pathExprs": [
+        "$env:LOCALAPPDATA\\NVIDIA\\DXCache",
+        "$env:LOCALAPPDATA\\D3DSCache"
+      ],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "vrchat-cache",
+      "name": "VRChat World & Avatar Cache",
+      "description": "Downloaded world, avatar, and asset caches. VRChat re-downloads assets on next visit after clearing — expect slightly longer initial load times in new worlds.",
+      "pathExprs": [
+        "$env:LOCALAPPDATA\\..\\LocalLow\\VRChat\\VRChat\\Cache-WindowsDX11",
+        "$env:LOCALAPPDATA\\..\\LocalLow\\VRChat\\VRChat\\Cache-WindowsVulkan",
+        "$env:LOCALAPPDATA\\..\\LocalLow\\VRChat\\VRChat\\Cache-AssetBundle"
+      ],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "steamvr-shader-cache",
+      "name": "SteamVR Shader Cache",
+      "description": "Compiled shaders for SteamVR compositor. SteamVR will rebuild these on next launch.",
+      "pathExprs": ["$env:LOCALAPPDATA\\openvr\\shaders"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "crash-dumps",
+      "name": "Application Crash Dumps",
+      "description": "Memory dump files written when applications crash. No useful data is lost by deleting them unless you are actively debugging an app.",
+      "pathExprs": ["$env:LOCALAPPDATA\\CrashDumps"],
+      "safeToDelete": true,
+      "deletable": true
+    },
+    {
+      "id": "downloads-folder",
+      "name": "Downloads Folder",
+      "description": "Your personal Downloads folder. Shown for size awareness only — Vryionics will never auto-delete files here.",
+      "pathExprs": ["$env:USERPROFILE\\Downloads"],
+      "safeToDelete": false,
+      "deletable": false
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "id": "shiftall-meganex-superlight-8k",
+  "brand": "Shiftall",
+  "model": "MeganeX Superlight 8K",
+  "type": "tethered",
+  "releaseYear": 2025,
+
+  "display": {
+    "resolutionPerEye": [3840, 3552],
+    "refreshRates": [90, 120],
+    "panelType": "Micro-OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "meganex-dp-usb",
+      "name": "DisplayPort 1.4 + USB-C",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC support", "USB-C port", "Steam account (uses SteamVR)"],
+      "latencyProfile": { "typical": 16, "best": 12, "worst": 25 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Any SteamVR-compatible (sold separately — no bundled controllers)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 4070 / RX 7800 XT",
+    "recommendedGPU": "RTX 4080 Super / RTX 5080",
+    "minCPU": "Intel i7-13700K / Ryzen 7 7700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4 (DSC)", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "meganex-no-bundled-controllers",
+      "title": "Ships without controllers — you must source them separately",
+      "description": "The MeganeX Superlight 8K is sold as a display-focused HMD. No controllers are bundled. You need to add Valve Index knuckles, Vive Wands, or use hand tracking.",
+      "severity": "info",
+      "workaround": "Pair with Lighthouse 2.0 base stations + Valve Index controllers for the best experience. Alternatively use Ultraleap hand tracking (not bundled)."
+    },
+    {
+      "id": "meganex-ultralight-fit",
+      "title": "185g ultralight body — fit is unusually sensitive",
+      "description": "The extreme weight reduction means the strap and face pad have less inertia to overcome. Minor adjustments that would be imperceptible on a heavier headset produce noticeable optical shift.",
+      "severity": "info",
+      "workaround": "Spend time on the first fit. Tilt the headset so the optical sweet spot aligns with pupil distance; the ultra-small exit pupil is less forgiving than larger headsets."
+    },
+    {
+      "id": "meganex-dsc-chain",
+      "title": "DisplayPort 1.4 DSC must be supported end-to-end",
+      "description": "3840×3552 per eye @ 120 Hz exceeds DisplayPort 1.4 without DSC compression. Any adapter, hub, or cable that breaks DSC causes the headset to fall back to lower modes.",
+      "severity": "warning",
+      "workaround": "Connect direct to GPU DisplayPort 1.4 output. No adapters, no KVMs, no hubs. Verify DSC is active via SteamVR's resolution/Hz display."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Lower SteamVR supersampling to 60-70% — the native panel is already 8K combined",
+      "simpleExplanation": "With 3840×3552 per eye the default SteamVR supersampling is overkill. Reduce it to free up GPU headroom without losing perceived sharpness.",
+      "advancedExplanation": "SteamVR → Video → Render Resolution → Manual → 60-70%. The MeganeX's pixel density is high enough that perceptual sharpness plateaus; GPU cycles are better spent on anti-aliasing and shader detail.",
+      "applicableConnections": ["meganex-dp-usb"]
+    },
+    {
+      "category": "performance",
+      "tip": "OpenXR Toolkit FSR + CAS is a near-free quality upgrade",
+      "simpleExplanation": "OpenXR Toolkit adds hardware-agnostic FSR upscaling, which matters at this resolution.",
+      "advancedExplanation": "Install OpenXR Toolkit. FSR Quality at 80% render scale generally outperforms native 100% in both FPS and perceptual sharpness thanks to CAS sharpening.",
+      "applicableConnections": ["meganex-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.7,
+    "reprojection": "motion-smoothing"
+  }
+}

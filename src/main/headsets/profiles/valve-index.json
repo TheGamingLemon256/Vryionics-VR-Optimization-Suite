@@ -1,0 +1,92 @@
+{
+  "id": "valve-index",
+  "brand": "Valve",
+  "model": "Index",
+  "type": "tethered",
+  "releaseYear": 2019,
+
+  "display": {
+    "resolutionPerEye": [1440, 1600],
+    "refreshRates": [80, 90, 120, 144],
+    "panelType": "LCD",
+    "fov": 130
+  },
+
+  "connections": [
+    {
+      "id": "index-dp",
+      "name": "DisplayPort 1.2 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2", "USB 3.0 Type-A", "12V DC power (included trident cable)"],
+      "latencyProfile": { "typical": 11, "best": 8, "worst": 15 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Valve Index Controllers (Knuckles)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 970 / RX 480",
+    "recommendedGPU": "RTX 2070 / RX 5700 XT",
+    "minCPU": "Dual-core with hyperthreading",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "index-144hz-gpu",
+      "title": "144Hz mode requires powerful GPU",
+      "description": "Running at 144Hz significantly increases GPU load. Most systems should use 120Hz for the best balance of smoothness and visual quality.",
+      "severity": "info",
+      "workaround": "Use 120Hz unless you have an RTX 3080+ class GPU. 90Hz is fine for demanding games."
+    },
+    {
+      "id": "index-base-station-usb",
+      "title": "Lighthouse base stations can cause USB bandwidth issues",
+      "description": "Base station firmware updates and some configurations can compete for USB bandwidth, causing tracking dropouts.",
+      "severity": "warning",
+      "workaround": "Ensure base stations are on latest firmware via SteamVR. Use bluetooth for base station power management rather than USB."
+    },
+    {
+      "id": "index-tether-cable",
+      "title": "Tether cable is fragile and expensive to replace",
+      "description": "The Index tether cable is a single proprietary cable carrying DP, USB, and power. Repeated twisting damages it.",
+      "severity": "info",
+      "workaround": "Use a cable management system (pulley) to reduce cable stress. Avoid stepping on or sharply bending the cable."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use 120Hz for the best performance-to-smoothness ratio",
+      "simpleExplanation": "120Hz gives you incredibly smooth VR without pushing your GPU as hard as 144Hz. Most people can't tell the difference.",
+      "advancedExplanation": "120Hz requires 8.33ms frame time vs 6.94ms for 144Hz — a 20% reduction in GPU budget. SteamVR motion smoothing at 60fps→120fps is more effective than 72fps→144fps. Use 120Hz with motion smoothing enabled for the best perceived fluidity."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Set supersampling to 100% and let SteamVR auto-adjust",
+      "simpleExplanation": "Let SteamVR handle the picture quality automatically. It knows what your GPU can handle.",
+      "advancedExplanation": "SteamVR's automatic resolution scaling targets the Index's native resolution at 100% SS. Manual supersampling above 130% provides diminishing returns due to the Index's lower pixel density. GPU resources are better spent on higher refresh rate."
+    },
+    {
+      "category": "latency",
+      "tip": "Enable direct display mode in SteamVR",
+      "simpleExplanation": "Direct display mode makes your headset bypass Windows desktop rendering, reducing delay.",
+      "advancedExplanation": "SteamVR Direct Display Mode bypasses the Windows DWM compositor, eliminating 1-2 frames of latency. Verify enabled in SteamVR → Developer → Direct Display Mode. The Index should not appear as a monitor in Windows Display Settings."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

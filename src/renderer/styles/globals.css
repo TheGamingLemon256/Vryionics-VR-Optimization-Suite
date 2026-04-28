@@ -1,0 +1,757 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --accent-primary: #7c5bf5;
+    --accent:         #7c5bf5;   /* alias, kept in sync by theme-store */
+    --accent-rgb: 124, 91, 245;
+    --accent-secondary: #5b9bf5;
+    --accent-text: #c4b5fd;      /* light tint for button/label text */
+    --bg-color: #0a0a14;
+    --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-size-base: 14px;
+    --radius: 8px;
+    --glass-opacity: 0.85;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+    background-color: var(--bg-color);
+    color: #e2e8f0;
+    overflow: hidden;
+    height: 100vh;
+    user-select: none;
+  }
+
+  /* Allow text selection in AI chat messages and code blocks */
+  .select-text,
+  .select-text * {
+    user-select: text;
+  }
+
+  /* Gradient layer — sits above bg color, below content */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: var(--bg-gradient, none);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  #root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(15, 15, 25, var(--glass-opacity));
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .glass-panel-sm {
+    background: rgba(20, 20, 35, calc(var(--glass-opacity) - 0.15));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  .glass-input {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: #e2e8f0;
+    font-size: var(--font-size-base);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .glass-input:focus {
+    border-color: rgba(var(--accent-rgb), 0.5);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
+  }
+
+  .glass-button {
+    background: rgba(var(--accent-rgb), 0.2);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    border-radius: var(--radius);
+    padding: 8px 16px;
+    color: var(--accent-text, #c4b5fd);  /* light tint of current accent */
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .glass-button:hover {
+    background: rgba(var(--accent-rgb), 0.3);
+    border-color: rgba(var(--accent-rgb), 0.5);
+  }
+
+  .glass-button:active {
+    transform: scale(0.98);
+  }
+
+  .glass-button-danger {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: rgba(248, 113, 113, 0.3);
+    color: #fca5a5;
+  }
+
+  .glass-button-danger:hover {
+    background: rgba(248, 113, 113, 0.25);
+    border-color: rgba(248, 113, 113, 0.5);
+  }
+
+  .glass-button-success {
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.3);
+    color: #86efac;
+  }
+
+  .glass-button-success:hover {
+    background: rgba(74, 222, 128, 0.25);
+    border-color: rgba(74, 222, 128, 0.5);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .status-dot-connected {
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  }
+
+  .status-dot-disconnected {
+    background: #6b7280;
+  }
+
+  .status-dot-error {
+    background: #f87171;
+    box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+  }
+
+  .status-dot-connecting {
+    background: #fbbf24;
+    animation: pulse 1.5s infinite;
+  }
+
+  .status-dot-polling {
+    background: #fbbf24;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .drag-handle {
+    cursor: grab;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+
+  .drag-handle:hover {
+    opacity: 0.8;
+  }
+
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-nodrag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Slide-in animation for notifications and panels */
+  @keyframes slide-in-from-right {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-bottom {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-top {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .animate-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .slide-in-from-right {
+    animation: slide-in-from-right 0.3s ease-out;
+  }
+
+  .slide-in-from-bottom {
+    animation: slide-in-from-bottom 0.2s ease-out;
+  }
+
+  .slide-in-from-top {
+    animation: slide-in-from-top 0.3s ease-out;
+  }
+
+  /* Goal progress bar shimmer */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .goal-progress-active {
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+  }
+
+  /* Dashboard button pulse animations */
+  @keyframes dashPulseChat {
+    0%, 100% { box-shadow: 0 0 16px rgba(0,114,255,0.25), 0 4px 12px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 24px rgba(0,198,255,0.4), 0 4px 16px rgba(0,0,0,0.3); }
+  }
+  @keyframes dashPulseDeck {
+    0%, 100% { box-shadow: 0 0 16px rgba(124,58,237,0.25), 0 4px 12px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 24px rgba(168,85,247,0.45), 0 4px 16px rgba(0,0,0,0.3); }
+  }
+
+  /* Glow effect for active connections */
+  .glow-green {
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.3);
+  }
+
+  .glow-red {
+    box-shadow: 0 0 12px rgba(248, 113, 113, 0.3);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.3);
+  }
+
+  /* ─── Page transitions ─────────────────────────────── */
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.995);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .page-transition {
+    animation: page-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ─── Sidebar nav item hover pop ────────────────────── */
+  @keyframes nav-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+
+  .nav-item-active {
+    animation: nav-pop 0.2s ease-out;
+  }
+
+  /* ─── Glass panel entrance ──────────────────────────── */
+  @keyframes panel-enter {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .panel-animate {
+    animation: panel-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .panel-animate-delay-1 { animation-delay: 0.05s; }
+  .panel-animate-delay-2 { animation-delay: 0.1s; }
+  .panel-animate-delay-3 { animation-delay: 0.15s; }
+  .panel-animate-delay-4 { animation-delay: 0.2s; }
+
+  /* ─── Button press spring ───────────────────────────── */
+  @keyframes btn-press {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.94); }
+    100% { transform: scale(1); }
+  }
+
+  .btn-spring:active {
+    animation: btn-press 0.2s ease-out;
+  }
+
+  /* ─── Modal / overlay transitions ───────────────────── */
+  @keyframes overlay-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes modal-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .overlay-animate {
+    animation: overlay-enter 0.15s ease-out;
+  }
+
+  .modal-animate {
+    animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ─── Status dot pulse glow ─────────────────────────── */
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(74, 222, 128, 0.5); }
+    50% { box-shadow: 0 0 14px rgba(74, 222, 128, 0.8); }
+  }
+
+  .status-dot-connected {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+
+  /* ─── Notification enter/exit ────────────────────────── */
+  @keyframes notif-enter {
+    from {
+      transform: translateX(100%) scale(0.8);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  .notif-animate {
+    animation: notif-enter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ─── Toggle switch transition ──────────────────────── */
+  .toggle-track {
+    transition: background-color 0.2s ease;
+  }
+
+  .toggle-thumb {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ─── Hover lift for cards ──────────────────────────── */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ─── Improved text contrast for small/muted text ─── */
+  .text-gray-500 {
+    color: #9ca3af !important;
+    font-weight: 500;
+  }
+
+  .text-gray-600 {
+    color: #8891a0 !important;
+  }
+
+  .text-\[10px\], .text-\[9px\] {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  /* Ensure small labels have a subtle backdrop for readability */
+  .glass-panel-sm .text-gray-400,
+  .glass-panel .text-gray-400 {
+    color: #b0b8c4;
+  }
+
+  .glass-panel-sm .text-gray-500,
+  .glass-panel .text-gray-500 {
+    color: #9ca3af;
+  }
+
+  /* ─── Close/exit animations ──────────────────────────── */
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes scale-out {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.95) translateY(8px); }
+  }
+
+  .animate-fade-out {
+    animation: fade-out 0.2s ease-out forwards;
+  }
+
+  .animate-scale-out {
+    animation: scale-out 0.2s ease-out forwards;
+  }
+
+  /* ─── Page transitions ──────────────────────────── */
+  @keyframes page-enter {
+    from { opacity: 0; transform: translateY(14px) scale(0.988); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);     }
+  }
+
+  .page-enter {
+    animation: page-enter 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* ─── Smooth micro-interactions ──────────────────── */
+
+  /* Glass panel hover lift */
+  .glass-panel {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  /* Smooth button press */
+  .glass-button {
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .glass-button:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  /* Input focus glow */
+  .glass-input {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .glass-input:focus {
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
+  }
+
+  /* Status dot pulse */
+  .status-dot-connecting {
+    animation: status-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Sidebar item hover */
+  .sidebar-item {
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+  .sidebar-item:hover {
+    transform: translateX(2px);
+  }
+
+  /* Tab transitions */
+  .tab-content {
+    animation: page-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Card hover effects */
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Modal backdrop */
+  @keyframes modal-backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes modal-content-in {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal-backdrop {
+    animation: modal-backdrop-in 0.2s ease-out forwards;
+  }
+  .modal-content {
+    animation: modal-content-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Notification toast slide-in */
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .toast-enter {
+    animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Smooth scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Checkbox/toggle transitions */
+  input[type="checkbox"] {
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* Select dropdown */
+  select.glass-input {
+    transition: border-color 0.2s ease;
+  }
+
+  /* Tooltip fade */
+  [title] {
+    position: relative;
+  }
+
+  /* Number counter animation */
+  @keyframes count-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .count-animate {
+    animation: count-up 0.3s ease-out forwards;
+  }
+
+  /* Shimmer loading effect */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  /* ─── VRS Orbital Loader ───────────────────────────────────── */
+  @keyframes vrs-spin-cw  { to { transform: rotate(360deg); } }
+  @keyframes vrs-spin-ccw { to { transform: rotate(-360deg); } }
+
+  @keyframes vrs-pulse-glow {
+    0%, 100% { opacity: .25; transform: scale(1);    }
+    50%       { opacity: .55; transform: scale(1.06); }
+  }
+
+  @keyframes vrs-core-breathe {
+    0%, 100% { box-shadow: 0 0 28px 4px  rgba(var(--accent-rgb), .35); }
+    50%       { box-shadow: 0 0 56px 12px rgba(var(--accent-rgb), .6),
+                            0 0 80px 20px rgba(var(--accent-rgb), .15); }
+  }
+
+  /* Full-size orbits — translateX(88px) for the 220 px emblem */
+  @keyframes vrs-orbit-a {
+    from { transform: rotate(0deg)   translateX(88px) rotate(0deg);    }
+    to   { transform: rotate(360deg) translateX(88px) rotate(-360deg); }
+  }
+  @keyframes vrs-orbit-b {
+    from { transform: rotate(120deg) translateX(88px) rotate(-120deg); }
+    to   { transform: rotate(480deg) translateX(88px) rotate(-480deg); }
+  }
+  @keyframes vrs-orbit-c {
+    from { transform: rotate(240deg) translateX(88px) rotate(-240deg); }
+    to   { transform: rotate(600deg) translateX(88px) rotate(-600deg); }
+  }
+
+  /* Mini orbits — translateX(36px) for the 90 px emblem */
+  @keyframes vrs-mini-orbit-a {
+    from { transform: rotate(0deg)   translateX(36px) rotate(0deg);    }
+    to   { transform: rotate(360deg) translateX(36px) rotate(-360deg); }
+  }
+  @keyframes vrs-mini-orbit-b {
+    from { transform: rotate(120deg) translateX(36px) rotate(-120deg); }
+    to   { transform: rotate(480deg) translateX(36px) rotate(-480deg); }
+  }
+  @keyframes vrs-mini-orbit-c {
+    from { transform: rotate(240deg) translateX(36px) rotate(-240deg); }
+    to   { transform: rotate(600deg) translateX(36px) rotate(-600deg); }
+  }
+
+  @keyframes vrs-label-fade {
+    0%, 8%    { opacity: 0; transform: translateY(6px);  }
+    18%, 82%  { opacity: 1; transform: translateY(0);    }
+    92%, 100% { opacity: 0; transform: translateY(-6px); }
+  }
+
+  @keyframes vrs-bar-flow {
+    0%   { background-position:  200% center; }
+    100% { background-position: -200% center; }
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     AMBIENT BACKGROUND — "Pandora" bioluminescent drift
+     ─────────────────────────────────────────────────────────────
+     Five large blurred radial-gradient orbs that drift slowly on
+     independent paths. Use transform-only animations (translate +
+     scale) so the GPU can compose them on its own layer without
+     triggering layout/paint. mix-blend-mode: screen makes overlaps
+     brighten additively like real bioluminescence.
+  */
+  .ambient-bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    /* Sits above body::after (z:-1) but still behind all content (root z:0).
+       Use isolation so blend-modes only affect siblings in this layer. */
+    isolation: isolate;
+  }
+
+  .ambient-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
+    pointer-events: none;
+  }
+
+  /* Each orb has its own size, starting position, and drift animation.
+     Durations are primes-ish so the overall pattern never exactly repeats
+     in any short window → always feels alive. */
+
+  .ambient-orb-1 {
+    width: 760px; height: 760px;
+    top: -15%; left: -10%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.55) 0%, rgba(var(--accent-rgb), 0.15) 40%, transparent 75%);
+    animation: orb-drift-1 52s ease-in-out infinite, orb-breathe 11s ease-in-out infinite;
+  }
+  .ambient-orb-2 {
+    width: 620px; height: 620px;
+    top: -10%; right: -12%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.45) 0%, rgba(var(--accent-rgb), 0.10) 45%, transparent 75%);
+    animation: orb-drift-2 47s ease-in-out infinite, orb-breathe 13s ease-in-out infinite;
+  }
+  .ambient-orb-3 {
+    width: 700px; height: 700px;
+    bottom: -18%; left: -8%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.50) 0%, rgba(var(--accent-rgb), 0.12) 45%, transparent 75%);
+    animation: orb-drift-3 61s ease-in-out infinite, orb-breathe 17s ease-in-out infinite;
+  }
+  .ambient-orb-4 {
+    width: 540px; height: 540px;
+    bottom: -12%; right: -10%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.40) 0%, rgba(var(--accent-rgb), 0.10) 40%, transparent 75%);
+    animation: orb-drift-4 43s ease-in-out infinite, orb-breathe 9s ease-in-out infinite;
+  }
+  .ambient-orb-5 {
+    width: 420px; height: 420px;
+    top: 40%; left: 35%;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.35) 0%, rgba(var(--accent-rgb), 0.08) 50%, transparent 80%);
+    animation: orb-drift-5 37s ease-in-out infinite, orb-breathe 19s ease-in-out infinite;
+  }
+
+  /* Drift paths — each uses 4 keyframes so the turning looks organic
+     (not a straight back-and-forth). Scales vary ±15% for "breathing". */
+  @keyframes orb-drift-1 {
+    0%, 100% { transform: translate(0,       0      ) scale(1);    }
+    25%      { transform: translate(25vw,    15vh   ) scale(1.08); }
+    50%      { transform: translate(45vw,    35vh   ) scale(0.95); }
+    75%      { transform: translate(20vw,    50vh   ) scale(1.05); }
+  }
+  @keyframes orb-drift-2 {
+    0%, 100% { transform: translate(0,       0      ) scale(1);    }
+    30%      { transform: translate(-20vw,   25vh   ) scale(1.10); }
+    60%      { transform: translate(-35vw,   10vh   ) scale(0.92); }
+    80%      { transform: translate(-10vw,   40vh   ) scale(1.03); }
+  }
+  @keyframes orb-drift-3 {
+    0%, 100% { transform: translate(0,       0      ) scale(1);    }
+    25%      { transform: translate(30vw,   -20vh   ) scale(1.07); }
+    55%      { transform: translate(55vw,   -35vh   ) scale(0.94); }
+    80%      { transform: translate(25vw,   -15vh   ) scale(1.06); }
+  }
+  @keyframes orb-drift-4 {
+    0%, 100% { transform: translate(0,       0      ) scale(1);    }
+    30%      { transform: translate(-25vw,  -18vh   ) scale(1.12); }
+    60%      { transform: translate(-45vw,  -5vh    ) scale(0.90); }
+    85%      { transform: translate(-15vw,  -30vh   ) scale(1.04); }
+  }
+  @keyframes orb-drift-5 {
+    0%, 100% { transform: translate(0,       0      ) scale(1);    }
+    20%      { transform: translate(-15vw,   20vh   ) scale(1.15); }
+    45%      { transform: translate( 20vw,  -15vh   ) scale(0.88); }
+    70%      { transform: translate( 10vw,   25vh   ) scale(1.10); }
+  }
+
+  /* Gentle opacity pulse — each orb "inhales" and "exhales" independently,
+     giving the scene a living, breathing quality. */
+  @keyframes orb-breathe {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 1;    }
+  }
+
+  /* ── Respect reduce-motion: freeze the orbs in their initial positions ─
+     The static accent glow in body::after is still visible, so the page
+     doesn't look broken — it just stops moving. */
+  html.reduce-motion .ambient-orb {
+    animation: none !important;
+  }
+}

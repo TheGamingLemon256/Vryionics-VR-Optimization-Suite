@@ -1,0 +1,95 @@
+{
+  "id": "hp-reverb-g1",
+  "brand": "HP",
+  "model": "Reverb G1",
+  "type": "tethered",
+  "releaseYear": 2019,
+
+  "display": {
+    "resolutionPerEye": [2160, 2160],
+    "refreshRates": [60, 90],
+    "panelType": "LCD",
+    "fov": 95
+  },
+
+  "connections": [
+    {
+      "id": "reverb-g1-dp",
+      "name": "DisplayPort 1.2 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2", "USB 3.0 Type-A", "AC power adapter (included)"],
+      "latencyProfile": { "typical": 12, "best": 8, "worst": 16 }
+    }
+  ],
+
+  "runtimes": ["wmr", "openxr-wmr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "HP Reverb G1 Controllers (WMR)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1080 / RX 5700",
+    "recommendedGPU": "RTX 2080 / RX 6800",
+    "minCPU": "Intel i7-7700 / Ryzen 7 1700",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "reverb-g1-wmr-deprecation",
+      "title": "Windows Mixed Reality was deprecated by Microsoft in 2024",
+      "description": "Microsoft deprecated the WMR platform in November 2024 and removed the WMR app from the Microsoft Store. The WMR runtime still functions on existing installs but receives no further updates.",
+      "severity": "warning",
+      "workaround": "If WMR was previously installed, it continues to function. New installs require downloading the WMR installer from the Microsoft Store archive or alternate sources. Consider this headset end-of-software-life."
+    },
+    {
+      "id": "reverb-g1-dp12-bandwidth",
+      "title": "DisplayPort 1.2 limits visual fidelity at 90Hz",
+      "description": "The G1 uses DP 1.2 which has significantly lower bandwidth than DP 1.4. At 2160x2160 per eye, 90Hz requires color depth reduction (chroma subsampling) which can produce visible color banding.",
+      "affectsConnectionTypes": ["reverb-g1-dp"],
+      "severity": "info",
+      "workaround": "Use 60Hz mode if color banding is visible. Upgrade to the Reverb G2 for DP 1.3 support and improved image quality at 90Hz."
+    },
+    {
+      "id": "reverb-g1-power-adapter",
+      "title": "Proprietary power adapter required",
+      "description": "The Reverb G1 requires the included AC power adapter. Unlike the G2, it cannot be powered through USB alone. Losing the adapter makes the headset unusable.",
+      "severity": "info",
+      "workaround": "HP sells replacement power adapters. Purchase a spare if using the headset in multiple locations."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use WMR OpenXR runtime for best performance with compatible games",
+      "simpleExplanation": "For games that support it, using Windows Mixed Reality directly without SteamVR gives smoother performance.",
+      "advancedExplanation": "The WMR OpenXR runtime eliminates the WMR-to-SteamVR bridge overhead. Set WMR as the active OpenXR runtime in Windows Settings → Mixed Reality → OpenXR Developer Preview. For SteamVR-only titles, the bridge is unavoidable.",
+      "applicableConnections": ["reverb-g1-dp"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Run at 60Hz to avoid color banding from DP 1.2 bandwidth limits",
+      "simpleExplanation": "Dropping to 60Hz makes the image colors look more accurate, since the cable has enough bandwidth for full-quality color.",
+      "advancedExplanation": "At 90Hz, DP 1.2 bandwidth forces 4:2:0 chroma subsampling at 2160x2160 per eye, producing visible color banding in smooth gradients. 60Hz mode allows 4:4:4 or higher chroma sampling, delivering accurate colors. For seated sim content where smoothness is less critical, 60Hz is recommended.",
+      "applicableConnections": ["reverb-g1-dp"]
+    },
+    {
+      "category": "comfort",
+      "tip": "The G1 headband is comfortable but fixed — fit it carefully",
+      "simpleExplanation": "Spend a few minutes adjusting the headband before your first session — the G1 is comfortable once fitted correctly.",
+      "advancedExplanation": "The Reverb G1 uses a rigid over-head headband that doesn't ratchet like later WMR headsets. The foam gasket provides the main seal. Ensure the display sits flat against your face with slight forward tilt. Incorrect positioning causes significant lens blur — the optics are sensitive to eye-to-lens distance."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

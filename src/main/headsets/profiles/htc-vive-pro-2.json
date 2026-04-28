@@ -1,0 +1,87 @@
+{
+  "id": "htc-vive-pro-2",
+  "brand": "HTC",
+  "model": "Vive Pro 2",
+  "type": "tethered",
+  "releaseYear": 2021,
+
+  "display": {
+    "resolutionPerEye": [2448, 2448],
+    "refreshRates": [90, 120],
+    "panelType": "LCD",
+    "fov": 120
+  },
+
+  "connections": [
+    {
+      "id": "vivepro2-dp",
+      "name": "DisplayPort 1.2 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2 (DP 1.4 recommended for 120Hz)", "USB 3.0", "Link Box included"],
+      "latencyProfile": { "typical": 12, "best": 8, "worst": 16 }
+    },
+    {
+      "id": "vivepro2-wigig",
+      "name": "HTC Vive Wireless Adapter",
+      "archetype": "wigig",
+      "requirements": ["HTC Vive Wireless Adapter (WiGig)", "PCIe WiGig card installed", "Line of sight to adapter", "Extra battery pack"],
+      "latencyProfile": { "typical": 18, "best": 12, "worst": 35 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Vive Controllers or Valve Index Controllers",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 3080 / RX 6900 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "vivepro2-5k-gpu-demand",
+      "title": "5K resolution is extremely GPU-demanding",
+      "description": "At native resolution (2448x2448 per eye), the Vive Pro 2 needs a top-tier GPU. Many users must lower supersampling significantly.",
+      "severity": "warning",
+      "workaround": "Set SteamVR render resolution to 60-80% for GPUs below RTX 3080. Use 90Hz instead of 120Hz to reduce GPU load."
+    },
+    {
+      "id": "vivepro2-wireless-resolution",
+      "title": "WiGig wireless adapter limits resolution",
+      "description": "The Vive Wireless Adapter compresses the video stream, limiting effective resolution below the headset's native 5K.",
+      "affectsConnectionTypes": ["vivepro2-wigig"],
+      "severity": "warning",
+      "workaround": "For maximum clarity, use the wired DisplayPort connection. Wireless is best for games where freedom of movement matters more than pixel clarity."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Lower SteamVR render resolution to 60-80% for most GPUs",
+      "simpleExplanation": "The Vive Pro 2 has so many pixels that even powerful GPUs struggle at full resolution. Reducing it a bit gives much smoother gameplay.",
+      "advancedExplanation": "At 100% SS, the Vive Pro 2 renders at ~4896x4896 combined (24M pixels/frame). At 90Hz that's 2.16 Gpixels/s — beyond RTX 4080's comfortable throughput for most VR titles. Set SS to 70% (3427x3427 combined) for RTX 3070-class GPUs, 80% for RTX 3080+."
+    },
+    {
+      "category": "performance",
+      "tip": "Ensure Link Box firmware is up to date",
+      "simpleExplanation": "The small box that connects your headset cable to your PC needs to have its software updated for best performance.",
+      "advancedExplanation": "The Vive Pro 2 Link Box handles DP→headset signal conversion. Outdated firmware can introduce frame pacing issues. Update via Vive Console → Devices → Link Box → Check for Updates."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.7,
+    "reprojection": "motion-smoothing"
+  }
+}

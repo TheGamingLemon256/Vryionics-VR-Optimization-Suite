@@ -1,0 +1,128 @@
+{
+  "id": "meta-quest-3s",
+  "brand": "Meta",
+  "model": "Quest 3S",
+  "type": "standalone-hybrid",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [1832, 1920],
+    "refreshRates": [72, 80, 90, 120],
+    "panelType": "LCD",
+    "fov": 96
+  },
+
+  "connections": [
+    {
+      "id": "quest3s-usb-link",
+      "name": "Meta Quest Link (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port (Type-A or Type-C)"],
+      "latencyProfile": { "typical": 40, "best": 28, "worst": 62 }
+    },
+    {
+      "id": "quest3s-air-link",
+      "name": "Meta Air Link",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Air Link",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "Router in same room as play space"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 82 }
+    },
+    {
+      "id": "quest3s-virtual-desktop",
+      "name": "Virtual Desktop",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "Virtual Desktop app purchased on Quest Store"],
+      "latencyProfile": { "typical": 45, "best": 30, "worst": 72 }
+    },
+    {
+      "id": "quest3s-alvr",
+      "name": "ALVR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "ALVR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 52, "best": 36, "worst": 88 }
+    },
+    {
+      "id": "quest3s-steam-link",
+      "name": "Steam Link VR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Steam Link",
+      "requirements": ["Steam Link app on headset (free on Horizon Store)", "Wi-Fi 5 or better (5GHz)", "PC connected via Ethernet recommended"],
+      "latencyProfile": { "typical": 50, "best": 34, "worst": 82 }
+    }
+  ],
+
+  "runtimes": ["oculus", "openxr-oculus"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Meta Quest Touch Plus",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 3060 / RX 6700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "quest3s-lcd-blacks",
+      "title": "LCD panel has lower contrast than OLED predecessors",
+      "description": "The Quest 3S uses an LCD panel, resulting in grey blacks instead of true black. Dark VR environments will appear washed out compared to OLED headsets.",
+      "severity": "info",
+      "workaround": "Increase in-game brightness in dark scenes. Not fixable in software — a hardware limitation of LCD technology."
+    },
+    {
+      "id": "quest3s-link-shaders",
+      "title": "Quest Link shader compilation stutters on first launch",
+      "description": "First-time use of Quest Link causes shader compilation stutters in SteamVR games. Resolves after initial caching.",
+      "affectsConnectionTypes": ["quest3s-usb-link"],
+      "severity": "info",
+      "workaround": "Let SteamVR finish shader pre-caching on first launch. Avoid clearing shader cache unnecessarily."
+    },
+    {
+      "id": "quest3s-airlink-congestion",
+      "title": "Air Link bitrate drops on congested Wi-Fi",
+      "description": "Air Link automatically reduces bitrate when Wi-Fi congestion is detected, causing visible compression artifacts.",
+      "affectsConnectionTypes": ["quest3s-air-link"],
+      "severity": "warning",
+      "workaround": "Use a dedicated 5GHz SSID for the Quest. Move router closer to play space. Consider a Wi-Fi 6E router."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use Oculus OpenXR runtime for native Quest games",
+      "simpleExplanation": "Using Meta's own VR software makes games run smoother because it cuts out the SteamVR middleman.",
+      "advancedExplanation": "The Oculus OpenXR runtime has lower overhead than the SteamVR runtime for Quest Link/Air Link connections. Set Oculus as the active OpenXR runtime in Oculus PC App settings for 5-15% frame time improvement in OpenXR titles.",
+      "applicableConnections": ["quest3s-usb-link", "quest3s-air-link"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "The Quest 3S lower resolution makes supersampling more impactful",
+      "simpleExplanation": "Turning up the picture quality setting makes a bigger difference on the Quest 3S than on higher-resolution headsets.",
+      "advancedExplanation": "At 1832x1920 per eye, the Quest 3S has a lower pixel density than the Quest 3. Supersampling at 1.2-1.3x in the Oculus app significantly sharpens aliased edges. This is more cost-effective than on the Quest 3 due to the lower base resolution."
+    },
+    {
+      "category": "latency",
+      "tip": "Enable Wi-Fi 6 and use 5GHz band for wireless streaming",
+      "simpleExplanation": "Make sure your router uses the fastest Wi-Fi band available to reduce motion-to-photon latency.",
+      "advancedExplanation": "Wi-Fi 6 (802.11ax) on 5GHz provides up to 1.2Gbps throughput with lower latency than Wi-Fi 5. Use a dedicated SSID on a non-DFS 5GHz channel (36, 40, 44, 48). Set channel width to 80MHz minimum for stable streaming at 120Hz.",
+      "applicableConnections": ["quest3s-air-link", "quest3s-virtual-desktop", "quest3s-alvr"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

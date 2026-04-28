@@ -1,0 +1,79 @@
+{
+  "id": "pimax-crystal",
+  "brand": "Pimax",
+  "model": "Crystal",
+  "type": "tethered",
+  "releaseYear": 2023,
+
+  "display": {
+    "resolutionPerEye": [2880, 2880],
+    "refreshRates": [72, 90, 120],
+    "panelType": "Mini-LED",
+    "fov": 115
+  },
+
+  "connections": [
+    {
+      "id": "crystal-dp",
+      "name": "DisplayPort 1.4",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4", "USB 3.0 Type-A for tracking data"],
+      "latencyProfile": { "typical": 10, "best": 7, "worst": 14 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr", "pimaxxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Pimax Crystal Controllers or Lighthouse-compatible controllers",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3070 / RX 6800 XT",
+    "recommendedGPU": "RTX 4080 / RX 7900 XTX",
+    "minCPU": "Intel i7-10700 / Ryzen 7 3700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "crystal-pitool-conflict",
+      "title": "Pimax software can conflict with SteamVR",
+      "description": "PiTool/Pimax Play sometimes conflicts with SteamVR updates, causing crashes or failed initialization.",
+      "severity": "warning",
+      "workaround": "Keep Pimax Play updated. If SteamVR crashes, restart Pimax Play service. Check Pimax forums for known compatibility issues with specific SteamVR versions."
+    },
+    {
+      "id": "crystal-gpu-hungry",
+      "title": "Extremely GPU-demanding at native resolution",
+      "description": "At 2880x2880 per eye (16.6M pixels per eye), the Crystal is one of the most demanding headsets on the market.",
+      "severity": "warning",
+      "workaround": "Use Pimax's Dynamic Foveated Rendering with eye tracking enabled. This can reduce pixel load by 40-50% in the periphery."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Enable Dynamic Foveated Rendering with eye tracking",
+      "simpleExplanation": "The Crystal can track where you're looking and focus its processing power there. This makes everything run much faster with barely noticeable quality loss.",
+      "advancedExplanation": "DFR reduces peripheral render resolution based on real-time eye tracking data. At 'Aggressive' setting, this reduces effective pixel fill by ~45%, bringing the Crystal's GPU requirements close to a standard 2K headset. Enable in Pimax Play → Settings → Smart Smoothing → DFR."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Use PimaxXR runtime for OpenXR games",
+      "simpleExplanation": "Using Pimax's own VR runtime instead of SteamVR can make games look better and run faster on the Crystal.",
+      "advancedExplanation": "PimaxXR runtime has lower overhead than SteamVR for OpenXR titles. Set PimaxXR as the active OpenXR runtime in Pimax Play. Note: SteamVR-only titles (non-OpenXR) still require SteamVR runtime."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.6,
+    "reprojection": "motion-smoothing"
+  }
+}

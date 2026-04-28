@@ -1,0 +1,95 @@
+{
+  "id": "varjo-aero",
+  "brand": "Varjo",
+  "model": "Aero",
+  "type": "tethered",
+  "releaseYear": 2021,
+
+  "display": {
+    "resolutionPerEye": [2880, 2720],
+    "refreshRates": [90],
+    "panelType": "Mini-LED",
+    "fov": 115
+  },
+
+  "connections": [
+    {
+      "id": "aero-dp-usb",
+      "name": "DisplayPort 1.4 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC support", "USB 3.0 port", "Two SteamVR base stations (1.0 or 2.0)", "Varjo Base software"],
+      "latencyProfile": { "typical": 18, "best": 14, "worst": 28 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-varjo"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Index / Vive Wand (use any Lighthouse-tracked controllers)",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3070 / RX 6800",
+    "recommendedGPU": "RTX 4080 / RX 7900 XT",
+    "minCPU": "Intel i7-9700K / Ryzen 7 3700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4 (DSC required)", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "aero-dsc-required",
+      "title": "DisplayPort Display Stream Compression (DSC) is mandatory",
+      "description": "At 2880×2720 per eye @ 90 Hz, the Aero requires DSC to fit through a single DisplayPort 1.4 cable. If your GPU or cable doesn't properly support DSC, the headset falls back to a lower refresh rate or shows color banding.",
+      "severity": "warning",
+      "workaround": "Use the Varjo-supplied cable. Verify DSC is active in Varjo Base → Headset → Advanced. NVIDIA 20-series and newer support DSC; older cards may struggle."
+    },
+    {
+      "id": "aero-foveated-eye-calibration",
+      "title": "Dynamic foveated rendering requires eye calibration",
+      "description": "The Aero's main selling point — dynamic foveated rendering (rendering full detail only where your eyes look) — requires completing eye calibration in Varjo Base. If skipped, you get the full perf cost of 2880×2720 per eye.",
+      "severity": "info",
+      "workaround": "Varjo Base → Eyes → Calibrate. Repeat calibration if you wear different glasses or other users share the headset."
+    },
+    {
+      "id": "aero-base-stations-required",
+      "title": "SteamVR base stations required — no inside-out tracking",
+      "description": "The Aero has no cameras for inside-out tracking. You need at least one (ideally two) Valve Index or HTC Vive base stations mounted in your play space.",
+      "severity": "info",
+      "workaround": "Lighthouse 2.0 base stations are recommended. Mount at opposite corners 2m+ above the floor angled downward."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Enable Dynamic Foveated Rendering for a 30-40% GPU headroom increase",
+      "simpleExplanation": "The Aero can render only what your eyes are looking at in full detail. Turn on foveated rendering in Varjo Base to reclaim significant GPU headroom.",
+      "advancedExplanation": "Dynamic FR reduces effective pixel shading by ~40% with near-zero perceptual cost when eye-tracking is calibrated. It's one of the largest single performance gains available on this platform. Varjo Base → Display → Foveated Rendering → On.",
+      "applicableConnections": ["aero-dp-usb"]
+    },
+    {
+      "category": "performance",
+      "tip": "Use OpenXR Toolkit for additional upscaling",
+      "simpleExplanation": "OpenXR Toolkit (free) layers over Varjo Base and adds NIS/FSR/CAS upscaling options that work on top of foveated rendering.",
+      "advancedExplanation": "Install OpenXR Toolkit → configure via the in-VR overlay (Ctrl+F2). FSR Performance mode + foveated rendering stacks multiplicatively and can yield 60%+ GPU savings.",
+      "applicableConnections": ["aero-dp-usb"]
+    },
+    {
+      "category": "display",
+      "tip": "Set render resolution around 80% in SteamVR — the Aero's native res is already extremely high",
+      "simpleExplanation": "The Aero's per-eye resolution is already high enough that SteamVR's default supersampling is overkill on most GPUs.",
+      "advancedExplanation": "Target ~80% render resolution in SteamVR (≈2304×2176 per eye). This leaves headroom for in-app anti-aliasing which is often more impactful than raw resolution at this DPI.",
+      "applicableConnections": ["aero-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.8,
+    "reprojection": "motion-smoothing"
+  }
+}

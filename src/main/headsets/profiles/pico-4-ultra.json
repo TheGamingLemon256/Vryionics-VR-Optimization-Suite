@@ -1,0 +1,103 @@
+{
+  "id": "pico-4-ultra",
+  "brand": "Pico",
+  "model": "4 Ultra",
+  "type": "standalone-hybrid",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [2160, 2160],
+    "refreshRates": [72, 90],
+    "panelType": "LCD",
+    "fov": 105
+  },
+
+  "connections": [
+    {
+      "id": "pico4ultra-usb",
+      "name": "Pico Streaming (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port on PC", "Pico Connect PC software"],
+      "latencyProfile": { "typical": 38, "best": 25, "worst": 56 }
+    },
+    {
+      "id": "pico4ultra-wifi",
+      "name": "Pico Streaming (Wi-Fi)",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Pico Connect",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "Pico Connect PC software"],
+      "latencyProfile": { "typical": 48, "best": 32, "worst": 76 }
+    }
+  ],
+
+  "runtimes": ["pico-openxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Pico 4 Ultra Controllers",
+    "eyeTracking": true,
+    "faceTracking": true,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 2070 / RX 6700 XT",
+    "recommendedGPU": "RTX 3080 / RX 6900 XT",
+    "minCPU": "Intel i5-10400 / Ryzen 5 3600",
+    "minRAM": 16,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "pico4ultra-pico-connect-required",
+      "title": "Pico Connect software required for PC streaming",
+      "description": "PC streaming requires Pico's proprietary Pico Connect app on both the headset and the PC. Pico Connect has had connection reliability issues on some Windows builds.",
+      "severity": "warning",
+      "workaround": "Install Pico Connect from the Pico website. Run as administrator. Ensure Windows Firewall allows Pico Connect. Restart Pico Connect service if connection fails on first attempt."
+    },
+    {
+      "id": "pico4ultra-steamvr-compatibility",
+      "title": "SteamVR support requires additional configuration",
+      "description": "The Pico 4 Ultra uses the Pico OpenXR runtime which does not natively expose SteamVR. Running SteamVR games requires the SteamVR-to-Pico bridge, which adds overhead.",
+      "severity": "info",
+      "workaround": "For SteamVR games, use the Streaming Assistant in Pico Connect which bridges SteamVR. For OpenXR native games, use Pico OpenXR directly for best performance."
+    },
+    {
+      "id": "pico4ultra-regional-availability",
+      "title": "Pico 4 Ultra has limited availability outside Asia",
+      "description": "The Pico 4 Ultra is primarily sold in Asian markets. Users in North America and Europe may face limited official support and warranty coverage.",
+      "severity": "info",
+      "workaround": "Purchase from authorized resellers with international warranty coverage. Be aware of potential firmware update delays in non-primary markets."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use Pico OpenXR runtime directly for best performance",
+      "simpleExplanation": "Use the Pico runtime directly instead of SteamVR for games that support it — it skips an extra layer of software.",
+      "advancedExplanation": "Pico OpenXR is the native runtime for the 4 Ultra and has lower overhead than the SteamVR bridge. For titles distributed on Pico's app store or with native OpenXR support, set Pico OpenXR as the active runtime via Pico Connect. Saves 2-4ms frame time vs. the SteamVR bridge path.",
+      "applicableConnections": ["pico4ultra-usb", "pico4ultra-wifi"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Enable eye-tracked foveated rendering in Pico Connect for high-quality streaming",
+      "simpleExplanation": "Eye tracking lets the system render only the part of the screen you're actually looking at in full detail, saving GPU power for smoother streaming.",
+      "advancedExplanation": "Pico 4 Ultra's eye tracking feeds into Pico's Fixed Foveated Rendering (FFR) and gaze-based dynamic foveated rendering. In Pico Connect streaming, enabling FFR reduces GPU encoding and rendering load by rendering periphery at lower resolution. This allows raising the encode bitrate for the central foveal area.",
+      "applicableConnections": ["pico4ultra-usb", "pico4ultra-wifi"]
+    },
+    {
+      "category": "latency",
+      "tip": "USB streaming gives significantly lower latency than Wi-Fi",
+      "simpleExplanation": "Always plug in the USB cable when you need the most responsive VR experience.",
+      "advancedExplanation": "Pico Connect USB streaming bypasses all Wi-Fi variability. At 2160x2160 per eye, Wi-Fi encoding requires a high-bitrate stream which can cause latency spikes on congested networks. USB streaming maintains a stable ~38ms typical latency regardless of network conditions.",
+      "applicableConnections": ["pico4ultra-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

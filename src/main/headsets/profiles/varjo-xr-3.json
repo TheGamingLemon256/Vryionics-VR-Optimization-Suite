@@ -1,0 +1,88 @@
+{
+  "id": "varjo-xr-3",
+  "brand": "Varjo",
+  "model": "XR-3",
+  "type": "tethered",
+  "releaseYear": 2021,
+
+  "display": {
+    "resolutionPerEye": [2880, 2720],
+    "refreshRates": [90],
+    "panelType": "Micro-OLED",
+    "fov": 115
+  },
+
+  "connections": [
+    {
+      "id": "xr3-dp-usb",
+      "name": "DisplayPort 1.4 + USB-C (dual cable)",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC", "USB-C port", "SteamVR base stations (1.0 or 2.0)", "Varjo Base software"],
+      "latencyProfile": { "typical": 20, "best": 15, "worst": 30 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-varjo"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Index / Vive Wand (Lighthouse-tracked)",
+    "eyeTracking": true,
+    "faceTracking": true,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 2080 Ti / RX 6800 XT",
+    "recommendedGPU": "RTX 4080 / RX 7900 XTX",
+    "minCPU": "Intel i7-9700K / Ryzen 7 3700X",
+    "minRAM": 32,
+    "ports": ["DisplayPort 1.4 (DSC)", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "xr3-bionic-display-quirks",
+      "title": "Bionic display — dual-panel system with perceptible seam",
+      "description": "The XR-3 uses two panels per eye: a high-density focus area (1920×1920) inside a lower-density periphery panel. In static images users can sometimes perceive the transition between the two zones.",
+      "severity": "info",
+      "workaround": "This is an inherent design tradeoff. The seam is largely invisible in motion; prioritize the foveated rendering settings over fighting the seam."
+    },
+    {
+      "id": "xr3-passthrough-ar-requires-enterprise-license",
+      "title": "Mixed-reality passthrough requires enterprise license",
+      "description": "The XR-3's video passthrough for MR/XR is gated behind a paid enterprise license. Consumer VR features work without it, but the XR functionality is locked.",
+      "severity": "info",
+      "workaround": "Contact Varjo sales for enterprise licensing. For VR-only use, the standard license is sufficient."
+    },
+    {
+      "id": "xr3-dual-cable-layout",
+      "title": "Dual-cable setup — DisplayPort + USB-C both required",
+      "description": "The XR-3 uses two cables from the headset to the PC. Both must be connected — neither can be omitted. Cable routing benefits from a ceiling-mounted pulley in active play.",
+      "severity": "info",
+      "workaround": "Use the Varjo-supplied harness. Third-party cable extenders are not officially supported and can cause display dropouts."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Foveated rendering is essential at this resolution",
+      "simpleExplanation": "Without foveated rendering, the XR-3's combined resolution is extremely demanding. Calibrating eye tracking and enabling FR in Varjo Base is the single biggest performance win.",
+      "advancedExplanation": "Varjo Base → Display → Foveated Rendering → Dynamic. At this resolution FR can reduce shading load by 40-50% with near-zero visual cost in motion.",
+      "applicableConnections": ["xr3-dp-usb"]
+    },
+    {
+      "category": "performance",
+      "tip": "Use Varjo's OpenXR runtime — not SteamVR — for supported titles",
+      "simpleExplanation": "Varjo's native OpenXR runtime skips SteamVR entirely and has lower latency plus direct access to foveated rendering features.",
+      "advancedExplanation": "Set Varjo as the active OpenXR runtime via Varjo Base → General → Set as OpenXR runtime. Supported titles include MSFS, DCS, X-Plane, and many UE5 titles. Falling back to SteamVR for unsupported titles is fine.",
+      "applicableConnections": ["xr3-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.7,
+    "reprojection": "motion-smoothing"
+  }
+}

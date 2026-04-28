@@ -1,0 +1,86 @@
+{
+  "id": "sony-psvr2",
+  "brand": "Sony",
+  "model": "PSVR2",
+  "type": "tethered",
+  "releaseYear": 2023,
+
+  "display": {
+    "resolutionPerEye": [2000, 2040],
+    "refreshRates": [90, 120],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "psvr2-pc-adapter",
+      "name": "PSVR2 PC Adapter (DisplayPort)",
+      "archetype": "tethered-dp",
+      "requirements": ["Sony PSVR2 PC Adapter (sold separately)", "DisplayPort 1.4", "USB 3.0 Type-A", "Bluetooth 4.0 for controller pairing"],
+      "latencyProfile": { "typical": 14, "best": 10, "worst": 20 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "PSVR2 Sense Controllers",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 3060 Ti / RX 6700 XT",
+    "minCPU": "Intel i5-7600 / Ryzen 5 2600",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.4", "USB 3.0 Type-A", "Bluetooth 4.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "psvr2-adapter-required",
+      "title": "Separate PC adapter required (not included)",
+      "description": "The PSVR2 requires Sony's official PC Adapter ($60) to work with a PC. It does not connect directly via USB-C.",
+      "severity": "info",
+      "workaround": "Purchase the Sony PSVR2 PC Adapter. It converts the PSVR2's USB-C output to DisplayPort for your GPU."
+    },
+    {
+      "id": "psvr2-limited-pc-features",
+      "title": "Some PSVR2 features don't work on PC",
+      "description": "HDR, haptic feedback in headset, adaptive triggers, and headset rumble are not available when using PSVR2 on PC. Eye tracking has limited game support.",
+      "severity": "warning",
+      "workaround": "These are hardware limitations of the PC adapter. Eye tracking works in some SteamVR titles that support it. Haptics and HDR are PS5-only features."
+    },
+    {
+      "id": "psvr2-controller-bluetooth",
+      "title": "Controller pairing requires Bluetooth",
+      "description": "PSVR2 Sense controllers connect via Bluetooth, not through the adapter. Your PC needs a Bluetooth 4.0 adapter.",
+      "severity": "warning",
+      "workaround": "If your PC lacks built-in Bluetooth, purchase a USB Bluetooth 4.0+ adapter. Pair controllers through Windows Bluetooth settings."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "OLED panels enable eye-tracked foveated rendering",
+      "simpleExplanation": "Some games can use the PSVR2's eye tracking to focus graphics power where you're looking, making things run smoother.",
+      "advancedExplanation": "The PSVR2's eye tracking enables foveated rendering in supported SteamVR OpenXR titles. When available, this reduces peripheral resolution by 30-50%, providing significant GPU savings. Check per-game OpenXR settings for foveated rendering options."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "OLED panels provide superior contrast for dark environments",
+      "simpleExplanation": "The PSVR2's OLED screen makes dark scenes in VR look incredible with true black levels and vivid colors.",
+      "advancedExplanation": "OLED's per-pixel illumination eliminates backlight bleed and provides infinite contrast ratio. Set SteamVR brightness to default. In-game gamma settings at default or slightly lower than LCD headsets will take advantage of the OLED's native contrast. Mura correction is handled by the headset firmware."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

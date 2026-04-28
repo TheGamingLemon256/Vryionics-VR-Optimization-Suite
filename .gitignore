@@ -1,0 +1,33 @@
+# Build output
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+
+# Secrets — never commit
+update-server/.gh-token
+update-server/webhook.txt
+**/.gh-token
+
+# Local-only update-server state
+update-server/crashes/
+update-server/builds/
+update-server/node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# Internal staging / docs not for public repo
+.repo-public-stage/
+WEBSITE_BRIEF.md
+
+# Testing artifacts
+coverage/
+.nyc_output/
+
+# Disabled headset profiles (intentionally unbundled)
+src/main/headsets/profiles/_*.json.disabled

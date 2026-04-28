@@ -1,0 +1,86 @@
+{
+  "id": "hp-reverb-g2",
+  "brand": "HP",
+  "model": "Reverb G2",
+  "type": "tethered",
+  "releaseYear": 2020,
+
+  "display": {
+    "resolutionPerEye": [2160, 2160],
+    "refreshRates": [60, 90],
+    "panelType": "LCD",
+    "fov": 98
+  },
+
+  "connections": [
+    {
+      "id": "g2-dp-usb",
+      "name": "DisplayPort 1.3 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.3 (v1 cable) or USB-C to DP (v2 cable)", "USB 3.0 Type-C (v2) or Type-A (v1)"],
+      "latencyProfile": { "typical": 12, "best": 8, "worst": 16 }
+    }
+  ],
+
+  "runtimes": ["wmr", "openxr-wmr", "steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "HP Reverb G2 Controllers (WMR)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1080 / RX 5700",
+    "recommendedGPU": "RTX 3070 / RX 6800 XT",
+    "minCPU": "Intel i5-8400 / Ryzen 5 2600",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.3", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "g2-wmr-steamvr-overhead",
+      "title": "WMR-to-SteamVR bridge adds overhead",
+      "description": "Running SteamVR games through the WMR runtime adds a performance penalty because the video passes through both WMR and SteamVR compositors.",
+      "severity": "warning",
+      "workaround": "Use OpenXR games with WMR OpenXR runtime directly (bypasses SteamVR). For SteamVR-only games, ensure both WMR and SteamVR are updated to minimize bridge overhead."
+    },
+    {
+      "id": "g2-v1-cable-issues",
+      "title": "V1 cable (6m) has known reliability issues",
+      "description": "The original Reverb G2 v1 cable is longer but more prone to signal issues and disconnects, especially with AMD GPUs.",
+      "severity": "warning",
+      "workaround": "HP offers a free v2 cable replacement (shorter, USB-C instead of USB-A). Contact HP support. AMD GPU users should update to latest Radeon drivers."
+    },
+    {
+      "id": "g2-controller-tracking",
+      "title": "Controller tracking volume is limited",
+      "description": "The G2's two-camera tracking has a narrower tracking volume than four-camera headsets. Controllers can lose tracking when behind you.",
+      "severity": "info",
+      "workaround": "Keep controllers within your forward field of view. The G2 v2 revision added additional cameras for improved tracking."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use OpenXR with WMR runtime for best performance",
+      "simpleExplanation": "Using Windows Mixed Reality directly instead of SteamVR gives you better performance with the G2.",
+      "advancedExplanation": "The WMR OpenXR runtime bypasses SteamVR entirely for OpenXR titles. Set WMR as the active OpenXR runtime in Windows Settings → Mixed Reality → OpenXR. This eliminates the WMR→SteamVR bridge overhead (1-2ms frame time savings)."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "The G2's high resolution rewards supersampling carefully",
+      "simpleExplanation": "The Reverb G2 has a very sharp screen. Setting picture quality too high will just slow things down without looking better.",
+      "advancedExplanation": "At 2160x2160 per eye, the G2 resolves fine detail well. SteamVR SS above 100% provides diminishing returns. For WMR-native apps, use 'Best Visual Quality' in WMR settings instead of cranking SteamVR SS. For sims (DCS, MSFS), the G2's clarity is excellent at 100% SS."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

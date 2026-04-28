@@ -1,0 +1,129 @@
+{
+  "id": "meta-quest-3",
+  "brand": "Meta",
+  "model": "Quest 3",
+  "type": "standalone-hybrid",
+  "releaseYear": 2023,
+
+  "display": {
+    "resolutionPerEye": [2064, 2208],
+    "refreshRates": [72, 80, 90, 120],
+    "panelType": "LCD",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "quest3-usb-link",
+      "name": "Meta Quest Link (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port (Type-A or Type-C)"],
+      "latencyProfile": { "typical": 40, "best": 28, "worst": 60 }
+    },
+    {
+      "id": "quest3-air-link",
+      "name": "Meta Air Link",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Air Link",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "Router in same room as play space"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 80 }
+    },
+    {
+      "id": "quest3-virtual-desktop",
+      "name": "Virtual Desktop",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "Virtual Desktop app purchased on Quest Store"],
+      "latencyProfile": { "typical": 45, "best": 30, "worst": 70 }
+    },
+    {
+      "id": "quest3-alvr",
+      "name": "ALVR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "ALVR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 85 }
+    },
+    {
+      "id": "quest3-steam-link",
+      "name": "Steam Link VR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Steam Link VR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)", "Steam installed"],
+      "latencyProfile": { "typical": 55, "best": 38, "worst": 90 }
+    }
+  ],
+
+  "runtimes": ["oculus", "openxr-oculus", "steamvr", "openxr-steamvr", "vdxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Meta Quest Touch Plus",
+    "eyeTracking": false,
+    "faceTracking": true,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 3070 / RX 6800 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "quest3-link-shaders",
+      "title": "Quest Link shader compilation stutters",
+      "description": "First-time use of Quest Link causes shader compilation stutters in SteamVR games. Resolves after initial caching.",
+      "affectsConnectionTypes": ["quest3-usb-link"],
+      "severity": "info",
+      "workaround": "Let SteamVR finish shader pre-caching on first launch. Avoid clearing shader cache unnecessarily."
+    },
+    {
+      "id": "quest3-airlink-bitrate",
+      "title": "Air Link bitrate drops on congested Wi-Fi",
+      "description": "Air Link automatically reduces bitrate when Wi-Fi congestion is detected, causing visible compression artifacts.",
+      "affectsConnectionTypes": ["quest3-air-link"],
+      "severity": "warning",
+      "workaround": "Use a dedicated 5GHz SSID for the Quest. Move router closer to play space. Consider Wi-Fi 6E router."
+    },
+    {
+      "id": "quest3-v68-performance",
+      "title": "Meta Quest software updates can regress performance",
+      "description": "Some Quest firmware updates have introduced Link and Air Link performance regressions. Check Meta forums after updates.",
+      "severity": "info",
+      "workaround": "If performance degrades after an update, check r/OculusQuest and Meta forums for known issues."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use Oculus OpenXR runtime instead of SteamVR for native Quest games",
+      "simpleExplanation": "Using Meta's own VR software instead of SteamVR can make games run smoother because it cuts out a middleman.",
+      "advancedExplanation": "The Oculus OpenXR runtime has lower overhead than the SteamVR runtime for Quest Link/Air Link. Set Oculus as the active OpenXR runtime in Oculus PC App settings for 5-15% frame time improvement in OpenXR titles.",
+      "applicableConnections": ["quest3-usb-link", "quest3-air-link"]
+    },
+    {
+      "category": "latency",
+      "tip": "Enable Wi-Fi 6 (802.11ax) and use 5GHz or 6GHz band",
+      "simpleExplanation": "Make sure your router is using the fastest Wi-Fi band available. This reduces the delay between your movements and what you see in VR.",
+      "advancedExplanation": "Wi-Fi 6 (802.11ax) on 5GHz provides up to 1.2Gbps throughput with lower latency than Wi-Fi 5. Use a dedicated SSID on a non-DFS 5GHz channel (36, 40, 44, 48) or Wi-Fi 6E on 6GHz for zero congestion. Set channel width to 80MHz minimum.",
+      "applicableConnections": ["quest3-air-link", "quest3-virtual-desktop", "quest3-alvr"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Set Link encoding bitrate to 200-300 Mbps for best clarity",
+      "simpleExplanation": "Increasing the streaming quality in the Oculus app makes the picture sharper, but needs a good GPU and connection.",
+      "advancedExplanation": "In Oculus Debug Tool or Virtual Desktop settings, increase encode bitrate to 200-300 Mbps. This reduces compression artifacts at the cost of higher GPU encoder load and network bandwidth. Requires NVENC/AMF hardware encoder headroom and stable 5GHz link.",
+      "applicableConnections": ["quest3-usb-link", "quest3-air-link", "quest3-virtual-desktop"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

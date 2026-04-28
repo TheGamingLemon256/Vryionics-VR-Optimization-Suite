@@ -1,0 +1,81 @@
+{
+  "id": "meta-rift-s",
+  "brand": "Meta",
+  "model": "Oculus Rift S",
+  "type": "tethered",
+  "releaseYear": 2019,
+
+  "display": {
+    "resolutionPerEye": [1280, 1440],
+    "refreshRates": [80],
+    "panelType": "LCD",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "rift-s-dp-usb",
+      "name": "DisplayPort 1.2 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2 output (or Mini DP with adapter)", "USB 3.0 port", "Windows 10 or 11"],
+      "latencyProfile": { "typical": 24, "best": 20, "worst": 38 }
+    }
+  ],
+
+  "runtimes": ["oculus-legacy", "steamvr-oculus"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Oculus Touch (Rift S)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1050 Ti / RX 470",
+    "recommendedGPU": "GTX 1060 6GB / RX 580",
+    "minCPU": "Intel i3-6100 / Ryzen 3 1200",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2 (or Mini DP)", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "rift-s-discontinued",
+      "title": "Discontinued in 2021 — legacy Oculus runtime only",
+      "description": "The Rift S was discontinued and the Oculus PC runtime that supports it is legacy (v40+). New features target Quest Link instead; don't expect bug fixes.",
+      "severity": "warning",
+      "workaround": "Keep the legacy Oculus PC app installer archived. If a Windows update breaks it, a clean reinstall of the legacy version is often the only recovery path."
+    },
+    {
+      "id": "rift-s-80hz-locked",
+      "title": "80 Hz refresh rate only — no higher-Hz mode",
+      "description": "Unlike Quest headsets, the Rift S display is locked at 80 Hz. You cannot run 90 Hz or 120 Hz modes even if your PC can drive them.",
+      "severity": "info",
+      "workaround": "Target a 12.5 ms frame budget. Enable ASW to drop cleanly to 40 Hz reprojected when your GPU can't hit 80 Hz natively."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Target exactly 80 FPS — anything more is wasted",
+      "simpleExplanation": "The Rift S runs at a fixed 80 Hz. Any frames beyond 80 FPS are discarded — keep your in-app graphics settings maxed out to make the most of every frame.",
+      "advancedExplanation": "With a locked 80 Hz refresh and ASW available, the ideal GPU profile is 80+ FPS sustained, drop to ~40 FPS + ASW as a fallback. There's no benefit to higher frame rates. Use the Oculus Debug Tool's frame time graph (Ctrl+numpad 1) to monitor compositor drops.",
+      "applicableConnections": ["rift-s-dp-usb"]
+    },
+    {
+      "category": "display",
+      "tip": "ASW (Asynchronous Spacewarp) is your safety net",
+      "simpleExplanation": "When your PC can't keep up, ASW generates in-between frames so VR still feels smooth. Keep it enabled in Oculus Debug Tool.",
+      "advancedExplanation": "Oculus Debug Tool → ASW → Auto (default). When native rendering drops below 80 FPS, ASW engages at 40 FPS and reprojects missing frames. Tearing artifacts during rapid motion are ASW's known failure mode — preferable to hard stutter.",
+      "applicableConnections": ["rift-s-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

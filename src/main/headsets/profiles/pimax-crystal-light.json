@@ -1,0 +1,95 @@
+{
+  "id": "pimax-crystal-light",
+  "brand": "Pimax",
+  "model": "Crystal Light",
+  "type": "tethered",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [2880, 2880],
+    "refreshRates": [72, 90, 120],
+    "panelType": "LCD",
+    "fov": 120
+  },
+
+  "connections": [
+    {
+      "id": "crystal-light-dp",
+      "name": "DisplayPort 1.4",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 (DSC required for 120Hz)", "USB 3.0 Type-C or Type-A"],
+      "latencyProfile": { "typical": 11, "best": 7, "worst": 15 }
+    }
+  ],
+
+  "runtimes": ["pimaxxr", "openxr-steamvr", "steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Pimax Crystal Light Controllers",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3080 / RX 6900 XT",
+    "recommendedGPU": "RTX 4080 / RX 7900 XTX",
+    "minCPU": "Intel i7-9700K / Ryzen 7 3700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "crystal-light-pimax-software",
+      "title": "Pimax Play / PiTool software can be unstable",
+      "description": "Pimax's companion software has a history of stability issues, driver conflicts, and bugs introduced by updates. SteamVR may have display issues with certain Pimax software versions.",
+      "severity": "warning",
+      "workaround": "Check Pimax forums for stable software version recommendations before updating. Keep Pimax Play and SteamVR versions in sync. Some users keep a known-stable version archived."
+    },
+    {
+      "id": "crystal-light-dsc-compatibility",
+      "title": "120Hz requires Display Stream Compression — not all GPUs or cables support it",
+      "description": "Running at 120Hz with 2880x2880 per eye exceeds raw DP 1.4 bandwidth and requires DSC. Some older GPUs or cables may not reliably support DSC, causing flickering or connection drops.",
+      "affectsConnectionTypes": ["crystal-light-dp"],
+      "severity": "warning",
+      "workaround": "Use a certified DP 1.4 cable (not 1.2 or passive adapters). Verify DSC support in Pimax Play. Run at 90Hz if 120Hz produces instability."
+    },
+    {
+      "id": "crystal-light-inside-out-limits",
+      "title": "Inside-out tracking has limited range and accuracy vs. lighthouse",
+      "description": "The Crystal Light's built-in inside-out tracking does not match the precision of SteamVR Lighthouse tracking. Fast motion or complex environments may cause controller drift.",
+      "severity": "info",
+      "workaround": "Add SteamVR Lighthouse base stations and use a VIVE tracker for superior tracking accuracy. The Crystal Light supports Lighthouse via optional face-plate accessory or native on Crystal (non-Light) variant."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use PimaxXR runtime for best performance in OpenXR titles",
+      "simpleExplanation": "Pimax's own VR software is optimized for Crystal Light and gives better performance than routing everything through SteamVR.",
+      "advancedExplanation": "PimaxXR is a native OpenXR runtime that bypasses SteamVR overhead for OpenXR games. Set PimaxXR as the active OpenXR runtime in Pimax Play. This reduces compositor overhead by 2-4ms frame time versus the SteamVR runtime on compatible titles.",
+      "applicableConnections": ["crystal-light-dp"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Set SteamVR render resolution to 100% — don't supersample",
+      "simpleExplanation": "At this high resolution, turning up the picture quality setting above normal won't make things look much better and will significantly hurt performance.",
+      "advancedExplanation": "2880x2880 per eye is already near or at the resolving limit of the optics. Supersampling above 100% in SteamVR provides negligible visual gain while causing large increases in render time (rendering 2880x2880 is already ~40% more pixels than 2560x2560). Reserve GPU budget for higher framerates."
+    },
+    {
+      "category": "latency",
+      "tip": "Enable Smart Smoothing in Pimax Play as your reprojection safety net",
+      "simpleExplanation": "Smart Smoothing in Pimax's software will insert smoothed frames when your PC struggles to keep up, keeping VR comfortable.",
+      "advancedExplanation": "Pimax Smart Smoothing works similarly to SteamVR motion smoothing — it synthesizes intermediate frames when the render thread misses the display deadline. Enable in Pimax Play per-application. More effective at 90Hz than 120Hz due to the larger time budget for frame synthesis.",
+      "applicableConnections": ["crystal-light-dp"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

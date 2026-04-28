@@ -1,0 +1,93 @@
+{
+  "id": "htc-vive-pro-eye",
+  "brand": "HTC",
+  "model": "Vive Pro Eye",
+  "type": "tethered",
+  "releaseYear": 2019,
+
+  "display": {
+    "resolutionPerEye": [1440, 1600],
+    "refreshRates": [90],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "vivepro-eye-dp",
+      "name": "DisplayPort 1.2 via Link Box",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2", "USB 3.0 Type-A", "HTC Link Box", "AC power for Link Box"],
+      "latencyProfile": { "typical": 11, "best": 8, "worst": 14 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "HTC Vive Wand (2018)",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 480",
+    "recommendedGPU": "GTX 1080 / RX 5700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 4,
+    "ports": ["DisplayPort 1.2", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "vivepro-eye-tobii-calibration",
+      "title": "Tobii eye tracking requires per-user recalibration",
+      "description": "The Tobii eye tracking system needs to be recalibrated for each user. Glasses wearers or users with astigmatism may find calibration less accurate.",
+      "severity": "info",
+      "workaround": "Recalibrate eye tracking in SteamVR settings before each session if you share the headset. Use the Tobii Eye Tracking Core Software for advanced calibration options."
+    },
+    {
+      "id": "vivepro-eye-foveated-support",
+      "title": "Foveated rendering requires game-side support",
+      "description": "Eye tracking-driven foveated rendering only works in titles that explicitly support it via the Tobii SDK or SteamVR Eye Tracking API. Most games do not benefit automatically.",
+      "severity": "info",
+      "workaround": "Check each game's documentation for eye tracking / foveated rendering support. Standard performance optimization tips still apply for unsupported titles."
+    },
+    {
+      "id": "vivepro-eye-linkbox-failure",
+      "title": "Link Box can cause intermittent disconnects",
+      "description": "The HTC Link Box that converts the headset tether to DisplayPort and USB is a known failure point. It can cause random disconnects and display issues.",
+      "affectsConnectionTypes": ["vivepro-eye-dp"],
+      "severity": "warning",
+      "workaround": "Ensure Link Box firmware is up to date via SteamVR. Replace the Link Box if disconnects persist."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Enable eye-tracked foveated rendering in supported titles",
+      "simpleExplanation": "In games that support it, the eye tracking makes your GPU only render in full detail where you're actually looking — big performance savings.",
+      "advancedExplanation": "Tobii-based dynamic foveated rendering reduces GPU load by rendering the peripheral region at 50-70% resolution while keeping the foveal region at 100%. In supported titles this can yield 20-40% frame time reduction. Enable via each game's eye tracking settings or the Tobii Eye Tracking Core software."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Supersampling at 1.3x sharpens Fresnel lens aliasing",
+      "simpleExplanation": "Turning up picture quality in SteamVR removes the jagged edges that can be visible through the Fresnel lenses.",
+      "advancedExplanation": "The Vive Pro Eye uses the same Fresnel optics as the Vive Pro. Aliasing is visible at 1.0x SS through these lenses. 1.3x supersampling in SteamVR provides a clear sharpness improvement with manageable GPU overhead on GTX 1080-class hardware."
+    },
+    {
+      "category": "latency",
+      "tip": "Calibrate eye tracking before performance-critical sessions",
+      "simpleExplanation": "Accurate eye tracking calibration makes sure foveated rendering focuses detail exactly where you're looking.",
+      "advancedExplanation": "Poorly calibrated eye tracking shifts the high-resolution foveal region away from the actual gaze point, producing blurring at fixation. Recalibrate using the 5-point calibration in SteamVR → Eye Tracking. Consider the 9-point extended calibration for users with significant astigmatism."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.3,
+    "reprojection": "motion-smoothing"
+  }
+}

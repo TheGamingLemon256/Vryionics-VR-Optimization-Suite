@@ -1,0 +1,92 @@
+{
+  "id": "bigscreen-beyond-2",
+  "brand": "Bigscreen",
+  "model": "Beyond 2",
+  "type": "tethered",
+  "releaseYear": 2025,
+
+  "display": {
+    "resolutionPerEye": [2560, 2560],
+    "refreshRates": [75, 90],
+    "panelType": "Micro-OLED",
+    "fov": 100
+  },
+
+  "connections": [
+    {
+      "id": "beyond2-dp",
+      "name": "DisplayPort 1.4",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4", "USB 3.0 Type-C (power + data)", "Bigscreen Beyond cable"],
+      "latencyProfile": { "typical": 10, "best": 7, "worst": 13 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Valve Index Controllers / Vive Wands / Vive Tracker",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3070 / RX 6800 XT",
+    "recommendedGPU": "RTX 4080 / RX 7900 XTX",
+    "minCPU": "Intel i7-8700K / Ryzen 7 2700X",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4", "USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "beyond2-custom-facial-interface",
+      "title": "Requires custom-fitted facial interface — no adjustable IPD ring",
+      "description": "The Beyond 2, like its predecessor, uses a custom 3D-printed facial interface made from a face scan. Incorrect fit degrades optical clarity significantly. IPD is fixed per-order.",
+      "severity": "warning",
+      "workaround": "Complete the Bigscreen face scan process accurately. If your IPD changes or the fit is poor, contact Bigscreen for a replacement interface. Do not share the headset without a properly fitted interface for each user."
+    },
+    {
+      "id": "beyond2-micro-oled-burn-in",
+      "title": "Micro-OLED panels can exhibit burn-in with static content",
+      "description": "Like all OLED displays, the Beyond 2's Micro-OLED panels are susceptible to image retention if static UI elements are displayed for extended periods.",
+      "severity": "info",
+      "workaround": "Avoid pausing in VR with static HUDs visible for more than 15-20 minutes. Enable SteamVR's display timeout. Do not use the headset as a VR desktop monitor for hours at a time."
+    },
+    {
+      "id": "beyond2-lighthouse-required",
+      "title": "SteamVR Lighthouse base stations required — sold separately",
+      "description": "The Beyond 2 has no built-in inside-out tracking and requires SteamVR Lighthouse base stations (version 1.0 or 2.0) and compatible controllers, none of which are included.",
+      "severity": "critical",
+      "workaround": "Purchase SteamVR 2.0 base stations (2 required for full-room tracking) and compatible controllers (Valve Index, Vive Wand, or VIVE Ultimate). Factor this into total cost."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "visual-quality",
+      "tip": "Micro-OLED delivers exceptional contrast — embrace dark game environments",
+      "simpleExplanation": "The Beyond 2's screen has true black pixels and stunning color — dark VR games look dramatically better than on any LCD headset.",
+      "advancedExplanation": "Micro-OLED provides per-pixel light emission with infinite contrast ratio. In dark scenes, black levels are orders of magnitude deeper than LCD. HDR-aware games benefit most. Use in-game HDR settings where available. Avoid heavy vignette post-processing which masks the true blacks."
+    },
+    {
+      "category": "performance",
+      "tip": "90Hz with SteamVR motion smoothing is the target operating point",
+      "simpleExplanation": "Set your refresh rate to 90Hz and let SteamVR handle smoothing when needed. This is the sweet spot for the Beyond 2.",
+      "advancedExplanation": "The Beyond 2 at 90Hz with 2560x2560 per eye is demanding but manageable on RTX 4080+ hardware. SteamVR motion smoothing at 45fps→90Hz is highly effective on this headset due to the predictable Lighthouse tracking. Use per-game resolution scaling to maintain 45fps floor."
+    },
+    {
+      "category": "comfort",
+      "tip": "The Beyond 2 is ultra-lightweight — use a halo strap for long sessions",
+      "simpleExplanation": "The headset is very light but the minimal design means you'll want a halo-style strap for comfort in sessions over 30 minutes.",
+      "advancedExplanation": "The Beyond 2 weighs under 150g making it the lightest full-featured SteamVR headset. However, the minimal design puts pressure on the nose bridge without a halo strap. Third-party halo straps distribute weight to the forehead, enabling multi-hour sessions without facial pressure."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

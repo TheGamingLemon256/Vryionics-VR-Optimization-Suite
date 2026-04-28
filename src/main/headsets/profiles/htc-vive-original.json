@@ -1,0 +1,81 @@
+{
+  "id": "htc-vive-original",
+  "brand": "HTC",
+  "model": "Vive",
+  "type": "tethered",
+  "releaseYear": 2016,
+
+  "display": {
+    "resolutionPerEye": [1080, 1200],
+    "refreshRates": [90],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "vive-og-linkbox",
+      "name": "HDMI 1.4 + USB 2.0 via Link Box",
+      "archetype": "tethered-dp",
+      "requirements": ["HDMI 1.4 output", "USB 2.0 port", "Two Lighthouse 1.0 base stations", "Mains power for Link Box"],
+      "latencyProfile": { "typical": 22, "best": 18, "worst": 35 }
+    }
+  ],
+
+  "runtimes": ["steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Vive Wands",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 970 / R9 290",
+    "recommendedGPU": "GTX 1070 / RX 580",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["HDMI 1.4", "USB 2.0", "Mains power for Link Box"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "vive-og-lighthouse-1",
+      "title": "Lighthouse 1.0 base stations are discontinued",
+      "description": "The original Vive uses Lighthouse 1.0 base stations which are no longer manufactured. Replacements only appear on the secondhand market. Lighthouse 2.0 base stations are NOT backward compatible with the original Vive.",
+      "severity": "warning",
+      "workaround": "Source replacement 1.0 units on the secondhand market. Do not mix 1.0 and 2.0 base stations in the same setup."
+    },
+    {
+      "id": "vive-og-hdmi-adapter-needed",
+      "title": "HDMI 1.4 required — modern GPUs often lack HDMI output",
+      "description": "Current NVIDIA and AMD GPUs frequently have only a single HDMI port or none at all. A validated active DP→HDMI adapter is usually necessary.",
+      "severity": "info",
+      "workaround": "Use an active DisplayPort→HDMI adapter from a reputable brand (Club3D / StarTech). Passive adapters can cause HDCP or audio issues."
+    },
+    {
+      "id": "vive-og-screen-door",
+      "title": "Visible screen-door effect on first-gen OLED",
+      "description": "The 1080×1200 OLED panels have a noticeable gap between subpixels, producing a mesh-like pattern especially in light-colored scenes.",
+      "severity": "info",
+      "workaround": "Supersampling 1.4×+ reduces the effect perceptually. This is a hardware limitation; no software fix fully eliminates it."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Supersample to ~1.4× — the OLED detail benefits even at 1080×1200",
+      "simpleExplanation": "The original Vive's OLED panel has deep blacks and sharp edges. Pushing SteamVR render resolution to ~1.4× cleans up the screen-door effect and makes text readable.",
+      "advancedExplanation": "At SS 1.4× (≈1512×1680 per eye), GPU load is ~2× native resolution. A GTX 1070 / RX 580 comfortably handles this at 90 FPS in most modern VR titles. Monitor with SteamVR frame timing graph.",
+      "applicableConnections": ["vive-og-linkbox"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.4,
+    "reprojection": "motion-smoothing"
+  }
+}

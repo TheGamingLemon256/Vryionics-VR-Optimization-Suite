@@ -1,0 +1,113 @@
+{
+  "id": "meta-quest-2",
+  "brand": "Meta",
+  "model": "Quest 2",
+  "type": "standalone-hybrid",
+  "releaseYear": 2020,
+
+  "display": {
+    "resolutionPerEye": [1832, 1920],
+    "refreshRates": [72, 80, 90, 120],
+    "panelType": "LCD",
+    "fov": 97
+  },
+
+  "connections": [
+    {
+      "id": "quest2-usb-link",
+      "name": "Meta Quest Link (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port"],
+      "latencyProfile": { "typical": 45, "best": 32, "worst": 70 }
+    },
+    {
+      "id": "quest2-air-link",
+      "name": "Meta Air Link",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Air Link",
+      "requirements": ["Wi-Fi 5 router (5GHz)", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 55, "best": 40, "worst": 90 }
+    },
+    {
+      "id": "quest2-virtual-desktop",
+      "name": "Virtual Desktop",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Wi-Fi 5 router (5GHz)", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 80 }
+    },
+    {
+      "id": "quest2-alvr",
+      "name": "ALVR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "ALVR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)"],
+      "latencyProfile": { "typical": 55, "best": 38, "worst": 90 }
+    },
+    {
+      "id": "quest2-steam-link",
+      "name": "Steam Link VR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Steam Link VR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)"],
+      "latencyProfile": { "typical": 60, "best": 42, "worst": 95 }
+    }
+  ],
+
+  "runtimes": ["oculus", "openxr-oculus", "steamvr", "openxr-steamvr", "vdxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Meta Quest Touch v3",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 580",
+    "recommendedGPU": "RTX 2070 / RX 5700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "quest2-xr2-thermal",
+      "title": "XR2 Gen 1 thermal throttling during Link",
+      "description": "The Quest 2's Snapdragon XR2 Gen 1 can overheat during extended Link sessions, causing the headset to reduce decode performance.",
+      "severity": "warning",
+      "workaround": "Keep room temperature below 25°C. Take breaks during extended sessions. A small fan pointed at the headset helps."
+    },
+    {
+      "id": "quest2-usb-bandwidth",
+      "title": "USB 2.0 fallback on some motherboards",
+      "description": "Some USB ports on motherboards silently fall back to USB 2.0 speeds, severely limiting Link quality.",
+      "affectsConnectionTypes": ["quest2-usb-link"],
+      "severity": "critical",
+      "workaround": "Use a USB 3.0 port directly on the motherboard (rear I/O). Avoid front panel USB ports. Check bandwidth in Oculus PC app."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Lower render resolution for older GPUs",
+      "simpleExplanation": "If your GPU is a few years old, reducing the picture quality slightly can make VR much smoother.",
+      "advancedExplanation": "Set SteamVR render resolution to 0.8-1.0x for GTX 1060/1070 class GPUs. The Quest 2's lower native resolution (1832x1920) means you need less GPU power than newer headsets. Prioritize 90Hz over higher supersampling."
+    },
+    {
+      "category": "latency",
+      "tip": "Use Virtual Desktop for lowest wireless latency",
+      "simpleExplanation": "Virtual Desktop is generally the fastest way to stream PC VR wirelessly to a Quest 2.",
+      "advancedExplanation": "Virtual Desktop's custom encoding pipeline typically achieves 5-10ms lower motion-to-photon latency than Air Link on Quest 2. Enable SSW (Synchronous Spacewarp) in VD settings for smooth 45fps→90fps reprojection.",
+      "applicableConnections": ["quest2-virtual-desktop"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

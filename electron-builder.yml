@@ -1,0 +1,67 @@
+appId: com.vryionics.vr-optimization-suite
+productName: Vryionics VR Optimization Suite
+copyright: Copyright © 2025-2026 Vryionics. Open-source VR diagnostics utility.
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - "!node_modules/**/*.{md,txt,map}"
+win:
+  icon: build/icon.ico
+  # Embed full version-info resource into the .exe header. Antivirus
+  # heuristic scanners weight binaries with no FileDescription /
+  # CompanyName / ProductName fields more suspiciously — typical of
+  # malware authors who don't bother filling these in. Filling them in
+  # explicitly nudges the heuristic score downward without code-signing.
+  legalTrademarks: Vryionics
+  verifyUpdateCodeSignature: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Per electron-builder docs, additional version-info fields are
+  # surfaced through `extraMetadata` style — but for the standard fields
+  # (CompanyName, FileDescription, ProductName, OriginalFilename) we
+  # rely on package.json's "author" + "description" + "name" being set
+  # correctly. They are. See package.json.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Vryionics VR Suite
+  runAfterFinish: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  artifactName: "Vryionics-VR-Optimization-Suite-Setup-${version}.exe"
+  allowElevation: true
+asar: true
+extraResources:
+  # The app-side .gh-token bundle was used when the repo was private —
+  # the auto-updater needed authentication to reach release metadata.
+  # Now that the repo is public, the token is unnecessary AND it was a
+  # fragile coupling: any time the publisher PAT got rotated/transferred/
+  # revoked, every install in the wild lost its auto-update capability.
+  # Removed in v0.2.7. The auto-updater now hits the public GitHub API
+  # unauthenticated, which works regardless of future PAT changes.
+  # The support webhook URL was shipped here in v0.2.4-v0.2.7 but was
+  # removed in v0.2.8 — bundling a webhook URL anywhere a user can find
+  # it lets them spam the support channel. Bug reports now route through
+  # GitHub Issues (github.com/.../issues/new?title=...&body=...) which
+  # has built-in abuse mitigation.
+  # Storage Debloat category definitions — extracted from the binary so
+  # the path strings (Chrome User Data, Firefox Profiles, Discord cache,
+  # Steam dirs) don't appear inside the compiled JS bundle and trigger
+  # credential-stealer heuristics on AV scanners.
+  - from: update-server/storage-categories.json
+    to: storage-categories.json
+  # PowerShell helper module — contains all the .NET P/Invoke (Add-Type)
+  # blocks. Kept out of the compiled JS bundle so DllImport / kernel32 /
+  # ntdll / advapi32 / atiadlxx import patterns don't appear as embedded
+  # strings inside the Electron main-process binary.
+  - from: update-server/ps-helpers
+    to: ps-helpers
+publish:
+  - provider: github
+    owner: TheGamingLemon256
+    repo: Vryionics-VR-Optimization-Suite

@@ -1,0 +1,103 @@
+{
+  "id": "htc-vive-xr-elite",
+  "brand": "HTC",
+  "model": "Vive XR Elite",
+  "type": "standalone-hybrid",
+  "releaseYear": 2023,
+
+  "display": {
+    "resolutionPerEye": [1920, 1920],
+    "refreshRates": [60, 90],
+    "panelType": "LCD",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "xr-elite-usb",
+      "name": "Vive Streaming (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port on PC", "VIVE Hub PC software"],
+      "latencyProfile": { "typical": 38, "best": 26, "worst": 58 }
+    },
+    {
+      "id": "xr-elite-wifi",
+      "name": "Vive Streaming (Wi-Fi)",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "VIVE Streaming",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "VIVE Hub PC software"],
+      "latencyProfile": { "typical": 48, "best": 33, "worst": 78 }
+    }
+  ],
+
+  "runtimes": ["openxr-steamvr", "steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "HTC Vive XR Elite Controllers",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 2060 / RX 6600 XT",
+    "recommendedGPU": "RTX 3070 / RX 6800 XT",
+    "minCPU": "Intel i5-8400 / Ryzen 5 2600",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "xr-elite-vivehub-required",
+      "title": "VIVE Hub software required for PC streaming",
+      "description": "Both USB and Wi-Fi PC streaming require HTC's VIVE Hub desktop application. VIVE Hub has had stability issues on some Windows configurations.",
+      "severity": "warning",
+      "workaround": "Install VIVE Hub from the HTC website. Run as administrator if you experience connection issues. Ensure Windows Firewall allows VIVE Hub network access."
+    },
+    {
+      "id": "xr-elite-controller-tracking",
+      "title": "Controller tracking degrades in low light",
+      "description": "The XR Elite uses camera-based inside-out tracking which relies on ambient lighting. Very dark environments significantly degrade controller tracking accuracy.",
+      "severity": "info",
+      "workaround": "Ensure play space has at least moderate ambient lighting. Avoid VR in complete darkness."
+    },
+    {
+      "id": "xr-elite-60hz-standalone",
+      "title": "Standalone mode defaults to 60Hz on some firmware",
+      "description": "Some firmware versions limit standalone refresh rate to 60Hz. PC streaming modes override this, but standalone games may feel less smooth.",
+      "severity": "info",
+      "workaround": "Check display settings in the headset system menu and force 90Hz if available. Update firmware to latest version."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "USB streaming delivers lower and more stable latency than Wi-Fi",
+      "simpleExplanation": "Plugging in a cable gives you a faster and smoother VR experience than streaming wirelessly.",
+      "advancedExplanation": "USB 3.0 streaming via VIVE Hub delivers approximately 10ms lower typical latency versus Wi-Fi, with significantly reduced worst-case spikes. For sim racing, rhythm games, or other latency-sensitive titles, USB is strongly preferred.",
+      "applicableConnections": ["xr-elite-usb"]
+    },
+    {
+      "category": "latency",
+      "tip": "Use Wi-Fi 6 on a dedicated 5GHz SSID for wireless streaming",
+      "simpleExplanation": "A dedicated Wi-Fi channel just for your headset means no competition from other devices, keeping things smooth.",
+      "advancedExplanation": "VIVE Streaming performs best on an uncongested Wi-Fi 6 channel. Create a dedicated SSID on a non-overlapping 5GHz channel (36, 40, 44, 48). Ensure no other devices are on this SSID. The XR Elite supports Wi-Fi 6 (802.11ax), enabling OFDMA for lower latency.",
+      "applicableConnections": ["xr-elite-wifi"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Set VIVE Streaming encode quality to High for clearer image",
+      "simpleExplanation": "In the VIVE Hub app, set streaming quality to High for a noticeably sharper picture.",
+      "advancedExplanation": "VIVE Hub's streaming quality setting adjusts the H.265 encode bitrate. The High setting targets 200+ Mbps, reducing compression artifacts at 1920x1920 per eye resolution. Requires RTX 2070+ for stable HEVC encoding without frame drops.",
+      "applicableConnections": ["xr-elite-usb", "xr-elite-wifi"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

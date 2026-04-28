@@ -1,0 +1,81 @@
+{
+  "id": "meta-rift-cv1",
+  "brand": "Meta",
+  "model": "Oculus Rift CV1",
+  "type": "tethered",
+  "releaseYear": 2016,
+
+  "display": {
+    "resolutionPerEye": [1080, 1200],
+    "refreshRates": [90],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "rift-cv1-hdmi-usb",
+      "name": "HDMI 1.4 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["HDMI 1.4 output (or DisplayPort with HDMI adapter)", "USB 3.0 port for headset", "Additional USB 3.0 ports for each Constellation sensor"],
+      "latencyProfile": { "typical": 22, "best": 18, "worst": 35 }
+    }
+  ],
+
+  "runtimes": ["oculus-legacy", "steamvr-oculus"],
+
+  "tracking": {
+    "type": "outside-in",
+    "controllers": "Oculus Touch (Gen 1)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 960 / R9 290",
+    "recommendedGPU": "GTX 1060 / RX 480",
+    "minCPU": "Intel i3-6100 / Ryzen 3 1200",
+    "minRAM": 8,
+    "ports": ["HDMI 1.4", "3× USB 3.0 (headset + 2 sensors)"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "rift-cv1-discontinued-runtime",
+      "title": "Legacy Oculus runtime — no longer updated",
+      "description": "The Rift CV1 requires the legacy Oculus PC app runtime. Meta ended official support in 2021; new software features and bug fixes no longer target this device.",
+      "severity": "warning",
+      "workaround": "Use SteamVR via the compatibility layer. Check that OVRServer_x64 still launches successfully — if not, reinstall the Oculus Rift legacy driver from archived installers."
+    },
+    {
+      "id": "rift-cv1-hdmi-deprecation",
+      "title": "HDMI output required — modern GPUs may need an adapter",
+      "description": "Many current GPUs (RTX 40/50 series) have only one HDMI port. The CV1 needs HDMI 1.4, and DisplayPort→HDMI active adapters can introduce black-screen or audio sync issues.",
+      "severity": "info",
+      "workaround": "Use a validated active DP→HDMI adapter (Club3D / StarTech). Avoid passive adapters."
+    },
+    {
+      "id": "rift-cv1-constellation-usb",
+      "title": "Constellation sensors saturate USB bandwidth",
+      "description": "Each external sensor consumes a USB 3.0 port and significant bandwidth. On single-controller motherboards, plugging headset + 2 sensors + Touch USB receiver into the same controller causes tracking dropouts.",
+      "severity": "warning",
+      "workaround": "Distribute sensors across different USB host controllers. Use a PCIe USB expansion card (Inateck / StarTech) if the motherboard only has one controller."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Keep supersampling at 1.0× — CV1 is pixel-limited, not GPU-limited",
+      "simpleExplanation": "The Rift CV1 has a modest 1080×1200 per eye display. Pushing supersampling above 1.0× offers diminishing returns and stresses your GPU unnecessarily.",
+      "advancedExplanation": "At SteamVR SS 1.0×, native render is 1232×1344 per eye. Anything above 1.2× wastes GPU cycles on detail the OLED can't resolve. Instead, max out in-app rendering quality (shadows, textures, anti-aliasing).",
+      "applicableConnections": ["rift-cv1-hdmi-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

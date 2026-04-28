@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "outDir": "./out",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "downlevelIteration": true,
+    "lib": ["ES2015", "DOM"]
+  },
+  "include": [
+    "src/renderer/**/*",
+    "src/main/scanner/types.ts",
+    "src/main/rules/types.ts",
+    "src/main/fixes/types.ts",
+    "src/main/headsets/types.ts",
+    "src/main/data/questionnaire-tree.ts",
+    "src/main/data/upgrade-tiers.ts",
+    "src/main/rules/upgrade-engine.ts"
+  ]
+}

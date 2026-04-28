@@ -1,0 +1,53 @@
+{
+  "_comment": "Copy this template to contribute a headset profile. Remove all _comment fields before submitting.",
+  "_comment_filename": "Filename must be kebab-case matching the id field: 'meta-quest-3.json'",
+
+  "id": "brand-model-name",
+  "brand": "BrandName",
+  "model": "Model Name",
+  "type": "standalone-hybrid | tethered | standalone",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [0, 0],
+    "refreshRates": [90],
+    "panelType": "LCD | OLED | Mini-LED | Micro-OLED",
+    "fov": 100
+  },
+
+  "connections": [
+    {
+      "id": "model-connection-id",
+      "name": "Connection Display Name",
+      "archetype": "tethered-dp | usb-encoded | wifi-wireless | wigig",
+      "requirements": ["List physical requirements"],
+      "latencyProfile": { "typical": 0, "best": 0, "worst": 0 }
+    }
+  ],
+
+  "runtimes": ["steamvr"],
+
+  "tracking": {
+    "type": "inside-out | outside-in | lighthouse",
+    "controllers": "Controller Name",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 580",
+    "recommendedGPU": "RTX 3070 / RX 6800 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["List required physical ports"]
+  },
+
+  "knownIssues": [],
+  "optimizationTips": [],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing | asw | none"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "id": "htc-vive-cosmos-elite",
+  "brand": "HTC",
+  "model": "Vive Cosmos Elite",
+  "type": "tethered",
+  "releaseYear": 2020,
+
+  "display": {
+    "resolutionPerEye": [1440, 1700],
+    "refreshRates": [90],
+    "panelType": "LCD",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "cosmos-elite-dp",
+      "name": "DisplayPort 1.2 via Link Box",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2", "USB 3.0 Type-A", "HTC Link Box", "AC power for Link Box"],
+      "latencyProfile": { "typical": 11, "best": 8, "worst": 15 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "HTC Vive Cosmos Elite Controllers",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 2080 / RX 6800 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 2600",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "cosmos-elite-faceplate-required",
+      "title": "Lighthouse tracking requires the External Tracking Faceplate",
+      "description": "The Cosmos Elite ships with the External Tracking Faceplate pre-installed for Lighthouse 1.0/2.0 tracking. Without this faceplate, the headset falls back to inside-out camera tracking which is inferior. The faceplate disables the inside-out cameras.",
+      "severity": "info",
+      "workaround": "Ensure the External Tracking Faceplate is securely attached before use. If using inside-out mode, swap to the standard Cosmos faceplate. Keep both faceplates stored safely."
+    },
+    {
+      "id": "cosmos-elite-linkbox-issues",
+      "title": "Link Box can cause intermittent disconnects",
+      "description": "The HTC Link Box converts the headset tether to DisplayPort and USB and is a known failure point. Random disconnects, audio dropouts, or display flickering may occur.",
+      "affectsConnectionTypes": ["cosmos-elite-dp"],
+      "severity": "warning",
+      "workaround": "Update Link Box firmware via SteamVR. Ensure the Link Box is on a stable surface with good airflow. Replace if disconnects persist — third-party alternatives are available."
+    },
+    {
+      "id": "cosmos-elite-controller-ergonomics",
+      "title": "Cosmos Elite controllers have an unusual ring-less design",
+      "description": "Unlike Vive Wands or Index Controllers, Cosmos Elite controllers do not have tracking rings. The SteamVR tracking hardware is embedded in the controller body, which some users find less ergonomic.",
+      "severity": "info",
+      "workaround": "Try both the 'comfort grip' and standard grip positions. Third-party grips and accessories are available for improved ergonomics."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use SteamVR motion smoothing at 45fps for demanding titles",
+      "simpleExplanation": "Turn on SteamVR motion smoothing so the headset stays comfortable when games are too demanding to run at full speed.",
+      "advancedExplanation": "SteamVR motion smoothing halves the GPU frame rate requirement by synthesizing intermediate frames. At 90Hz, targeting 45fps with motion smoothing enabled is often a better experience than running at 90fps with reduced quality settings. Especially effective in sim titles (DCS, iRacing) on mid-range GPUs."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "1.2x supersampling noticeably improves sharpness through the optics",
+      "simpleExplanation": "Slightly turning up the picture quality makes a visible difference in sharpness on the Cosmos Elite.",
+      "advancedExplanation": "The Cosmos Elite's 1440x1700 per eye resolution benefits from supersampling to 1.2-1.3x in SteamVR to reduce aliasing through the aspheric lens array. GTX 1080+ class GPUs handle this comfortably at 90Hz in most titles. Set per-application in SteamVR Video settings."
+    },
+    {
+      "category": "latency",
+      "tip": "Run SteamVR in Direct Display Mode for minimum latency",
+      "simpleExplanation": "Direct mode bypasses Windows desktop rendering, reducing the time between head movement and what you see.",
+      "advancedExplanation": "SteamVR Direct Display Mode bypasses the Windows DWM compositor, eliminating 1-2 frames of latency. The Cosmos Elite should not appear as a monitor in Windows Display Settings when correctly configured. Verify in SteamVR → Settings → Developer. May require toggling if the headset appears as a monitor after firmware updates.",
+      "applicableConnections": ["cosmos-elite-dp"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.2,
+    "reprojection": "motion-smoothing"
+  }
+}

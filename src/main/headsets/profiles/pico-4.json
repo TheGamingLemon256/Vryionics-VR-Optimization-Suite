@@ -1,0 +1,104 @@
+{
+  "id": "pico-4",
+  "brand": "Pico",
+  "model": "Pico 4",
+  "type": "standalone-hybrid",
+  "releaseYear": 2022,
+
+  "display": {
+    "resolutionPerEye": [2160, 2160],
+    "refreshRates": [72, 90],
+    "panelType": "LCD",
+    "fov": 105
+  },
+
+  "connections": [
+    {
+      "id": "pico4-usb",
+      "name": "Pico USB Streaming",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "Pico Streaming Assistant or ALVR"],
+      "latencyProfile": { "typical": 45, "best": 32, "worst": 70 }
+    },
+    {
+      "id": "pico4-pico-connect",
+      "name": "Pico Connect",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Pico Connect",
+      "requirements": ["Wi-Fi 5 or better (5GHz)", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 55, "best": 38, "worst": 85 }
+    },
+    {
+      "id": "pico4-virtual-desktop",
+      "name": "Virtual Desktop",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Wi-Fi 5 or better (5GHz)", "Virtual Desktop purchased on Pico Store"],
+      "latencyProfile": { "typical": 48, "best": 32, "worst": 75 }
+    },
+    {
+      "id": "pico4-alvr",
+      "name": "ALVR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "ALVR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)"],
+      "latencyProfile": { "typical": 52, "best": 36, "worst": 82 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr", "pico-openxr", "vdxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Pico 4 Controllers",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 580",
+    "recommendedGPU": "RTX 2070 / RX 5700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "pico4-streaming-assistant-overhead",
+      "title": "Pico Connect has higher overhead than Virtual Desktop",
+      "description": "Pico's official streaming software tends to use more CPU and has higher latency than third-party alternatives like Virtual Desktop.",
+      "severity": "info",
+      "workaround": "Try Virtual Desktop or ALVR for lower latency. Pico Connect works fine but VD is generally smoother."
+    },
+    {
+      "id": "pico4-controller-tracking-occlusion",
+      "title": "Controller tracking loses accuracy at extreme angles",
+      "description": "Inside-out tracking on the Pico 4 can lose controllers when they're behind you or at extreme angles from the headset cameras.",
+      "severity": "info",
+      "workaround": "Keep controllers within the headset's camera FOV. For full-body tracking games, consider adding external trackers."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "latency",
+      "tip": "Use Virtual Desktop for the best wireless experience",
+      "simpleExplanation": "Virtual Desktop tends to give the smoothest and most responsive wireless VR on the Pico 4.",
+      "advancedExplanation": "Virtual Desktop's SSW (Synchronous Spacewarp) provides better reprojection than Pico Connect's native ASW. Combined with lower encode latency, VD typically achieves 5-10ms lower motion-to-photon than Pico Connect on the same network.",
+      "applicableConnections": ["pico4-virtual-desktop"]
+    },
+    {
+      "category": "performance",
+      "tip": "Use SteamVR at 90Hz for best stability",
+      "simpleExplanation": "Running at 90Hz gives you smooth VR that works well with most PCs.",
+      "advancedExplanation": "The Pico 4's 90Hz mode provides 11.1ms frame budget — achievable on mid-range GPUs (RTX 2070+) with SteamVR SS at 100%. The Pico 4 does not support 120Hz in PCVR streaming mode."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

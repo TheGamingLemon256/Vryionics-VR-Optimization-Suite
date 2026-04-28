@@ -1,0 +1,103 @@
+{
+  "id": "apple-vision-pro",
+  "brand": "Apple",
+  "model": "Vision Pro",
+  "type": "standalone-hybrid",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [3660, 3200],
+    "refreshRates": [90, 96, 100],
+    "panelType": "Micro-OLED",
+    "fov": 100
+  },
+
+  "connections": [
+    {
+      "id": "vision-pro-vd",
+      "name": "Virtual Desktop for Vision Pro (Wi-Fi)",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Apple Vision Pro running visionOS 1.1+", "Virtual Desktop purchased on App Store", "Virtual Desktop Streamer installed on PC", "Wi-Fi 6 or 6E router (5GHz or 6GHz SSID)", "PC connected via Ethernet recommended"],
+      "latencyProfile": { "typical": 45, "best": 30, "worst": 80 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "No controllers — hand + eye tracking only (uses VD's virtual Quest controller emulation)",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 3070 / RX 6800",
+    "recommendedGPU": "RTX 4080 / RX 7900 XTX",
+    "minCPU": "Intel i7-12700K / Ryzen 7 5800X3D",
+    "minRAM": 16,
+    "ports": ["Wi-Fi 6 adapter (5GHz+) on PC", "Ethernet to router"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "vision-pro-no-native-pcvr",
+      "title": "No native PCVR runtime — PCVR only via Virtual Desktop",
+      "description": "Apple does not ship a native PCVR streaming solution. All PC-VR on Vision Pro is currently via Virtual Desktop (third-party, paid). Quest Link / Air Link do not work.",
+      "severity": "info",
+      "workaround": "Purchase Virtual Desktop in the visionOS App Store. Install VD Streamer on your PC. This is the only supported PCVR path."
+    },
+    {
+      "id": "vision-pro-no-controllers",
+      "title": "No dedicated controllers — VD emulates Quest Touch via hand tracking",
+      "description": "Vision Pro has no physical controllers. Virtual Desktop translates hand tracking into virtual Quest Touch controllers. This works well for casual/cinematic VR but poorly for fast motion or precision titles.",
+      "severity": "warning",
+      "workaround": "Titles that support hand tracking natively (Eleven Table Tennis, Hand Physics Lab) work best. Precision-heavy titles (Beat Saber, VRChat) feel compromised."
+    },
+    {
+      "id": "vision-pro-extreme-resolution",
+      "title": "3660×3200 per eye — extreme render demand when not using foveated streaming",
+      "description": "Virtual Desktop applies foveated encoding by default, but the raw per-eye resolution is among the highest in any consumer VR headset. Without foveated encoding the network bandwidth requirement is impractical.",
+      "severity": "info",
+      "workaround": "Keep VD's foveated encoding ON. Disable only if you have a Wi-Fi 6E 6GHz setup and an NVIDIA 40-series GPU with AV1 encoding."
+    },
+    {
+      "id": "vision-pro-battery-pack",
+      "title": "External battery pack limits session length",
+      "description": "Vision Pro uses an external tethered battery with ~2-2.5h runtime. Long VR sessions require the battery pack connected to power (negating the wireless experience, but charging through USB-C works).",
+      "severity": "info",
+      "workaround": "Keep a USB-C power bank or AC adapter connected to the battery during long sessions."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "network",
+      "tip": "Wi-Fi 6E (6GHz) gives the Vision Pro its best wireless VR",
+      "simpleExplanation": "Vision Pro supports Wi-Fi 6E. A 6GHz SSID dedicated to the headset provides the bandwidth and interference immunity needed for high-bitrate streaming.",
+      "advancedExplanation": "Vision Pro's 6GHz radio handles sustained 200+ Mbps AV1 streams from Virtual Desktop with very low jitter. 5GHz works but caps quality. Dedicate a 6GHz SSID (160 MHz channel) just for the headset and keep other devices on a separate SSID.",
+      "applicableConnections": ["vision-pro-vd"]
+    },
+    {
+      "category": "latency",
+      "tip": "Enable AV1 codec in Virtual Desktop (requires NVIDIA 40/50-series or RX 7000+)",
+      "simpleExplanation": "AV1 encoding gives noticeably cleaner image quality than H.265 at the same bitrate on Vision Pro's ultra-high-res panels.",
+      "advancedExplanation": "Virtual Desktop Streamer → Video → Codec → AV1 (requires supported GPU). At 150 Mbps AV1 you get comparable quality to ~200 Mbps HEVC, with better motion detail in dark scenes — relevant because Vision Pro's micro-OLED reveals compression artifacts other headsets hide.",
+      "applicableConnections": ["vision-pro-vd"]
+    },
+    {
+      "category": "performance",
+      "tip": "Connect your streaming PC via Ethernet — Wi-Fi + Wi-Fi is unreliable at this resolution",
+      "simpleExplanation": "If both your PC and headset are on Wi-Fi, they compete for airtime. With Vision Pro's extreme resolution, this becomes visibly unstable. Use Ethernet on the PC.",
+      "advancedExplanation": "PC on Ethernet → router → Vision Pro on 6GHz eliminates the half-duplex Wi-Fi penalty. Measurable -15ms latency improvement in 1080p60 tests on typical consumer hardware.",
+      "applicableConnections": ["vision-pro-vd"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.9,
+    "reprojection": "motion-smoothing"
+  }
+}

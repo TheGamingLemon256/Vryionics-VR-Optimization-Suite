@@ -1,0 +1,79 @@
+{
+  "id": "bigscreen-beyond",
+  "brand": "Bigscreen",
+  "model": "Beyond",
+  "type": "tethered",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [2560, 2560],
+    "refreshRates": [75, 90],
+    "panelType": "Micro-OLED",
+    "fov": 95
+  },
+
+  "connections": [
+    {
+      "id": "beyond-dp",
+      "name": "DisplayPort 1.4 + USB-C",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4", "USB-C for tracking data"],
+      "latencyProfile": { "typical": 10, "best": 7, "worst": 13 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Valve Index Controllers or Vive Controllers (external)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 2070 / RX 5700 XT",
+    "recommendedGPU": "RTX 4070 Ti / RX 7900 XT",
+    "minCPU": "Intel i5-10400 / Ryzen 5 3600",
+    "minRAM": 16,
+    "ports": ["DisplayPort 1.4", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "beyond-custom-fit",
+      "title": "Custom-molded face cushion requires 3D face scan",
+      "description": "The Beyond ships with a custom-fit cushion molded from a 3D face scan. If the fit is wrong, you need to contact Bigscreen for a replacement.",
+      "severity": "info",
+      "workaround": "Follow the face scanning instructions carefully. Use the Bigscreen app for the most accurate scan."
+    },
+    {
+      "id": "beyond-no-built-in-audio",
+      "title": "No built-in speakers — requires external audio",
+      "description": "The Beyond has no built-in audio. You must use headphones or the optional Bigscreen audio strap.",
+      "severity": "info",
+      "workaround": "Use low-latency wired headphones or the Bigscreen Audio Strap accessory. Bluetooth headphones add too much latency for VR."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "visual-quality",
+      "tip": "Micro-OLED panels deliver true blacks — optimize dark content",
+      "simpleExplanation": "The Beyond has amazing screens that show perfect black. Dark games and movies look spectacular on this headset.",
+      "advancedExplanation": "The Micro-OLED panels have individual pixel illumination (no backlight bleed). OLED black levels eliminate the 'grey fog' common with LCD headsets. For best experience, set SteamVR brightness to default (not boosted) and enable any game-level HDR settings if available."
+    },
+    {
+      "category": "performance",
+      "tip": "The Beyond's narrower FOV reduces GPU load",
+      "simpleExplanation": "Despite having very sharp screens, the Beyond's smaller field of view means it's easier on your graphics card than wider headsets.",
+      "advancedExplanation": "At 95° FOV vs 120°+ on wide-FOV headsets, the Beyond renders fewer pixels per frame despite high per-eye resolution. Total rendered pixels (~13.1M) is comparable to a Valve Index at 130% SS. SteamVR SS at 100% is a good starting point for RTX 3070+ GPUs."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "id": "generic-unlisted",
+  "brand": "Other",
+  "model": "My headset isn't listed (generic VR profile)",
+  "type": "tethered",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [1920, 1920],
+    "refreshRates": [72, 90, 120],
+    "panelType": "LCD",
+    "fov": 100
+  },
+
+  "connections": [
+    {
+      "id": "generic-tethered-dp",
+      "name": "Tethered (DisplayPort / HDMI)",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort or HDMI cable direct to GPU", "USB 3.0 if required by headset"],
+      "latencyProfile": { "typical": 22, "best": 16, "worst": 40 }
+    },
+    {
+      "id": "generic-usb-link",
+      "name": "USB cable with encoded video (Link-style)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0+ cable rated for the headset's bitrate", "Vendor-specific streaming app"],
+      "latencyProfile": { "typical": 38, "best": 28, "worst": 65 }
+    },
+    {
+      "id": "generic-wifi",
+      "name": "Wi-Fi wireless streaming",
+      "archetype": "wifi-wireless",
+      "requirements": ["Wi-Fi 5 5GHz minimum (Wi-Fi 6E 6GHz recommended)", "PC connected via Ethernet", "Vendor or third-party streaming app (VD / ALVR / etc.)"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 90 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Varies — whatever ships with your headset",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1660 Super / RX 5600 XT",
+    "recommendedGPU": "RTX 3070 / RX 6800",
+    "minCPU": "Intel i5-9400F / Ryzen 5 3600",
+    "minRAM": 16,
+    "ports": ["Varies — check your headset's manual"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "generic-unknown-profile",
+      "title": "No headset-specific profile loaded — using generic VR defaults",
+      "description": "You selected 'My headset isn't listed' so the suite is applying only general VR best-practice rules. Headset-specific issues (panel type, driver quirks, optimal supersampling, runtime-specific tweaks) cannot be surfaced without a matching profile.",
+      "severity": "info",
+      "workaround": "If your headset is a popular model and you'd like a dedicated profile, open a Bug Report from Settings → Help & Feedback and tell the developer which headset you have. Profiles are added in roughly 80 lines of JSON per device and typically ship in the next update."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Start at 100% supersampling and adjust based on GPU headroom",
+      "simpleExplanation": "Without a headset-specific profile, default to SteamVR render resolution 100%. If your GPU has headroom at 90 FPS, push up to 120–140%. If you're dropping frames, pull back to 80–90%.",
+      "advancedExplanation": "Use SteamVR's frame timing graph (dashboard → Settings → Developer → Frame Timing) to gate changes. Target sustained 90 FPS with GPU utilization around 80-85% for smooth VR with reprojection as a safety net."
+    },
+    {
+      "category": "performance",
+      "tip": "Enable motion smoothing / ASW as a reprojection safety net",
+      "simpleExplanation": "Most modern VR headsets support a form of reprojection that fills in frames when your PC can't keep up. Keep it enabled by default.",
+      "advancedExplanation": "SteamVR Motion Smoothing (for Valve/HTC/WMR) or Oculus ASW (for Meta) will halve your output frame rate and synthesize in-between frames from motion vectors when native render misses the frame budget. Visible ghosting is the failure mode but strongly preferable to hard stutter."
+    },
+    {
+      "category": "latency",
+      "tip": "For wireless streaming, use Wi-Fi 6 5GHz minimum (Wi-Fi 6E 6GHz preferred)",
+      "simpleExplanation": "Wireless VR needs ~100-200 Mbps sustained over Wi-Fi. 2.4 GHz is too slow and congested. Use a 5GHz or 6GHz-only SSID dedicated to your headset.",
+      "advancedExplanation": "Sustained 150 Mbps AV1 (Wi-Fi 6E) or 200 Mbps H.265 (Wi-Fi 6) is the common floor for acceptable wireless VR quality. Connect your streaming PC via Ethernet — running both ends on Wi-Fi doubles your jitter surface.",
+      "applicableConnections": ["generic-wifi"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

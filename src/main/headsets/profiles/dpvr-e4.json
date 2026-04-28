@@ -1,0 +1,74 @@
+{
+  "id": "dpvr-e4",
+  "brand": "DPVR",
+  "model": "E4",
+  "type": "tethered",
+  "releaseYear": 2022,
+
+  "display": {
+    "resolutionPerEye": [2160, 2160],
+    "refreshRates": [90, 120],
+    "panelType": "LCD",
+    "fov": 116
+  },
+
+  "connections": [
+    {
+      "id": "dpvr-e4-dp-usb",
+      "name": "DisplayPort 1.2 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2+ output", "USB 3.0 port", "DPVR Assistant software"],
+      "latencyProfile": { "typical": 22, "best": 18, "worst": 38 }
+    }
+  ],
+
+  "runtimes": ["steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "DPVR E4 Controllers (dual 6DoF, inside-out tracked)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 580",
+    "recommendedGPU": "RTX 3060 / RX 6700 XT",
+    "minCPU": "Intel i5-8400 / Ryzen 5 2600",
+    "minRAM": 8,
+    "ports": ["DisplayPort 1.2+", "USB 3.0"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "dpvr-e4-software-maturity",
+      "title": "DPVR Assistant software is less mature than Oculus/SteamVR tooling",
+      "description": "The DPVR ecosystem is smaller; occasional driver bugs and slower response on new SteamVR updates are common. Community support is limited.",
+      "severity": "warning",
+      "workaround": "Keep DPVR Assistant updated. Check DPVR's support forum for known bugs. SteamVR compatibility is improving but still trails other vendors by 1-2 versions."
+    },
+    {
+      "id": "dpvr-e4-tracking-volume",
+      "title": "Inside-out tracking quality is below Quest/Pico level",
+      "description": "The E4's tracking cameras cover a narrower volume than Meta Quest or Pico devices. Controllers behind the back or at full extension can lose tracking.",
+      "severity": "info",
+      "workaround": "Keep controllers in front of the headset cameras as much as possible. Archery/shooter games with weapon behind back motions are affected most."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Budget-class pricing — match supersampling to your GPU tier",
+      "simpleExplanation": "The E4 targets affordable VR. Don't push supersampling above 1.0× on mid-range GPUs — you'll get more benefit from in-app quality settings.",
+      "advancedExplanation": "At 2160×2160 native per eye and 1.0× SteamVR supersampling, a GTX 1060 can hold 90 FPS in most non-AAA titles. Leave supersampling at 1.0× and prioritize MSAA / in-app AA settings.",
+      "applicableConnections": ["dpvr-e4-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

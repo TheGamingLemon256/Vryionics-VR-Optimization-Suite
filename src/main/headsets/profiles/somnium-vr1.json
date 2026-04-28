@@ -1,0 +1,88 @@
+{
+  "id": "somnium-vr1",
+  "brand": "Somnium",
+  "model": "VR1",
+  "type": "tethered",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [2880, 2880],
+    "refreshRates": [90, 144],
+    "panelType": "QLED",
+    "fov": 130
+  },
+
+  "connections": [
+    {
+      "id": "somnium-dp-usb",
+      "name": "DisplayPort 1.4 + USB-C",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC", "USB-C port", "Two SteamVR Lighthouse 2.0 base stations"],
+      "latencyProfile": { "typical": 16, "best": 12, "worst": 26 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Index Knuckles / Vive Wand / Somnium custom",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 4070 Ti / RX 7900 XT",
+    "recommendedGPU": "RTX 4090 / RTX 5090",
+    "minCPU": "Intel i7-13700K / Ryzen 7 7800X3D",
+    "minRAM": 32,
+    "ports": ["DisplayPort 1.4 (DSC)", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "somnium-144hz-gpu-ceiling",
+      "title": "144 Hz mode is extremely GPU-demanding",
+      "description": "At 2880×2880 per eye @ 144 Hz, the required GPU output is roughly double that of DDR5-era flagships at 90 Hz. Even an RTX 4090 will need foveated/upscaling to hold 144 FPS in most titles.",
+      "severity": "warning",
+      "workaround": "Default to 90 Hz for graphically-intense titles. Reserve 144 Hz for simpler VR apps or titles with aggressive DLSS/FSR upscaling (e.g. MSFS with DLSS 3.5)."
+    },
+    {
+      "id": "somnium-wide-fov-edges",
+      "title": "130° FOV introduces optical distortion at panel edges",
+      "description": "The wide FOV pushes pixels into areas the human eye resolves poorly. Peripheral sharpness is intentionally soft.",
+      "severity": "info",
+      "workaround": "This is an optical design tradeoff for the immersion wider FOV provides. Foveated rendering aligns naturally with this — periphery is already perceptually softer."
+    },
+    {
+      "id": "somnium-lighthouse-2-required",
+      "title": "Lighthouse 2.0 base stations required — 1.0 not supported",
+      "description": "The Somnium VR1 uses Lighthouse 2.0 tracking only. Vive 1.0 base stations are not compatible.",
+      "severity": "info",
+      "workaround": "If coming from an original Vive setup, budget for new Lighthouse 2.0 base stations."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "OpenXR Toolkit fixed foveated rendering + FSR",
+      "simpleExplanation": "Somnium VR1 doesn't have eye tracking, but OpenXR Toolkit's fixed foveated rendering still recovers GPU headroom based on a preset periphery zone.",
+      "advancedExplanation": "Install OpenXR Toolkit → Fixed FR (medium) + FSR Quality at 85% render scale reclaims ~35% GPU headroom. Not as targeted as dynamic FR but a major win on any high-res headset without eye tracking.",
+      "applicableConnections": ["somnium-dp-usb"]
+    },
+    {
+      "category": "display",
+      "tip": "Use the Somnium runtime's native OpenXR path where supported",
+      "simpleExplanation": "Somnium ships with a native OpenXR runtime. Use it instead of SteamVR for titles that support it — lower latency and better panel driver integration.",
+      "advancedExplanation": "Windows OpenXR runtime selector → Somnium. Confirm in HMD app that the native runtime is active. For SteamVR-only titles, fall back seamlessly.",
+      "applicableConnections": ["somnium-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.85,
+    "reprojection": "motion-smoothing"
+  }
+}

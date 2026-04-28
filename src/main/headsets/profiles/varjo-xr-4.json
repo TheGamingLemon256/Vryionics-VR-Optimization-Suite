@@ -1,0 +1,95 @@
+{
+  "id": "varjo-xr-4",
+  "brand": "Varjo",
+  "model": "XR-4",
+  "type": "tethered",
+  "releaseYear": 2023,
+
+  "display": {
+    "resolutionPerEye": [3840, 3744],
+    "refreshRates": [90],
+    "panelType": "Micro-OLED",
+    "fov": 120
+  },
+
+  "connections": [
+    {
+      "id": "xr4-dp-usb",
+      "name": "DisplayPort 1.4 + USB-C (dual cable)",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC 1.2a", "USB-C port", "SteamVR base stations (2.0)", "Varjo Base software"],
+      "latencyProfile": { "typical": 18, "best": 14, "worst": 27 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-varjo"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "Index / Vive / any Lighthouse-tracked controller",
+    "eyeTracking": true,
+    "faceTracking": true,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 4080 / RX 7900 XTX",
+    "recommendedGPU": "RTX 4090 / RTX 5090",
+    "minCPU": "Intel i9-13900K / Ryzen 9 7950X",
+    "minRAM": 32,
+    "ports": ["DisplayPort 1.4 (DSC 1.2a)", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "xr4-extreme-resolution",
+      "title": "3840×3744 per eye is one of the most demanding resolutions in consumer VR",
+      "description": "Even a flagship GPU will struggle without foveated rendering. Most VR titles were not designed for this resolution and must be run at reduced SteamVR render scale.",
+      "severity": "warning",
+      "workaround": "Always run foveated rendering. Set SteamVR render resolution to 60-70% for non-Varjo-native titles. Varjo-native OpenXR apps leverage the resolution better."
+    },
+    {
+      "id": "xr4-mixed-reality-license",
+      "title": "Mixed-reality features require enterprise license (Focal Edition)",
+      "description": "The XR-4 ships in consumer VR configuration by default. High-quality video passthrough / MR requires the Focal Edition hardware + license, which is enterprise-gated.",
+      "severity": "info",
+      "workaround": "Standard XR-4 is a strong consumer VR headset. For MR workflows, contact Varjo about Focal Edition upgrade."
+    },
+    {
+      "id": "xr4-cable-weight",
+      "title": "Dual-cable harness is heavy — mount a ceiling pulley for active use",
+      "description": "The combined DisplayPort + USB-C cable assembly is physically heavier than single-cable headsets; active play without cable management can cause neck strain or headset shift.",
+      "severity": "info",
+      "workaround": "Ceiling-mounted cable pulley or over-the-shoulder clip. Most lighthouse-tracked users already run one for Index/Vive."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Foveated rendering is MANDATORY for acceptable performance",
+      "simpleExplanation": "At 3840×3744 per eye, no GPU on the market can brute-force this resolution at 90 FPS without foveated rendering.",
+      "advancedExplanation": "Varjo Base → Display → Foveated Rendering → Dynamic (strong). This reduces effective shading rate by 50-60% in the periphery. Combined with eye calibration it's imperceptible during actual gameplay.",
+      "applicableConnections": ["xr4-dp-usb"]
+    },
+    {
+      "category": "performance",
+      "tip": "Prefer Varjo's OpenXR runtime over SteamVR",
+      "simpleExplanation": "Varjo's native OpenXR runtime bypasses SteamVR entirely and is optimized for foveated rendering.",
+      "advancedExplanation": "Varjo Base → General → Set as default OpenXR runtime. Native OpenXR titles (MSFS 2024, DCS, iRacing) see 20-30% higher performance vs going through SteamVR's OpenXR layer.",
+      "applicableConnections": ["xr4-dp-usb"]
+    },
+    {
+      "category": "performance",
+      "tip": "Consider upscaling via OpenXR Toolkit as an additive",
+      "simpleExplanation": "OpenXR Toolkit adds FSR/NIS upscaling on top of foveated rendering. Stacks multiplicatively.",
+      "advancedExplanation": "Install OpenXR Toolkit → FSR Performance + Dynamic FR combined can reclaim 70%+ of the GPU headroom needed to hit 90 FPS at near-native XR-4 fidelity.",
+      "applicableConnections": ["xr4-dp-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.6,
+    "reprojection": "motion-smoothing"
+  }
+}

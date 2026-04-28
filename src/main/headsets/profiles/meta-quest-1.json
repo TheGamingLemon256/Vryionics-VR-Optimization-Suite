@@ -1,0 +1,104 @@
+{
+  "id": "meta-quest-1",
+  "brand": "Meta",
+  "model": "Quest 1",
+  "type": "standalone-hybrid",
+  "releaseYear": 2019,
+
+  "display": {
+    "resolutionPerEye": [1440, 1600],
+    "refreshRates": [72],
+    "panelType": "OLED",
+    "fov": 95
+  },
+
+  "connections": [
+    {
+      "id": "quest1-usb-link",
+      "name": "Oculus Link (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable (USB 3.0 required)", "USB 3.0 port on PC", "Oculus PC App"],
+      "latencyProfile": { "typical": 45, "best": 30, "worst": 70 }
+    },
+    {
+      "id": "quest1-air-link",
+      "name": "Air Link (limited support)",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Air Link",
+      "requirements": ["Wi-Fi 5 router (5GHz)", "PC connected via Ethernet", "Oculus PC App v28 or later"],
+      "latencyProfile": { "typical": 60, "best": 42, "worst": 95 }
+    }
+  ],
+
+  "runtimes": ["oculus"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Oculus Touch (Quest 1)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 480",
+    "recommendedGPU": "GTX 1080 / RX 5700",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "quest1-usb2-link",
+      "title": "USB 2.0 cable causes Link connection failure",
+      "description": "Oculus Link on the Quest 1 requires USB 3.0. USB 2.0 connections will fail or produce severely degraded video quality.",
+      "affectsConnectionTypes": ["quest1-usb-link"],
+      "severity": "critical",
+      "workaround": "Use a USB 3.0 (or higher) Type-C cable rated for data (not charge-only). Verify USB 3.0 port with the Oculus PC App's USB speed test."
+    },
+    {
+      "id": "quest1-end-of-support",
+      "title": "Quest 1 is end-of-life — software support has ended",
+      "description": "Meta ended software updates for the Quest 1 in 2023. Newer Oculus PC App versions may have reduced compatibility and Air Link support is unreliable.",
+      "severity": "warning",
+      "workaround": "Use a pinned version of the Oculus PC App (v49 or earlier) if newer versions cause issues. Air Link may not function on all firmware builds."
+    },
+    {
+      "id": "quest1-thermal-throttle",
+      "title": "Quest 1 Snapdragon 835 throttles under sustained Link load",
+      "description": "The Quest 1's processor throttles when decoding high-bitrate Link streams during extended sessions, causing stutters.",
+      "affectsConnectionTypes": ["quest1-usb-link", "quest1-air-link"],
+      "severity": "warning",
+      "workaround": "Keep sessions under 45 minutes. Lower encode bitrate to 100-150 Mbps in Oculus Debug Tool to reduce decoder load. Ensure headset ventilation is unobstructed."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Keep encode bitrate at 150 Mbps or below for stability",
+      "simpleExplanation": "Don't push the streaming quality too high — the Quest 1 processor struggles to decode very high-quality streams.",
+      "advancedExplanation": "The Snapdragon 835 H.264 decoder in the Quest 1 has limited headroom at 72Hz. Encode bitrate above 150 Mbps in Oculus Debug Tool causes decoder queue buildup and frame drops. Target 100-130 Mbps for stable performance during long sessions.",
+      "applicableConnections": ["quest1-usb-link", "quest1-air-link"]
+    },
+    {
+      "category": "visual-quality",
+      "tip": "The OLED panel excels in dark VR environments",
+      "simpleExplanation": "The Quest 1 screen has deep, true blacks — VR horror games and space games look great.",
+      "advancedExplanation": "The Quest 1's OLED display delivers true black levels not possible on LCD panels. Dark game environments benefit significantly. OLED also has faster pixel response reducing perceived motion blur at 72Hz versus comparable LCD panels."
+    },
+    {
+      "category": "latency",
+      "tip": "Air Link on Quest 1 is unreliable — prefer USB Link",
+      "simpleExplanation": "Plugging in a cable gives much better results than wireless on the Quest 1.",
+      "advancedExplanation": "Air Link support on Quest 1 was added late in its lifecycle and was never fully optimized. USB Link at USB 3.0 speeds delivers substantially lower and more consistent latency. If you must use Air Link, use a Wi-Fi 5 5GHz connection with the router within line-of-sight.",
+      "applicableConnections": ["quest1-air-link"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

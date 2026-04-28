@@ -1,0 +1,94 @@
+{
+  "id": "samsung-odyssey-plus",
+  "brand": "Samsung",
+  "model": "Odyssey+",
+  "type": "tethered",
+  "releaseYear": 2018,
+
+  "display": {
+    "resolutionPerEye": [1440, 1600],
+    "refreshRates": [60, 90],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "odyssey-plus-hdmi-usb",
+      "name": "HDMI 2.0 + USB 3.0",
+      "archetype": "tethered-dp",
+      "requirements": ["HDMI 2.0 port", "USB 3.0 Type-A port"],
+      "latencyProfile": { "typical": 12, "best": 8, "worst": 16 }
+    }
+  ],
+
+  "runtimes": ["wmr", "openxr-wmr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Samsung Odyssey+ Controllers (WMR)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 970 / RX 480",
+    "recommendedGPU": "GTX 1080 / RX 5700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["HDMI 2.0", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "odyssey-plus-wmr-deprecation",
+      "title": "Windows Mixed Reality was deprecated by Microsoft in 2024",
+      "description": "Microsoft deprecated the WMR platform in November 2024. The runtime still works on existing installs but receives no updates. New setup on a fresh PC requires archive sources for the WMR installer.",
+      "severity": "warning",
+      "workaround": "WMR continues to function on systems where it was previously installed. New installs require downloading the WMR installer from the Microsoft Store archive. This headset should be considered end-of-software-life."
+    },
+    {
+      "id": "odyssey-plus-anti-sde",
+      "title": "Anti-SDE diffuser slightly reduces sharpness",
+      "description": "Samsung's anti-screen-door-effect diffuser layer reduces perceived screen door effect but also slightly reduces peak sharpness compared to the standard Odyssey.",
+      "severity": "info",
+      "workaround": "No workaround — this is a hardware trade-off. The smoother visual appearance is preferred by most users over the marginally sharper standard Odyssey."
+    },
+    {
+      "id": "odyssey-plus-hdmi-required",
+      "title": "Requires HDMI 2.0 — DisplayPort adapters can be unreliable",
+      "description": "Unlike most VR headsets that use DisplayPort, the Odyssey+ uses HDMI 2.0. Passive DP-to-HDMI adapters do not support HDMI 2.0's bandwidth and will cause issues. Active adapters have mixed compatibility.",
+      "affectsConnectionTypes": ["odyssey-plus-hdmi-usb"],
+      "severity": "warning",
+      "workaround": "Use a native HDMI 2.0 port on your GPU. Active adapters from reputable brands (Club3D, StarTech) may work but are not officially supported."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "visual-quality",
+      "tip": "The OLED display delivers excellent contrast — embrace dark VR environments",
+      "simpleExplanation": "The Odyssey+ screen has true black pixels, making dark scenes and space games look stunning compared to LCD headsets.",
+      "advancedExplanation": "The Odyssey+'s OLED panel provides per-pixel light control with infinite contrast ratio. The anti-SDE diffuser further smooths the subpixel grid. Dark games benefit enormously. Paired with 90Hz, the OLED response time eliminates motion blur visible on LCD panels."
+    },
+    {
+      "category": "performance",
+      "tip": "Use WMR OpenXR for native OpenXR games to bypass SteamVR overhead",
+      "simpleExplanation": "For games that support it, running directly through Windows Mixed Reality instead of SteamVR gives smoother performance.",
+      "advancedExplanation": "Set WMR as the active OpenXR runtime in Windows Settings → Mixed Reality. Native OpenXR games bypass the WMR-SteamVR bridge, reducing compositor overhead by 2-4ms. For SteamVR-exclusive titles, the bridge is unavoidable.",
+      "applicableConnections": ["odyssey-plus-hdmi-usb"]
+    },
+    {
+      "category": "comfort",
+      "tip": "Adjust IPD precisely — the Odyssey+ has a wide IPD adjustment range",
+      "simpleExplanation": "Take time to get your IPD (eye distance) setting exactly right. The Odyssey+ has good physical IPD adjustment that makes a big difference in comfort.",
+      "advancedExplanation": "The Samsung Odyssey+ supports 60-72mm physical IPD adjustment — one of the widest ranges of any WMR headset. Set IPD using the physical dial to match your actual inter-pupillary distance. Correct IPD reduces eye strain in long sessions and maximizes perceived sharpness through the optics."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}

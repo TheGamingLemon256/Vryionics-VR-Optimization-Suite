@@ -1,0 +1,111 @@
+{
+  "id": "meta-quest-pro",
+  "brand": "Meta",
+  "model": "Quest Pro",
+  "type": "standalone-hybrid",
+  "releaseYear": 2022,
+
+  "display": {
+    "resolutionPerEye": [1800, 1920],
+    "refreshRates": [72, 80, 90],
+    "panelType": "LCD",
+    "fov": 106
+  },
+
+  "connections": [
+    {
+      "id": "questpro-usb-link",
+      "name": "Meta Quest Link (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port"],
+      "latencyProfile": { "typical": 42, "best": 30, "worst": 65 }
+    },
+    {
+      "id": "questpro-air-link",
+      "name": "Meta Air Link",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Air Link",
+      "requirements": ["Wi-Fi 6E router recommended", "PC connected via Ethernet"],
+      "latencyProfile": { "typical": 48, "best": 33, "worst": 75 }
+    },
+    {
+      "id": "questpro-virtual-desktop",
+      "name": "Virtual Desktop",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Virtual Desktop",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)"],
+      "latencyProfile": { "typical": 43, "best": 28, "worst": 68 }
+    },
+    {
+      "id": "questpro-alvr",
+      "name": "ALVR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "ALVR",
+      "requirements": ["Wi-Fi 5 or better (5GHz)"],
+      "latencyProfile": { "typical": 50, "best": 35, "worst": 80 }
+    },
+    {
+      "id": "questpro-steam-link",
+      "name": "Steam Link VR",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "Steam Link",
+      "requirements": ["Steam Link app on headset (free on Horizon Store)", "Wi-Fi 5 or better (5GHz)", "PC connected via Ethernet recommended"],
+      "latencyProfile": { "typical": 52, "best": 36, "worst": 82 }
+    }
+  ],
+
+  "runtimes": ["oculus", "openxr-oculus", "steamvr", "openxr-steamvr", "vdxr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Meta Quest Touch Pro",
+    "eyeTracking": true,
+    "faceTracking": true,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1070 / RX 5700",
+    "recommendedGPU": "RTX 3070 / RX 6800 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 8,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "questpro-face-tracking-cpu",
+      "title": "Face/eye tracking increases CPU overhead",
+      "description": "The Quest Pro's face and eye tracking features send additional data through the Link connection, slightly increasing CPU overhead on the PC side.",
+      "severity": "info",
+      "workaround": "If CPU-bound, disable face/eye tracking in Oculus settings to free up resources. Only matters for CPU-limited setups."
+    },
+    {
+      "id": "questpro-pancake-light-bleed",
+      "title": "Open-design peripheral light leak",
+      "description": "The Quest Pro's open design lets in ambient light, which can interfere with tracking in bright environments.",
+      "severity": "info",
+      "workaround": "Use the included light blockers or play in a dimmer room for best tracking accuracy."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Use eye-tracked foveated rendering when available",
+      "simpleExplanation": "Games that support it can use your Quest Pro's eye tracking to focus rendering power where you're actually looking, giving you better performance.",
+      "advancedExplanation": "Enable Dynamic Foveated Rendering in supported OpenXR titles. The Quest Pro's eye tracking allows the runtime to reduce peripheral render resolution by up to 50%, freeing GPU resources. Set foveation level to High in Oculus Debug Tool for maximum performance gain."
+    },
+    {
+      "category": "visual-quality",
+      "tip": "Local dimming improves dark scenes in Link mode",
+      "simpleExplanation": "The Quest Pro has special backlight zones that make dark areas in VR look much deeper and richer.",
+      "advancedExplanation": "Enable local dimming in Meta Quest settings for improved contrast ratio in Link mode. The Quest Pro's 500+ dimming zones provide OLED-like black levels. Note: may introduce slight blooming around bright objects on dark backgrounds."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "asw"
+  }
+}

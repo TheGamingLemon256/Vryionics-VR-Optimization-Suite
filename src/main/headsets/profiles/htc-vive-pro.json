@@ -1,0 +1,93 @@
+{
+  "id": "htc-vive-pro",
+  "brand": "HTC",
+  "model": "Vive Pro",
+  "type": "tethered",
+  "releaseYear": 2018,
+
+  "display": {
+    "resolutionPerEye": [1440, 1600],
+    "refreshRates": [90],
+    "panelType": "OLED",
+    "fov": 110
+  },
+
+  "connections": [
+    {
+      "id": "vivepro-dp",
+      "name": "DisplayPort 1.2 via Link Box",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.2", "USB 3.0 Type-A", "HTC Link Box", "AC power for Link Box"],
+      "latencyProfile": { "typical": 11, "best": 8, "worst": 14 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "lighthouse",
+    "controllers": "HTC Vive Wand (2018)",
+    "eyeTracking": false,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "GTX 1060 / RX 480",
+    "recommendedGPU": "GTX 1080 / RX 5700 XT",
+    "minCPU": "Intel i5-4590 / Ryzen 5 1500X",
+    "minRAM": 4,
+    "ports": ["DisplayPort 1.2", "USB 3.0 Type-A"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "vivepro-linkbox-failure",
+      "title": "Link Box can fail and cause intermittent disconnects",
+      "description": "The HTC Link Box that converts the headset tether to DisplayPort and USB is a known failure point. It can cause random disconnects, audio dropouts, and display issues.",
+      "affectsConnectionTypes": ["vivepro-dp"],
+      "severity": "warning",
+      "workaround": "Ensure Link Box firmware is up to date via SteamVR. Replace the Link Box if disconnects persist — third-party Link Box alternatives are available."
+    },
+    {
+      "id": "vivepro-audio-hiss",
+      "title": "Built-in headphones have audible background hiss",
+      "description": "The Vive Pro's integrated headphones exhibit a persistent high-frequency hiss, especially noticeable in quiet in-game environments.",
+      "severity": "info",
+      "workaround": "Use a 3.5mm headphone adapter to connect external headphones. Alternatively, use SteamVR audio settings to route audio to a different output device."
+    },
+    {
+      "id": "vivepro-lighthouse-sync",
+      "title": "Lighthouse base stations require line-of-sight sync",
+      "description": "SteamVR 1.0 base stations use optical sync and must have line of sight to each other. Physical obstruction between base stations causes tracking failures.",
+      "severity": "warning",
+      "workaround": "Mount base stations diagonally in the room at 2m+ height. Ensure no furniture blocks the optical sync beam. Upgrade to SteamVR 2.0 base stations for radio-sync (no line of sight required)."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "visual-quality",
+      "tip": "Enable supersampling for sharper visuals at 90Hz",
+      "simpleExplanation": "Turning up the picture quality in SteamVR makes the image noticeably clearer on the Vive Pro.",
+      "advancedExplanation": "The Vive Pro's 1440x1600 per eye benefits from 1.3-1.5x supersampling in SteamVR to reduce aliasing visible through the Fresnel lenses. Set per-application resolution in SteamVR settings. GTX 1080 Ti or better handles 150% SS at 90Hz comfortably."
+    },
+    {
+      "category": "performance",
+      "tip": "Use SteamVR motion smoothing for demanding games",
+      "simpleExplanation": "Turn on SteamVR's frame smoothing feature so the game stays fluid even when your GPU is under heavy load.",
+      "advancedExplanation": "SteamVR motion smoothing synthesizes frames when GPU rendering misses the 90Hz deadline, inserting a motion-predicted frame. Enable per-game in SteamVR Video settings. Most effective when the GPU hits 45fps+ consistently — below that, judder appears."
+    },
+    {
+      "category": "latency",
+      "tip": "Run SteamVR in Direct Display Mode",
+      "simpleExplanation": "Direct mode bypasses Windows desktop rendering, reducing the delay between your head movements and what you see.",
+      "advancedExplanation": "SteamVR Direct Display Mode bypasses the Windows DWM compositor. The Vive Pro should not appear as a monitor in Windows Display Settings. Verify by checking SteamVR → Settings → Developer → Direct Display Mode. Eliminates 1-2 frames of compositor latency."
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.3,
+    "reprojection": "motion-smoothing"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "id": "pimax-crystal-super",
+  "brand": "Pimax",
+  "model": "Crystal Super",
+  "type": "tethered",
+  "releaseYear": 2025,
+
+  "display": {
+    "resolutionPerEye": [3840, 3840],
+    "refreshRates": [72, 90, 120],
+    "panelType": "QLED",
+    "fov": 120
+  },
+
+  "connections": [
+    {
+      "id": "crystal-super-dp",
+      "name": "DisplayPort 1.4 (DSC)",
+      "archetype": "tethered-dp",
+      "requirements": ["DisplayPort 1.4 with DSC 1.2a", "USB-C port for audio/accessories", "Pimax Client software"],
+      "latencyProfile": { "typical": 18, "best": 14, "worst": 28 }
+    }
+  ],
+
+  "runtimes": ["steamvr", "openxr-pimax", "openxr-steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "Pimax Sword (optional Lighthouse faceplate for Index knuckles)",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 4080 / RX 7900 XTX",
+    "recommendedGPU": "RTX 4090 / RTX 5090",
+    "minCPU": "Intel i9-13900K / Ryzen 9 7950X3D",
+    "minRAM": 32,
+    "ports": ["DisplayPort 1.4 (DSC 1.2a)", "USB-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "crystal-super-extreme-resolution",
+      "title": "3840×3840 per eye is the highest resolution in consumer VR — GPU-limited by design",
+      "description": "Combined ≈29 megapixels per frame. Even an RTX 5090 cannot brute-force 90 FPS natively in most VR titles. Foveated rendering is not optional.",
+      "severity": "warning",
+      "workaround": "Always run Dynamic Foveated Rendering (requires eye tracking calibration). Combine with DLSS/FSR upscaling in titles that support it."
+    },
+    {
+      "id": "crystal-super-interchangeable-optics",
+      "title": "Aspheric vs Pancake optics — visible difference in clarity",
+      "description": "The Crystal Super ships with interchangeable optics modules. Aspheric lenses give slightly better peak clarity; pancake lenses have wider sweet spot. Users report different optical experiences depending on which module is installed.",
+      "severity": "info",
+      "workaround": "Try both modules if available. Pancake is the modern default and handles off-axis viewing better. Aspheric is preferred for flight sims where central clarity is critical."
+    },
+    {
+      "id": "crystal-super-lighthouse-faceplate",
+      "title": "Optional Lighthouse faceplate swaps inside-out for Lighthouse tracking",
+      "description": "Standard Crystal Super uses inside-out cameras. Pimax sells an optional Lighthouse faceplate ($200-300) that enables base-station tracking for use with Index knuckles and Tundra trackers.",
+      "severity": "info",
+      "workaround": "If you already own Lighthouse base stations + Index controllers, the faceplate upgrade is worthwhile. Inside-out is adequate for casual play."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "performance",
+      "tip": "Dynamic Foveated Rendering is mandatory — calibrate eye tracking first",
+      "simpleExplanation": "At this resolution, DFR is the only way to hit 90+ FPS on any GPU. Run the eye tracking calibration in Pimax Client before your first play session.",
+      "advancedExplanation": "Pimax Client → Display → Foveated Rendering → Dynamic (strong). DFR reduces effective shading by 50-60% in periphery. Without it, expect <40 FPS in any GPU-bound title even on an RTX 4090.",
+      "applicableConnections": ["crystal-super-dp"]
+    },
+    {
+      "category": "performance",
+      "tip": "Lower SteamVR render resolution to 60-70% — native res is already 8K combined",
+      "simpleExplanation": "SteamVR's default supersampling is catastrophic on this panel. Manually set render resolution to 60-70% for a massive GPU reclaim with minimal perceptual cost.",
+      "advancedExplanation": "SteamVR → Video → Per-app render resolution → 60-70%. At 70% you're still rendering ~2688×2688 per eye, which exceeds any other consumer HMD's native resolution.",
+      "applicableConnections": ["crystal-super-dp"]
+    },
+    {
+      "category": "display",
+      "tip": "Use Pimax's native OpenXR runtime instead of SteamVR where possible",
+      "simpleExplanation": "Pimax's OpenXR runtime is optimized for this panel and supports foveated rendering natively. Less overhead than routing through SteamVR.",
+      "advancedExplanation": "Windows OpenXR selector → Pimax. Verify via Pimax Client that native OpenXR is active. MSFS, DCS, iRacing, and most UE5 titles benefit.",
+      "applicableConnections": ["crystal-super-dp"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 0.7,
+    "reprojection": "motion-smoothing"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "id": "htc-vive-focus-vision",
+  "brand": "HTC",
+  "model": "Vive Focus Vision",
+  "type": "standalone-hybrid",
+  "releaseYear": 2024,
+
+  "display": {
+    "resolutionPerEye": [2448, 2448],
+    "refreshRates": [60, 90],
+    "panelType": "LCD",
+    "fov": 116
+  },
+
+  "connections": [
+    {
+      "id": "focus-vision-wifi",
+      "name": "Vive Streaming (Wi-Fi)",
+      "archetype": "wifi-wireless",
+      "streamingSoftware": "VIVE Streaming",
+      "requirements": ["Wi-Fi 6 router (5GHz minimum)", "PC connected via Ethernet", "VIVE Hub PC software"],
+      "latencyProfile": { "typical": 45, "best": 30, "worst": 75 }
+    },
+    {
+      "id": "focus-vision-usb",
+      "name": "Vive Streaming (USB)",
+      "archetype": "usb-encoded",
+      "requirements": ["USB 3.0 Type-C cable", "USB 3.0 port on PC", "VIVE Hub PC software"],
+      "latencyProfile": { "typical": 36, "best": 24, "worst": 55 }
+    }
+  ],
+
+  "runtimes": ["openxr-steamvr", "steamvr"],
+
+  "tracking": {
+    "type": "inside-out",
+    "controllers": "HTC Vive Focus Vision Controllers",
+    "eyeTracking": true,
+    "faceTracking": false,
+    "bodyTracking": false
+  },
+
+  "requirements": {
+    "minGPU": "RTX 2070 / RX 6700 XT",
+    "recommendedGPU": "RTX 3080 / RX 6900 XT",
+    "minCPU": "Intel i5-10400 / Ryzen 5 3600",
+    "minRAM": 16,
+    "ports": ["USB 3.0 Type-C"]
+  },
+
+  "knownIssues": [
+    {
+      "id": "focus-vision-gpu-demand",
+      "title": "2448x2448 per eye requires a powerful GPU for PC streaming",
+      "description": "The Focus Vision's very high resolution places heavy encoding and rendering demands on the PC GPU. Mid-range GPUs may struggle to maintain 90Hz without dropping quality.",
+      "severity": "warning",
+      "workaround": "Use RTX 3080 or better for 90Hz streaming at full resolution. Drop VIVE Hub streaming quality to Medium if frame drops occur on lower-end GPUs."
+    },
+    {
+      "id": "focus-vision-wifi6-required",
+      "title": "Wi-Fi 6 strongly recommended for wireless streaming at this resolution",
+      "description": "Streaming 2448x2448 per eye wirelessly at acceptable quality requires significantly more bandwidth than lower-resolution headsets. Wi-Fi 5 may produce visible artifacts.",
+      "affectsConnectionTypes": ["focus-vision-wifi"],
+      "severity": "warning",
+      "workaround": "Use a Wi-Fi 6 router with the headset as the only connected device on that SSID. Wi-Fi 6E on 6GHz is ideal for maximum bandwidth and minimal interference."
+    },
+    {
+      "id": "focus-vision-enterprise-features",
+      "title": "Some features require HTC enterprise licensing",
+      "description": "Certain Focus Vision features such as advanced MDM control and enterprise eye tracking APIs require HTC VIVE Enterprise licensing beyond the base hardware cost.",
+      "severity": "info",
+      "workaround": "Consumer PC streaming features do not require enterprise licensing. Contact HTC VIVE Enterprise for feature breakdown."
+    }
+  ],
+
+  "optimizationTips": [
+    {
+      "category": "visual-quality",
+      "tip": "The Focus Vision's high resolution shines in productivity and sim titles",
+      "simpleExplanation": "Text, gauges, and fine detail are exceptionally crisp on this headset — great for flight sims and VR productivity.",
+      "advancedExplanation": "At 2448x2448 per eye, the Focus Vision approaches retinal resolution for typical IPDs. SteamVR SS at 100% is sufficient — further supersampling provides no visible benefit and wastes GPU resources. Best used at native resolution in DCS, MSFS, or VR desktop applications."
+    },
+    {
+      "category": "performance",
+      "tip": "Use eye-tracked foveated rendering in supported apps",
+      "simpleExplanation": "Turn on eye tracking foveated rendering in the VIVE Hub to help your GPU focus detail only where you're looking.",
+      "advancedExplanation": "The Focus Vision's built-in eye tracking enables foveated rendering via the VIVE Eye Tracking SDK. In supported applications, the central gaze region renders at full resolution while the periphery renders at 50-70%, potentially saving 25-35% GPU render time at this high base resolution.",
+      "applicableConnections": ["focus-vision-wifi", "focus-vision-usb"]
+    },
+    {
+      "category": "latency",
+      "tip": "USB streaming is preferred for latency-sensitive applications",
+      "simpleExplanation": "Plug in a cable instead of using Wi-Fi when you need the lowest possible delay.",
+      "advancedExplanation": "USB 3.0 streaming via VIVE Hub removes all Wi-Fi variability from the latency chain. At 2448x2448, Wi-Fi has more headroom for worst-case latency spikes under load. For precision work in VR (surgery simulation, design tools), USB streaming is the preferred mode.",
+      "applicableConnections": ["focus-vision-usb"]
+    }
+  ],
+
+  "steamvrSettings": {
+    "renderResolution": 1.0,
+    "reprojection": "motion-smoothing"
+  }
+}
