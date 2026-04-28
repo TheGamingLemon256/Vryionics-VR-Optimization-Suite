@@ -7,7 +7,7 @@ This document is a complete, unsanitized inventory of every piece of data Vryion
 - **No telemetry.** No analytics SDKs, no usage pings, no error reporting unless you explicitly click "Send Bug Report".
 - **No automatic data transmission of scan content.** Your scan results live entirely on your local machine.
 - **Three legitimate outbound connections**: GitHub (release checks), vendor driver pages (NVIDIA/AMD/Intel), and Cloudflare's public speed-test endpoint (during network diagnostics).
-- **One opt-in connection**: Bug report submission to a Discord webhook — only when you click "Send".
+- **One opt-in connection**: Bug report submission opens a pre-filled GitHub Issue in your browser — only when you click "Open Issue on GitHub". You then submit (or don't) using your own GitHub account. **No webhook URL is shipped in the installer**; bug reports go through GitHub's standard issue-tracking infrastructure.
 
 ## What VROS reads from your system
 
@@ -94,7 +94,7 @@ The Storage Debloat module sizes (and optionally cleans) only the specific cache
 ### Always-on (background)
 | Endpoint | Frequency | Purpose | Data sent |
 |---|---|---|---|
-| `api.github.com/repos/TheGamingLemon256/Vryionics-VR-Optimization-Suite/releases/latest` | Every 2 minutes | Auto-updater | None — GET only. Headers contain User-Agent + GitHub PAT (read-only, scoped to this repo) |
+| `api.github.com/repos/Vryionics/Vryionics-VR-Optimization-Suite/releases/latest` | Every 2 minutes | Auto-updater | None — GET only. Headers contain User-Agent + GitHub PAT (read-only, scoped to this repo) |
 | `gfwsl.geforce.com` / `nvidia.com/Download/processDriver.aspx` | Every 24 hours | Latest NVIDIA driver lookup | None — GET only |
 | `amd.com/en/support/download/drivers.html` | Every 24 hours | Latest AMD Adrenalin version scrape | None — GET only |
 | `intel.com/content/www/us/en/download/...` | Every 24 hours | Latest Intel driver pages | None — GET only |
@@ -103,7 +103,7 @@ The Storage Debloat module sizes (and optionally cleans) only the specific cache
 | Endpoint | When | Data sent |
 |---|---|---|
 | `speed.cloudflare.com` | When you run "Network speed test" in scan | Standard speed-test traffic only |
-| Discord webhook | When you click "Send Bug Report" | The bundle you previewed in the report-builder UI (your message + opted-in attachments: scan data, fix history, system info, app log) |
+| `github.com/.../issues/new?title=...&body=...` | When you click "Open Issue on GitHub" in the bug-report dialog | The bundle you previewed (your message + opted-in attachments) is encoded into the GitHub Issues URL query string. You're then on github.com under your own account; submission and content control happen entirely through GitHub from that point. |
 | Vendor download URLs (NVIDIA / AMD / Intel) | When you click "Update" or "Open vendor page" on a Drivers row | None — opens browser or downloads installer |
 
 ### Never
@@ -112,7 +112,7 @@ The Storage Debloat module sizes (and optionally cleans) only the specific cache
 - No connections to ad networks, analytics platforms, or data brokers
 - No automatic uploading of scan content, fix history, or session recordings
 
-## What's in a bug report (when you click Send)
+## What's in a bug report (when you click Open Issue on GitHub)
 
 The bug-report builder UI shows you the exact attachments included before submission. Each attachment is a separate checkbox:
 
@@ -123,7 +123,11 @@ The bug-report builder UI shows you the exact attachments included before submis
 | **Applied Fix History** | ☐ off | List of fix IDs applied + timestamps |
 | **Recent App Log** | ☑ on | Last 500 lines of the app's daily log file |
 
-The bundle is POSTed to the Discord webhook URL stored in `resources/webhook.txt`. We don't store, mine, or share these reports outside of triaging the specific issue you raised.
+The bundle is encoded into a GitHub Issue URL and opened in your default browser. A copy is also saved locally to `%APPDATA%\vryionics-vr-optimization-suite\bug-reports\` so you have a record of what was sent — and so you can drag-and-drop the file into the issue if it was longer than GitHub's URL length limit. **You are the one who actually clicks "Submit" on the GitHub issue page.** Until you do, nothing has been transmitted anywhere.
+
+### Architecture history (transparency)
+
+Bug reports were originally POSTed to a Discord webhook bundled inside the installer. That approach was reported as a security issue on 2026-04-28 (responsible disclosure — thank you, Bill) because anyone who unpacked the installer could spam the webhook. Webhooks shipped in client binaries are inherently abuseable; we replaced the architecture entirely in v0.2.8. The v0.2.4–v0.2.7 webhook URL has been deleted and is non-functional.
 
 ## Verifying any of this
 
