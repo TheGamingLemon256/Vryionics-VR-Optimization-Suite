@@ -33,7 +33,7 @@ These are reversible, app-scoped, or use Win32 APIs Task Manager already exposes
 - **VRChat `config.json` edits.** Avatar physics caps (the `dynamic_bone_max_*` keys, which still control PhysBones limits in modern VRChat), avatar culling distance, cache size. Plain JSON edits to a user-writable file under `LocalLow`. Per-key undo via the existing fix-history records.
 - **VRChat MSAA fix.** Same file as above.
 - **VRChat cache cleanup.** File deletion under the user's VRChat cache directory.
-- **Steam launch option for X3D users.** Writes a single launch-option string into Steam's per-user `localconfig.vdf`. Reversible by clearing the field. The affinity mask is computed from the detected CPU rather than hardcoded; see the Steam launch option section for details.
+- **Steam launch option for X3D users (VRChat only).** Writes a single launch-option string into Steam's per-user `localconfig.vdf` for App ID 438100 (VRChat) only; no other apps' launch options are read or modified. Reversible by restoring the prior value. The affinity mask is computed from the detected CPU rather than hardcoded; see the Steam launch option section for details.
 - **GPU driver installation (where supported).** Spawns the vendor's official installer (NVIDIA, AMD, Intel) which self-elevates. VOS itself does not need admin for this.
 - **Live Optimizer.** Process priority management during VR sessions. Off by default; users opt in through a disclosure dialog. Full spec below.
 
@@ -67,6 +67,8 @@ The UI affordance for this category is a read-only callout in the scan results: 
 ### Behavior
 
 Off by default. When the user enables it, the optimizer polls the running process list every 2 seconds for known VR processes. When one is detected, the optimizer raises that process's priority and lowers priority on a strict allowlist of background apps. When all detected VR processes have exited, the optimizer restores every affected process to its original priority.
+
+`ps-list` polling cost: each poll shells out to `tasklist.exe`, which has a measured cold-start of roughly 80 to 250 ms on a typical machine. At a 2-second polling interval, the worst-case overhead is around 12 percent of one core for the snapshot work itself, idling otherwise. This is materially different from the v0.2.x pattern that produced bug #5: the old scanner spawned `pwsh.exe` (which is much heavier than `tasklist.exe`) and then ran a battery of WMI queries inside it. The new path measures a fraction of that and is also short-circuited when no VR process has been detected for several consecutive polls.
 
 Priority changes use Node's standard library: `os.setPriority(pid, priority)` with constants from `os.constants.priority`. No native addon, no FFI, no PowerShell. On Windows, `os.setPriority` calls `SetPriorityClass`, and a standard user can normally set HIGH on a process they own without any special privilege.
 
@@ -123,7 +125,7 @@ Hardcoded in source, not user-editable, applied as a filter when the allowlist i
 
 The never-touch list applies as a hard filter at every priority-change call site, including the raise path for the trigger process. Several VR runtime processes appear on both the trigger list and the never-touch list (`OVRServer_x64.exe`, `vrserver.exe`, `vrcompositor.exe`); when one of these is the trigger, VOS still detects the VR session and lowers the allowlisted background apps, but it does not raise priority on the never-touch trigger itself. Trigger detection and priority management are independent operations; the never-touch list governs only the priority side.
 
-If the user edits the allowlist file to add a name that matches the never-touch list, the entry is silently filtered on load and a warning is written to the activity log. The file is not modified on disk; the entry is just ignored at runtime.
+If the user edits the allowlist file to add a name that matches the never-touch list, the entry is silently filtered on load and a warning is written to the activity log. The file is not modified on disk; the entry is just ignored at runtime. The dedup happens in code, not in the JSON, so user edits cannot expose a never-touch process by editing it out of the runtime list.
 
 ### Concurrency cap
 
@@ -133,9 +135,14 @@ The optimizer will not lower priority on more than 25 processes simultaneously. 
 
 The optimizer writes `live-optimizer-state.json` to the app's user-data directory every time it changes a process's priority. The file records `{ pid, imageName, originalPriority, currentPriority }` for each affected process. The file is cleared when the optimizer restores everything on a clean VR-session exit.
 
-If VOS launches and finds a non-empty state file, it reads each entry and decides whether to restore. PIDs on Windows can be reused, so PID alone is not sufficient. VOS verifies that the live process at that PID has the recorded image name (via `ps-list`'s `name` field) AND that its current priority matches the `currentPriority` recorded in the state file. If both checks pass, the original priority is restored. If either fails, the entry is discarded as stale.
+If VOS launches and finds a non-empty state file, it reads each entry and decides whether to restore. PIDs on Windows can be reused, so PID alone is not sufficient. VOS verifies that the live process at that PID has the recorded image name (via `ps-list`'s `name` field) AND that its current priority class is one of the lowered classes VOS sets (`BELOW_NORMAL` or `IDLE`). If both checks pass, the lowered priority is restored to the original. If either fails, the entry is discarded as stale.
 
-This guards against the most common failure mode (Discord crashed, an unrelated process now has Discord's old PID) without needing a process-creation-time field, which Node's `ps-list` does not expose and which would otherwise force a PowerShell or native-addon dependency. The "current priority matches" check is the core safeguard: an unrelated process at a reused PID will almost certainly not be running at the exact priority class VOS set, so the entry will be discarded.
+The asymmetry is deliberate. VOS only attempts to restore *lowered* processes on a crash recovery, never raised ones. The trigger process's raise to HIGH or ABOVE_NORMAL is not restored on a recovery cycle, because:
+
+- The trigger process is gone after a crash (the VR session ended), so there's nothing to restore in the common case.
+- If a reused PID happens to land on a foreground app the user has manually promoted, restoring it to NORMAL would silently demote the user's intentional change.
+
+Lowered restoration is safe because no one normally runs background apps at `BELOW_NORMAL` or `IDLE` by accident. The image-name + lowered-priority check is sufficient to catch the realistic failure mode (Discord crashed, reused PID is some unrelated process running at NORMAL) while avoiding the false-positive surface of trying to restore raised processes too.
 
 ### Pre-enable disclosure
 
@@ -163,21 +170,23 @@ The plan to use the `wmi-client` npm package was wrong. That package is a wrappe
 
 Instead, hardware identification moves to direct registry reads via `reg query`, called through `child_process.execFile` with strictly parameterized arguments. The data lives in stable, version-independent locations:
 
-- CPU model, identifier, vendor, base clock: `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0` (values `ProcessorNameString`, `Identifier`, `VendorIdentifier`, `~MHz`).
+- CPU model, identifier, vendor, boot-time MHz: `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0` (values `ProcessorNameString`, `Identifier`, `VendorIdentifier`, `~MHz`). Note that `~MHz` is the clock at the moment the value was first read (typically boot), not the CPU's base clock; treat it as a rough indicator only. The CPU database keys on model name (`ProcessorNameString`), not on clock, so this isn't a problem in practice.
 - Per-logical-CPU enumeration: subkeys `\CentralProcessor\0`, `\1`, `\2`, etc.
 - BIOS info: `HKLM\HARDWARE\DESCRIPTION\System\BIOS`.
 - PCI device enumeration (GPU, network, storage controllers): `HKLM\SYSTEM\CurrentControlSet\Enum\PCI\*`.
 - USB device enumeration (headsets): `HKLM\SYSTEM\CurrentControlSet\Enum\USB\*`.
 - OS build info: `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
-- Display adapter VRAM: `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\NNNN` (the GUID is the standard Display class; `NNNN` is the per-adapter index).
+- Display adapter VRAM: `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\NNNN` (the GUID is the standard Display class; `NNNN` is the per-adapter index). Read `HardwareInformation.qwMemorySize` as `REG_BINARY` little-endian QWORD and parse it explicitly. Do NOT use `MemorySize` (legacy DWORD, caps at 4 GB and silently underreports any modern GPU). If the QWORD value is missing on a given adapter, fall back to a one-shot DXGI call (a tiny helper that opens DXGI factory, enumerates adapters, reads `DXGI_ADAPTER_DESC.DedicatedVideoMemory`); this is the same path Task Manager uses and works on every supported Windows version.
 
 A small wrapper module (`src/main/utils/registry-read.ts`) handles `reg query` calls with parameterized arguments and parses the output into structured data. The module is read-only; nothing in the new posture writes to the registry. Recursive enumeration under `Enum\PCI` is bounded to a single level deep at a time to avoid `reg query` performance issues on machines with many devices.
 
+Note on registry view: VOS is a 64-bit Electron process. The HARDWARE and SYSTEM hives are not WoW64-redirected, so `/reg:64` is not strictly required for the paths above. It IS required (and pinned by the wrapper module) for any future read under `HKLM\SOFTWARE`, which IS redirected. Adding `--reg-view=64` as the wrapper's default keeps later additions safe by construction.
+
 ### Eliminate PowerShell
 
-With WMI replaced by registry reads and the aggressive fixes removed, PowerShell has no remaining role in the codebase. Every `pwsh.exe` invocation is removed. Every WMI call is replaced with a registry read or a direct Win32 stdlib call. Every system-mutation script is deleted along with the fixes that called them.
+With WMI replaced by registry reads and the aggressive fixes removed, PowerShell has no remaining role in the codebase. Every `pwsh.exe` invocation is removed. Every WMI call is replaced with a registry read or a Node stdlib call. Every system-mutation script is deleted along with the fixes that called them.
 
-The interim v0.2.9 release does not need to ship a partial PowerShell removal; the WMI-to-registry rewrite is the bulk of the work, and once that lands the remaining PowerShell calls all go with it.
+This all lands in v0.2.9. There is no interim "partial removal" release; the registry-read wrapper, the fix deletions, and the PowerShell purge all ship together because they enable each other.
 
 ### Replace `execSync` template literals
 
@@ -204,7 +213,7 @@ Until either is available, all releases ship unsigned with prominent verificatio
 
 ## Steam launch option for X3D
 
-The previous launch option was hardcoded as `cmd /c start /affinity FFFF /high "" %command%`. The mask `FFFF` pins to logical processors 0 through 15. This is wrong for any X3D part with fewer than 16 cores (which is most of them) and wrong for dual-CCD X3D parts where the V-cache CCD is not always processors 0 through 7.
+The previous launch option was hardcoded as `cmd /c start /affinity FFFF /high "" %command%`. The mask `FFFF` pins to logical processors 0 through 15. This is wrong for most non-flagship X3D parts (anything with fewer than 16 logical processors), and wrong for dual-CCD X3D parts where the V-cache CCD is not always processors 0 through 7. (The 9950X3D is 16C/32T and would technically benefit from `FFFF` for raw scheduling, but even there the V-cache CCD is the smaller subset and the affinity mask should reflect that.)
 
 The fix uses VOS's existing CPU database, which already encodes per-model topology (V-cache CCD location, total core count, hybrid CPU layout). The launch-option writer reads the detected CPU model, looks up its topology, computes the appropriate hex affinity mask, and writes the corresponding string. For example, a 7800X3D writes `/affinity FF` (cores 0 through 7); a 7950X3D writes the mask matching its V-cache CCD; a non-X3D AMD CPU does not get the affinity portion at all (only the `/high` priority).
 
