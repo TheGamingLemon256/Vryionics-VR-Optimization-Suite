@@ -68,9 +68,9 @@ The UI affordance for this category is a read-only callout in the scan results: 
 
 Off by default. When the user enables it, the optimizer polls the running process list every 2 seconds for known VR processes. When one is detected, the optimizer raises that process's priority and lowers priority on a strict allowlist of background apps. When all detected VR processes have exited, the optimizer restores every affected process to its original priority.
 
-Priority changes use Node's standard library: `os.setPriority(pid, priority)` with constants from `os.constants.priority`. No native addon, no FFI, no PowerShell.
+Priority changes use Node's standard library: `os.setPriority(pid, priority)` with constants from `os.constants.priority`. No native addon, no FFI, no PowerShell. On Windows, `os.setPriority` calls `SetPriorityClass`, and a standard user can normally set HIGH on a process they own without any special privilege.
 
-The raise-to-HIGH path can fail on systems where the user's `SeIncreaseBasePriorityPrivilege` has been revoked by Group Policy. When the HIGH call fails with a permission error, the optimizer falls back to `PRIORITY_ABOVE_NORMAL` and logs a warning to the activity log. This is never surfaced as an error in the UI; the lowering of background apps still happens normally.
+In practice the raise-to-HIGH call can still fail on locked-down machines: some endpoint-protection products hook `SetPriorityClass`, some AppLocker or WDAC profiles restrict priority changes for specific binaries, and some managed-device configurations remove the privilege entirely. When the HIGH call fails with any error, the optimizer falls back to `PRIORITY_ABOVE_NORMAL` and writes a note to the activity log. The failure is never surfaced as an error in the UI. Lowering of background apps still happens normally.
 
 ### Trigger list
 
@@ -117,21 +117,25 @@ Hardcoded in source, not user-editable, applied as a filter when the allowlist i
 
 - System processes: `System`, `Idle`, `lsass.exe`, `csrss.exe`, `winlogon.exe`, `services.exe`, `svchost.exe`, `dwm.exe`, `wininit.exe`, `smss.exe`.
 - Anti-cheat services: `EasyAntiCheat.exe`, `EasyAntiCheat_EOS.exe`, `BEService.exe`, `BEServiceV2.exe`, `vgc.exe`, `vgtray.exe`, `EasyAntiCheat_Setup.exe`.
-- Headset runtime: `OVRServer_x64.exe`, `OculusClient.exe`, `vrserver.exe`, `vrdashboard.exe`. (`OVRServer_x64.exe` also appears in the trigger list. The never-touch list takes precedence: if Oculus is the trigger, VOS detects it but does not raise its priority. The lowering allowlist still applies to other processes normally.)
+- Headset runtime: `OVRServer_x64.exe`, `OculusClient.exe`, `vrserver.exe`, `vrdashboard.exe`, `vrcompositor.exe`.
 - Anything in `C:\Windows\System32` or `C:\Windows\SysWOW64`.
 - The VOS process itself.
+
+The never-touch list applies as a hard filter at every priority-change call site, including the raise path for the trigger process. Several VR runtime processes appear on both the trigger list and the never-touch list (`OVRServer_x64.exe`, `vrserver.exe`, `vrcompositor.exe`); when one of these is the trigger, VOS still detects the VR session and lowers the allowlisted background apps, but it does not raise priority on the never-touch trigger itself. Trigger detection and priority management are independent operations; the never-touch list governs only the priority side.
 
 If the user edits the allowlist file to add a name that matches the never-touch list, the entry is silently filtered on load and a warning is written to the activity log. The file is not modified on disk; the entry is just ignored at runtime.
 
 ### Concurrency cap
 
-The optimizer will not lower priority on more than 25 processes simultaneously. If the allowlist matches more than 25 currently-running processes, the optimizer takes the top 25 by working-set size (which `ps-list` exposes directly) and leaves the rest alone. This protects against a malformed allowlist file producing runaway behavior.
+The optimizer will not lower priority on more than 25 processes simultaneously. If the allowlist matches more than 25 currently-running processes, the optimizer takes the first 25 by allowlist file order (deterministic, no ranking heuristic, no extra data needed) and leaves the rest alone. This protects against a malformed allowlist file producing runaway behavior. Users with more than 25 entries on their allowlist who hit the cap will see a note in the activity log explaining what was skipped.
 
 ### State persistence and crash recovery
 
-The optimizer writes `live-optimizer-state.json` to the app's user-data directory every time it changes a process's priority. The file records `{ pid, imageName, startTime, originalPriority }` for each affected process. The file is cleared when the optimizer restores everything on a clean VR-session exit.
+The optimizer writes `live-optimizer-state.json` to the app's user-data directory every time it changes a process's priority. The file records `{ pid, imageName, originalPriority, currentPriority }` for each affected process. The file is cleared when the optimizer restores everything on a clean VR-session exit.
 
-If VOS launches and finds a non-empty state file, it reads each entry and decides whether to restore. PIDs on Windows can be reused, so PID alone is not sufficient: VOS verifies the live process at that PID has the same image name and process start time recorded in the state file. If both match, it restores priority. If either fails, the entry is discarded as stale. This prevents the case where Discord crashed, a totally different process is now running at Discord's old PID, and VOS would otherwise alter that process's priority.
+If VOS launches and finds a non-empty state file, it reads each entry and decides whether to restore. PIDs on Windows can be reused, so PID alone is not sufficient. VOS verifies that the live process at that PID has the recorded image name (via `ps-list`'s `name` field) AND that its current priority matches the `currentPriority` recorded in the state file. If both checks pass, the original priority is restored. If either fails, the entry is discarded as stale.
+
+This guards against the most common failure mode (Discord crashed, an unrelated process now has Discord's old PID) without needing a process-creation-time field, which Node's `ps-list` does not expose and which would otherwise force a PowerShell or native-addon dependency. The "current priority matches" check is the core safeguard: an unrelated process at a reused PID will almost certainly not be running at the exact priority class VOS set, so the entry will be discarded.
 
 ### Pre-enable disclosure
 
@@ -157,9 +161,17 @@ Dropping admin removes the bulk of the security audit's critical-severity findin
 
 The plan to use the `wmi-client` npm package was wrong. That package is a wrapper around `wmic.exe`, and `wmic.exe` was deprecated in Windows 10 21H1 and is not present on fresh Windows 11 24H2 / 25H2 installs. It would break on the OS versions VOS most needs to support.
 
-Instead, hardware identification moves to direct registry reads via `reg query`, called through `child_process.execFile` with strictly parameterized arguments. The same data WMI exposes lives in the registry under `HKLM\HARDWARE\DESCRIPTION\System` (CPU info), `HKLM\SYSTEM\CurrentControlSet\Enum\PCI` and `\USB` (devices), and `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion` (OS info). These paths are stable across Windows versions and do not require WMI, DCOM, PowerShell, or `wmic`.
+Instead, hardware identification moves to direct registry reads via `reg query`, called through `child_process.execFile` with strictly parameterized arguments. The data lives in stable, version-independent locations:
 
-A small wrapper module (`src/main/utils/registry-read.ts`) handles `reg query` calls with proper argument arrays and parses the output into structured data. The module is read-only; nothing in the new posture writes to the registry.
+- CPU model, identifier, vendor, base clock: `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0` (values `ProcessorNameString`, `Identifier`, `VendorIdentifier`, `~MHz`).
+- Per-logical-CPU enumeration: subkeys `\CentralProcessor\0`, `\1`, `\2`, etc.
+- BIOS info: `HKLM\HARDWARE\DESCRIPTION\System\BIOS`.
+- PCI device enumeration (GPU, network, storage controllers): `HKLM\SYSTEM\CurrentControlSet\Enum\PCI\*`.
+- USB device enumeration (headsets): `HKLM\SYSTEM\CurrentControlSet\Enum\USB\*`.
+- OS build info: `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
+- Display adapter VRAM: `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\NNNN` (the GUID is the standard Display class; `NNNN` is the per-adapter index).
+
+A small wrapper module (`src/main/utils/registry-read.ts`) handles `reg query` calls with parameterized arguments and parses the output into structured data. The module is read-only; nothing in the new posture writes to the registry. Recursive enumeration under `Enum\PCI` is bounded to a single level deep at a time to avoid `reg query` performance issues on machines with many devices.
 
 ### Eliminate PowerShell
 
@@ -181,7 +193,12 @@ The original audit recommendation to build a signed native DLL was correct for a
 
 ### Code signing
 
-Deferred until the SignPath.io application clears (free for open-source projects, takes a few weeks of review) or until Microsoft Trusted Signing is purchased ($10/month, no hardware token required). Both options work without a USB hardware token. Both integrate with `electron-builder` via configuration.
+Deferred until one of two paths clears:
+
+- **SignPath.io.** Free for qualifying open-source projects. Application takes a few weeks of review. Worth applying for in parallel with the v0.2.9 work.
+- **Microsoft Trusted Signing.** Subscription product (~$10/month) but does require an identity-verification step: a solo individual signing up needs to complete IDV through Microsoft, which involves uploading documentation and waiting for approval. It is not the instant-checkout path the name might suggest. Plan on 1 to 3 weeks from signup to first usable certificate.
+
+Both options work without a USB hardware token (which is the gating constraint that makes EV certs awkward for solo devs since the June 2023 hardware-token requirement). Both integrate with `electron-builder` via configuration.
 
 Until either is available, all releases ship unsigned with prominent verification instructions in the README and the install video. The auto-updater stays disabled across v0.2.9 and v0.3 regardless of when signing arrives.
 
@@ -192,6 +209,13 @@ The previous launch option was hardcoded as `cmd /c start /affinity FFFF /high "
 The fix uses VOS's existing CPU database, which already encodes per-model topology (V-cache CCD location, total core count, hybrid CPU layout). The launch-option writer reads the detected CPU model, looks up its topology, computes the appropriate hex affinity mask, and writes the corresponding string. For example, a 7800X3D writes `/affinity FF` (cores 0 through 7); a 7950X3D writes the mask matching its V-cache CCD; a non-X3D AMD CPU does not get the affinity portion at all (only the `/high` priority).
 
 The existing CPU database needs entries for the affinity mask per model. Adding those is part of the v0.2.9 work.
+
+### Implementation notes
+
+- Steam stores per-user launch options in `<SteamPath>/userdata/<accountid>/config/localconfig.vdf`. The format is Valve's KeyValues VDF, not JSON. The `vdf` npm package (or `simple-vdf`) parses and serializes it correctly; do not hand-roll a parser.
+- Steam rewrites `localconfig.vdf` when it exits. If VOS writes the file while Steam is running, the change will be clobbered. The fix's preview step detects a running `steam.exe` and refuses to apply with a clear message: "Close Steam before applying this fix." The Apply path re-checks immediately before writing.
+- Undo restores the previous launch-option string verbatim, including the empty-string case if the field was unset before. The fix-history record stores the prior value.
+- VOS only modifies the `LaunchOptions` field for App ID 438100 (VRChat). Other apps' launch options are not read or modified.
 
 ## Bug fix backlog (v0.2.9)
 
@@ -205,7 +229,7 @@ Concrete reported bugs. Each gets fixed in v0.2.9 alongside the posture changes.
 
 4. "Upgrade your storage controller driver" rule. Deleted entirely per the triage section.
 
-5. Idle 100% CPU spike. Symptom is the live optimizer's PowerShell scanner cold-starting `pwsh.exe` every cycle. Permanent fix is the WMI-to-registry rewrite (PowerShell goes away). Stopgap if needed: raise polling interval to 5 seconds and skip queries when no VR process is detected.
+5. Idle 100% CPU spike. Symptom: VOS sitting idle pegs a core at 100%. Suspected cause is the live optimizer scanner spawning `pwsh.exe` every poll cycle plus running its WMI queries unconditionally. Confirm root cause before claiming a fix; the WMI-to-registry rewrite plus polling-interval increase plus skip-when-no-VR-detected should land together. If the spike persists after those changes, profile the renderer for runaway React state or any other hot loop before shipping.
 
 6. PowerShell cold-start overhead generally. Aldrich's catch. Fixed by full removal in the same release.
 
@@ -328,7 +352,7 @@ Verbatim text shown in the pre-enable modal. Word-for-word; do not paraphrase.
 >
 > **Crash recovery:**
 >
-> If VOS or your PC crashes during a VR session, priority changes don't survive a process restart on Windows. They're per-process and die with the parent. On the next VOS launch, any process still running with both the recorded image name and start time will be restored. You should never end up with a permanently de-prioritized Discord.
+> If VOS or your PC crashes during a VR session, priority changes do not survive a process restart on Windows. They are per-process and die with the parent. On the next VOS launch, the optimizer reads its state file and restores any process still running at the priority it set, verifying both the process name and the priority class match before changing anything. You should never end up with a permanently de-prioritized Discord.
 >
 > **OBS exception:**
 >
