@@ -7,6 +7,7 @@ import { useSetupStore } from '../../stores/setup-store'
 import { useThemeStore, type AccentColor } from '../../stores/theme-store'
 import { PromoDuoFull } from '../shared/PromoCards'
 import { BugReportModal } from '../support/BugReportModal'
+import { LiveOptimizerSettingsCard } from '../live-optimizer/LiveOptimizerSettingsCard'
 
 const ACCENT_OPTIONS: Array<{ id: AccentColor; label: string; hex: string }> = [
   { id: 'purple', label: 'Purple', hex: '#7c5bf5' },
@@ -168,6 +169,13 @@ export default function SettingsPage(): React.ReactElement {
         description="Export your applied fixes as a portable JSON file to share with friends, or import a friend's profile to apply their tweaks."
       >
         <ProfileExportRow />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Live Optimizer"
+        description="Lowers CPU priority on allowlisted background apps while VR is running, restores everything when VR closes."
+      >
+        <LiveOptimizerSettingsCard />
       </SettingsSection>
 
       {/* Background scheduler */}

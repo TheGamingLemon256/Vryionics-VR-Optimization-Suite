@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useLiveOptimizerStore } from '../../stores/live-optimizer-store'
 import LiveMetricsWidget from './LiveMetricsWidget'
+import { DisclosureModal } from './DisclosureModal'
+import { ActivityLogPanel } from './ActivityLogPanel'
 
 const PHASE_CONFIG = {
   disabled:   { label: 'Disabled',           dot: 'bg-gray-500',   text: 'text-gray-400',   pulse: false },
@@ -21,7 +23,10 @@ function Toggle({ value, onChange, disabled }: { value: boolean; onChange: () =>
 }
 
 export default function LiveOptimizerPanel(): React.ReactElement {
-  const { status, flags, running, init, enable, disable, setAutoEnable } = useLiveOptimizerStore()
+  const { status, flags, running, init, enable, disable, acceptDisclosure, setAutoEnable } =
+    useLiveOptimizerStore()
+
+  const [discloseOpen, setDiscloseOpen] = useState<'pre-enable' | 'read-only' | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => { void init() }, [init])
@@ -31,13 +36,23 @@ export default function LiveOptimizerPanel(): React.ReactElement {
 
   const handleToggle = async (): Promise<void> => {
     if (busy) return
-    setBusy(true)
-    try {
-      if (running || flags.enabled) await disable()
-      else await enable()
-    } finally {
-      setBusy(false)
+    if (running || flags.enabled) {
+      setBusy(true)
+      try { await disable() } finally { setBusy(false) }
+      return
     }
+    if (!flags.disclosureAccepted) {
+      setDiscloseOpen('pre-enable')
+      return
+    }
+    setBusy(true)
+    try { await enable() } finally { setBusy(false) }
+  }
+
+  const handleDisclosureEnable = async (): Promise<void> => {
+    await acceptDisclosure()
+    await enable()
+    setDiscloseOpen(null)
   }
 
   return (
@@ -61,7 +76,7 @@ export default function LiveOptimizerPanel(): React.ReactElement {
           </div>
         </div>
 
-        <Toggle value={flags.enabled} onChange={() => { void handleToggle() }} disabled={busy || !flags.disclosureAccepted} />
+        <Toggle value={flags.enabled} onChange={() => { void handleToggle() }} disabled={busy} />
       </div>
 
       {phase !== 'disabled' && (
@@ -94,12 +109,25 @@ export default function LiveOptimizerPanel(): React.ReactElement {
           />
         </div>
 
-        {!flags.disclosureAccepted && (
-          <p className="text-xs text-gray-500">
-            Live Optimizer can be enabled from the Settings page after reviewing the disclosure.
-          </p>
-        )}
+        <button
+          onClick={() => setDiscloseOpen('read-only')}
+          className="text-xs text-accent-primary hover:underline"
+        >
+          What does this do?
+        </button>
       </div>
+
+      <div>
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Activity log</p>
+        <ActivityLogPanel />
+      </div>
+
+      <DisclosureModal
+        open={discloseOpen !== null}
+        mode={discloseOpen ?? 'read-only'}
+        onCancel={() => setDiscloseOpen(null)}
+        onEnable={handleDisclosureEnable}
+      />
     </div>
   )
 }
