@@ -111,6 +111,37 @@ const nvidiaPascal: GpuDbEntry[] = [
     oneLiner: 'Bare-minimum 2016 VR card. Suitable only for Quest 2 at native, older titles.',
   },
   {
+    modelPatterns: ['gtx 1060 3gb', 'gtx1060 3gb', 'gtx 1060'],
+    vendor: 'nvidia',
+    architecture: 'Pascal',
+    releaseYear: 2016,
+    vramGB: 3,
+    busWidthBits: 192,
+    pcieGen: 3,
+    pcieWidth: 16,
+    encoder: {
+      family: 'NVENC',
+      generation: '6th gen (Pascal)',
+      codecs: { h264: true, hevc: true, av1Encode: false, av1Decode: false },
+      concurrentSessions: 3,
+      note: 'NVENC 6th-gen quality is noticeably below Turing+. Fine for H.264 at higher bitrates; HEVC quality is acceptable but not great for wireless VR.',
+    },
+    upscaling: {
+      fsr: '3.1',
+      note: 'No DLSS (Tensor cores require Turing+). FSR / FSR3 work on any GPU.',
+    },
+    recommendedVrResolutionClass: 'entry',
+    vrTier: 'entry',
+    quirks: [
+      'Distinct GPU from the 6 GB 1060: fewer CUDA cores (1152 vs 1280) and half the VRAM.',
+      '3 GB VRAM is below the modern VR working-set floor. Most 2022+ VR titles will swap textures over PCIe and stutter.',
+      'No AV1 encoding. If wireless streaming, use HEVC at 150+ Mbps.',
+      'DX12 overhead hurts this card in modern VR games. Prefer DX11 / Vulkan titles where possible.',
+      'Doesn\'t support modern features: no DLSS, no RT cores, no hardware-accelerated GPU scheduling for complex scenes.',
+    ],
+    oneLiner: '3 GB Pascal variant. VRAM-starved for 2025 VR; 6 GB 1060 was already minimum.',
+  },
+  {
     modelPatterns: ['gtx 1070 ti', 'gtx1070 ti'],
     vendor: 'nvidia',
     architecture: 'Pascal',
@@ -935,17 +966,41 @@ export const GPU_DATABASE: GpuDbEntry[] = [
  * every entry's modelPatterns. Case-insensitive substring match.
  * Returns null when no pattern matches.
  */
-export function findGpuEntry(gpuName: string): GpuDbEntry | null {
+export function findGpuEntry(gpuName: string, vramMB?: number): GpuDbEntry | null {
   if (!gpuName) return null
   const lower = gpuName.toLowerCase()
-  // Walk entries — first match wins. Order within each array is most-specific
-  // first (Ti / Super variants before base model) to avoid shadowing.
+
+  const matches: GpuDbEntry[] = []
   for (const entry of GPU_DATABASE) {
     for (const pattern of entry.modelPatterns) {
-      if (lower.includes(pattern.toLowerCase())) return entry
+      if (lower.includes(pattern.toLowerCase())) {
+        matches.push(entry)
+        break
+      }
     }
   }
-  return null
+  if (matches.length === 0) return null
+  if (matches.length === 1) return matches[0]
+
+  // Multiple rows share a base pattern (e.g. GTX 1060 3 GB vs 6 GB).
+  // If WMI gave us a VRAM size, pick the row whose vramGB is closest.
+  // WMI's UINT32 AdapterRAM field caps at 4096 MB, so we treat that exact
+  // value as "unknown high" and fall through to the first match.
+  if (vramMB && vramMB > 0 && vramMB !== 4096) {
+    const detectedGB = vramMB / 1024
+    let best = matches[0]
+    let bestDelta = Math.abs(best.vramGB - detectedGB)
+    for (let i = 1; i < matches.length; i++) {
+      const delta = Math.abs(matches[i].vramGB - detectedGB)
+      if (delta < bestDelta) {
+        best = matches[i]
+        bestDelta = delta
+      }
+    }
+    return best
+  }
+
+  return matches[0]
 }
 
 /**

@@ -18,7 +18,7 @@ function primaryGpuEntry(data: ScanData) {
   if (!data.gpu || data.gpu.devices.length === 0) return null
   const primary = data.gpu.devices[data.gpu.primaryGpuIndex] ?? data.gpu.devices[0]
   if (!primary) return null
-  const entry = findGpuEntry(primary.name)
+  const entry = findGpuEntry(primary.name, primary.vramTotal)
   if (!entry) return null
   return { primary, entry }
 }
