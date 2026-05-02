@@ -5,14 +5,39 @@
 
 import Store from 'electron-store'
 import { readRegistryDword, readRegistry } from '../utils/registry'
-import { runCmd, runPowerShell } from '../utils/powershell'
+import { readKey, readValue } from '../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../utils/registry'
 import type { Fix, FixPreview, FixResult, FixHistoryEntry, FixChange } from './types'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { exec } from 'child_process'
+import { execFile, exec } from 'child_process'
 import { promisify } from 'util'
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+// Run reg.exe with explicit arg array; no cmd.exe parsing in the middle.
+async function regExe(args: string[], timeoutMs = 8000): Promise<string> {
+  const { stdout } = await execFileAsync('reg', args, { timeout: timeoutMs })
+  return stdout
+}
+
+async function tryRegExe(args: string[], timeoutMs = 8000): Promise<string | null> {
+  try {
+    return await regExe(args, timeoutMs)
+  } catch {
+    return null
+  }
+}
+
+async function powercfgExe(args: string[], timeoutMs = 8000): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('powercfg', args, { timeout: timeoutMs })
+    return stdout
+  } catch {
+    return null
+  }
+}
 
 // ── Persistent storage for backups + history ──────────────────
 
@@ -54,23 +79,48 @@ const MMCSS_PATH = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\
 const MMCSS_GAMES_PATH = `${MMCSS_PATH}\\Tasks\\Games`
 
 async function regWriteDword(hive: 'HKLM' | 'HKCU', path: string, name: string, value: number): Promise<void> {
-  // Use PowerShell Set-ItemProperty to avoid cmd.exe quote-escaping issues with paths
-  // that contain spaces (e.g. "Windows NT"). reg.exe via runCmd gets malformed args.
-  const psHive = hive === 'HKLM' ? 'HKLM:' : 'HKCU:'
-  await runPowerShell(
-    `$p = '${psHive}\\${path}'\n` +
-    `if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }\n` +
-    `Set-ItemProperty -Path $p -Name '${name}' -Value ${value} -Type DWord -Force`
-  )
+  // execFile passes argv elements verbatim, so paths with spaces don't need
+  // shell-quoting. /f forces overwrite without prompting; reg.exe creates
+  // intermediate keys automatically when the leaf value is added.
+  await regExe(['add', `${hive}\\${path}`, '/v', name, '/t', 'REG_DWORD', '/d', String(value), '/f'])
 }
 
 async function regWriteSz(hive: 'HKLM' | 'HKCU', path: string, name: string, value: string): Promise<void> {
-  const psHive = hive === 'HKLM' ? 'HKLM:' : 'HKCU:'
-  await runPowerShell(
-    `$p = '${psHive}\\${path}'\n` +
-    `if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }\n` +
-    `Set-ItemProperty -Path $p -Name '${name}' -Value '${value}' -Type String -Force`
+  await regExe(['add', `${hive}\\${path}`, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'])
+}
+
+async function regDeleteValue(hive: 'HKLM' | 'HKCU', path: string, name: string): Promise<void> {
+  await regExe(['delete', `${hive}\\${path}`, '/v', name, '/f'])
+}
+
+const NETWORK_CLASS_GUID = '{4d36e972-e325-11ce-bfc1-08002be10318}'
+
+/**
+ * Set the PnPCapabilities DWORD on every 802.11 adapter under the network
+ * class. Bit 0x18 disables "Allow the computer to turn off this device to
+ * save power" (the toggle Device Manager exposes); 0x00 re-enables it.
+ *
+ * The same write that Set-NetAdapterPowerManagement performs internally —
+ * this is the documented Microsoft-supported registry path.
+ */
+async function setWifiAdapterPnpCapabilities(value: number): Promise<void> {
+  const subkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    `SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS_GUID}`
   )
+  for (const sk of subkeys) {
+    if (!/^\d{4}$/.test(sk)) continue
+    const path = `SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS_GUID}\\${sk}`
+    const desc = await readValue(`HKLM\\${path}`, 'DriverDesc').catch(() => null)
+    if (
+      !desc ||
+      (desc.type !== 'REG_SZ' && desc.type !== 'REG_EXPAND_SZ') ||
+      !/wi-?fi|wireless|802\.11/i.test(desc.data)
+    ) {
+      continue
+    }
+    await regWriteDword('HKLM', path, 'PnPCapabilities', value)
+  }
 }
 
 // ── Fix 2: MMCSS NetworkThrottlingIndex ───────────────────────
@@ -268,12 +318,7 @@ const fixWifiPowerSaving: Fix = {
   apply: async (): Promise<FixResult> => {
     storeBackup('fix-wifi-power-saving', { applied: 'true' })
     try {
-      await runPowerShell(`
-        $adapters = Get-NetAdapter | Where-Object { $_.PhysicalMediaType -like '*802.11*' }
-        foreach ($a in $adapters) {
-          Set-NetAdapterPowerManagement -Name $a.Name -AllowComputerToTurnOffDevice Disabled -EA SilentlyContinue
-        }
-      `)
+      await setWifiAdapterPnpCapabilities(0x18)
       recordHistory({
         fixId: 'fix-wifi-power-saving', name: 'Disable Wi-Fi Adapter Power Saving',
         appliedAt: Date.now(),
@@ -288,12 +333,7 @@ const fixWifiPowerSaving: Fix = {
 
   undo: async (): Promise<FixResult> => {
     try {
-      await runPowerShell(`
-        $adapters = Get-NetAdapter | Where-Object { $_.PhysicalMediaType -like '*802.11*' }
-        foreach ($a in $adapters) {
-          Set-NetAdapterPowerManagement -Name $a.Name -AllowComputerToTurnOffDevice Enabled -EA SilentlyContinue
-        }
-      `)
+      await setWifiAdapterPnpCapabilities(0)
       markUndone('fix-wifi-power-saving')
       return { fixId: 'fix-wifi-power-saving', success: true }
     } catch (e) {
@@ -825,17 +865,16 @@ const STARTUP_REG_PATH = 'Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 interface StartupEntry { Name: string; Value: string }
 
 async function enumerateStartupBloat(): Promise<StartupEntry[]> {
-  const script = `$items = Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -EA SilentlyContinue\n$items.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' -and $_.Name -notmatch '^PS' } | Select-Object Name, Value | ConvertTo-Json -Compress`
-  let raw = ''
-  try { raw = await runPowerShell(script) } catch { return [] }
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as StartupEntry | StartupEntry[]
-    const all: StartupEntry[] = Array.isArray(parsed) ? parsed : [parsed]
-    return all.filter((e) =>
-      STARTUP_BLOAT_NAMES.some((b) => e.Name.toLowerCase().includes(b.toLowerCase()))
-    )
-  } catch { return [] }
+  const key = await readKey(`HKCU\\${STARTUP_REG_PATH}`).catch(() => null)
+  if (!key) return []
+  const all: StartupEntry[] = []
+  for (const [name, value] of Object.entries(key.values)) {
+    if (value.type !== 'REG_SZ' && value.type !== 'REG_EXPAND_SZ') continue
+    all.push({ Name: name, Value: value.data })
+  }
+  return all.filter((e) =>
+    STARTUP_BLOAT_NAMES.some((b) => e.Name.toLowerCase().includes(b.toLowerCase()))
+  )
 }
 
 const fixDisableStartupBloat: Fix = {
@@ -870,7 +909,7 @@ const fixDisableStartupBloat: Fix = {
     storeBackup('fix-disable-startup-bloat', backupValues)
     try {
       for (const e of found) {
-        await runPowerShell(`Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name '${e.Name.replace(/'/g, "''")}' -EA SilentlyContinue`)
+        await tryRegExe(['delete', `HKCU\\${STARTUP_REG_PATH}`, '/v', e.Name, '/f'])
       }
       recordHistory({
         fixId: 'fix-disable-startup-bloat',
@@ -907,11 +946,10 @@ const USB_SUBGROUP = '2a737441-1930-4402-8d77-b2bebba308a3'
 const USB_SUSPEND_SETTING = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
 
 async function getUsbSuspendIndex(): Promise<number | null> {
-  try {
-    const out = await runCmd(`powercfg /query SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING}`)
-    const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
-    if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
-  } catch { /* ignore */ }
+  const out = await powercfgExe(['/query', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING])
+  if (!out) return null
+  const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
+  if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
   return null
 }
 
@@ -942,9 +980,9 @@ const fixUsbSelectiveSuspend: Fix = {
     const current = await getUsbSuspendIndex()
     storeBackup('fix-usb-selective-suspend', { previousIndex: String(current ?? 1) })
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} 0`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} 0`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, '0'])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, '0'])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       recordHistory({
         fixId: 'fix-usb-selective-suspend',
         name: 'Disable USB Selective Suspend',
@@ -963,9 +1001,9 @@ const fixUsbSelectiveSuspend: Fix = {
     const backup = getBackup('fix-usb-selective-suspend')
     const prev = backup?.previousIndex ?? '1'
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} ${prev}`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} ${prev}`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, prev])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, prev])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       markUndone('fix-usb-selective-suspend')
       return { fixId: 'fix-usb-selective-suspend', success: true }
     } catch (e) {
@@ -977,11 +1015,10 @@ const fixUsbSelectiveSuspend: Fix = {
 // ── Fix 16: Disable CPU Core Parking ─────────────────────────
 
 async function getCpuCoreParking(): Promise<number | null> {
-  try {
-    const out = await runCmd('powercfg /query SCHEME_CURRENT SUB_PROCESSOR CPMINCORES')
-    const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
-    if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
-  } catch { /* ignore */ }
+  const out = await powercfgExe(['/query', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES'])
+  if (!out) return null
+  const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
+  if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
   return null
 }
 
@@ -1012,9 +1049,9 @@ const fixCoreParkingDisable: Fix = {
     const current = await getCpuCoreParking()
     storeBackup('fix-core-parking-disable', { previousCpMinCores: String(current ?? 0) })
     try {
-      await runCmd('powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100')
-      await runCmd('powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100')
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', '100'])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', '100'])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       recordHistory({
         fixId: 'fix-core-parking-disable',
         name: 'Disable CPU Core Parking',
@@ -1033,9 +1070,9 @@ const fixCoreParkingDisable: Fix = {
     const backup = getBackup('fix-core-parking-disable')
     const prev = backup?.previousCpMinCores ?? '0'
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES ${prev}`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES ${prev}`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', prev])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', prev])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       markUndone('fix-core-parking-disable')
       return { fixId: 'fix-core-parking-disable', success: true }
     } catch (e) {
@@ -1055,22 +1092,23 @@ const fixNagleDisable: Fix = {
 
   preview: async (): Promise<FixPreview> => {
     let needsFixCount = 0
-    try {
-      const out = await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `$needsFix = $interfaces | Where-Object {\n` +
-        `  (Get-ItemProperty $_.PSPath -Name 'TcpAckFrequency' -EA SilentlyContinue).TcpAckFrequency -ne 1\n` +
-        `} | Measure-Object\n` +
-        `Write-Output $needsFix.Count`
-      )
-      needsFixCount = parseInt(out.trim()) || 0
-    } catch { /* ignore */ }
+    const interfaces = enumerateRegistrySubkeys(
+      'HKLM',
+      'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
+    )
+    for (const guid of interfaces) {
+      const v = await readValue(
+        `HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`,
+        'TcpAckFrequency'
+      ).catch(() => null)
+      if (!(v && v.type === 'REG_DWORD' && v.data === 1)) needsFixCount++
+    }
     return {
       fixId: 'fix-nagle-disable',
       name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
       description: 'Sets TcpAckFrequency=1 and TCPNoDelay=1 on all network adapter interfaces to eliminate Nagle batching delay.',
       changes: [{
-        target: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\* → TcpAckFrequency, TCPNoDelay',
+        target: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\* -> TcpAckFrequency, TCPNoDelay',
         currentValue: `${needsFixCount} interface(s) without Nagle disabled`,
         newValue: 'TcpAckFrequency=1, TCPNoDelay=1 on all interfaces'
       }],
@@ -1082,13 +1120,15 @@ const fixNagleDisable: Fix = {
   apply: async (): Promise<FixResult> => {
     storeBackup('fix-nagle-disable', { applied: 'true' })
     try {
-      await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `foreach ($iface in $interfaces) {\n` +
-        `  Set-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -Value 1 -Type DWord -Force -EA SilentlyContinue\n` +
-        `  Set-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -Value 1 -Type DWord -Force -EA SilentlyContinue\n` +
-        `}`
+      const interfaces = enumerateRegistrySubkeys(
+        'HKLM',
+        'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
       )
+      for (const guid of interfaces) {
+        const path = `SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`
+        await regWriteDword('HKLM', path, 'TcpAckFrequency', 1)
+        await regWriteDword('HKLM', path, 'TCPNoDelay', 1)
+      }
       recordHistory({
         fixId: 'fix-nagle-disable',
         name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
@@ -1105,13 +1145,15 @@ const fixNagleDisable: Fix = {
 
   undo: async (): Promise<FixResult> => {
     try {
-      await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `foreach ($iface in $interfaces) {\n` +
-        `  Remove-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -EA SilentlyContinue\n` +
-        `  Remove-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -EA SilentlyContinue\n` +
-        `}`
+      const interfaces = enumerateRegistrySubkeys(
+        'HKLM',
+        'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
       )
+      for (const guid of interfaces) {
+        const path = `SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`
+        await tryRegExe(['delete', `HKLM\\${path}`, '/v', 'TcpAckFrequency', '/f'])
+        await tryRegExe(['delete', `HKLM\\${path}`, '/v', 'TCPNoDelay', '/f'])
+      }
       markUndone('fix-nagle-disable')
       return { fixId: 'fix-nagle-disable', success: true }
     } catch (e) {
@@ -1205,9 +1247,7 @@ const fixDisableFullscreenOptimizations: Fix = {
     try {
       for (const [exePath, originalValue] of Object.entries(backup)) {
         if (originalValue === '') {
-          await runPowerShell(
-            `Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers' -Name '${exePath.replace(/'/g, "''")}' -EA SilentlyContinue`
-          )
+          await tryRegExe(['delete', `HKCU\\${FS_OPT_REG_PATH}`, '/v', exePath, '/f'])
         } else {
           await regWriteSz('HKCU', FS_OPT_REG_PATH, exePath, originalValue)
         }
@@ -1613,9 +1653,7 @@ const fixVRChatMsaa: Fix = {
     try {
       const prev = backup?.QualitySettings_antiAliasing
       if (prev === '' || prev == null) {
-        await runPowerShell(
-          `Remove-ItemProperty -Path 'HKCU:\\${VRCHAT_PREFS_PATH}' -Name 'QualitySettings_antiAliasing' -EA SilentlyContinue`
-        )
+        await tryRegExe(['delete', `HKCU\\${VRCHAT_PREFS_PATH}`, '/v', 'QualitySettings_antiAliasing', '/f'])
       } else {
         await regWriteDword('HKCU', VRCHAT_PREFS_PATH, 'QualitySettings_antiAliasing', parseInt(prev))
       }
@@ -1711,26 +1749,14 @@ export async function previewFix(fixId: string): Promise<FixPreview | { error: s
 
 const LAST_RESTORE_POINT_KEY = 'lastRestorePointAt'
 
-async function createRestorePointIfDue(reason: string): Promise<{ created: boolean; error?: string }> {
-  try {
-    const now = Date.now()
-    const last = (fixStore.get(LAST_RESTORE_POINT_KEY) as number | undefined) ?? 0
-    const ageHours = (now - last) / (1000 * 60 * 60)
-    if (ageHours < 24) {
-      return { created: false, error: 'Skipped — restore point created within last 24h' }
-    }
-    const description = reason.replace(/'/g, '').slice(0, 240)
-    // Checkpoint-Computer: requires elevation + SystemRestore enabled.
-    // Run quietly — non-fatal if it fails.
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "Checkpoint-Computer -Description 'Vryionics: ${description}' -RestorePointType MODIFY_SETTINGS -ErrorAction SilentlyContinue"`,
-      { timeout: 60_000 }
-    )
-    fixStore.set(LAST_RESTORE_POINT_KEY, now)
-    return { created: true }
-  } catch (e) {
-    return { created: false, error: (e as Error).message }
-  }
+async function createRestorePointIfDue(_reason: string): Promise<{ created: boolean; error?: string }> {
+  // The only Win32 entry point for creating a system restore point is
+  // SRClient.dll's CreateRestorePoint, which is reachable from this process
+  // through WMI (SystemRestore.CreateRestorePoint) or via P/Invoke. Both
+  // paths are off the table for this app, so we no longer create a restore
+  // point automatically. Each individual fix already stores its own backup
+  // and supports undo, which is the primary recovery surface.
+  return { created: false, error: 'restore-point creation is unavailable in this build' }
 }
 
 export async function applyFix(fixId: string): Promise<FixResult> {
