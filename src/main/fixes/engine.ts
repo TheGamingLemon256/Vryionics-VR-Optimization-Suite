@@ -11,9 +11,8 @@ import type { Fix, FixPreview, FixResult, FixHistoryEntry, FixChange } from './t
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execFile, exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
-const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 
 // Run reg.exe with explicit arg array; no cmd.exe parsing in the middle.
@@ -446,7 +445,7 @@ function setVRChatLaunchOptionInFile(steamPath: string, userId: string, option: 
 
 async function isSteamRunning(): Promise<boolean> {
   try {
-    const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq steam.exe" /FO CSV /NH', { timeout: 5000 })
+    const { stdout } = await execFileAsync('tasklist', ['/FI', 'IMAGENAME eq steam.exe', '/FO', 'CSV', '/NH'], { timeout: 5000 })
     return stdout.toLowerCase().includes('steam.exe')
   } catch {
     return false

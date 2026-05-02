@@ -1,7 +1,8 @@
 // VR Optimization Suite — Live Optimizer Engine
-// Uses async exec (not execSync) so the Electron main thread is NEVER blocked.
+// All exec calls are async and pass an argv array to execFile so cmd.exe
+// never tokenizes interpolated PIDs or process names.
 
-import { exec, spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import type {
   LiveOptimizerConfig, LiveOptimizerStatus, AffectedProcess,
@@ -11,7 +12,7 @@ import { DEFAULT_CONFIG } from './types'
 import { VR_SAFE_PROCESSES, SERVICES_TO_STOP_DURING_VR } from './vr-safe-list'
 import { markStopped, markRestored } from './service-recovery'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 // ── VR session detection indicators ───────────────────────────
 const VR_SESSION_INDICATORS = new Set([
@@ -260,8 +261,9 @@ function setPhase(phase: OptimizerPhase): void {
 
 async function getRunningProcesses(): Promise<RunningProcess[]> {
   try {
-    const { stdout } = await execAsync(
-      'powershell -NoProfile -NonInteractive -Command "Get-Process | Select-Object Name,Id,Path | ConvertTo-Json -Depth 1 -Compress"',
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', 'Get-Process | Select-Object Name,Id,Path | ConvertTo-Json -Depth 1 -Compress'],
       { timeout: 12000 }
     )
     const parsed = JSON.parse(stdout.trim())
@@ -308,12 +310,11 @@ function getKillTargets(processes: RunningProcess[], config: LiveOptimizerConfig
 async function killProcess(proc: RunningProcess): Promise<boolean> {
   // Try by PID first (most precise), then by name if that fails (process may have restarted with a new PID)
   try {
-    await execAsync(`taskkill /F /PID ${proc.id}`, { timeout: 6000 })
+    await execFileAsync('taskkill', ['/F', '/PID', String(proc.id)], { timeout: 6000 })
     return true
   } catch {
-    // Second attempt: kill by image name — handles race where PID changed
     try {
-      await execAsync(`taskkill /F /IM "${proc.name}" /T`, { timeout: 6000 })
+      await execFileAsync('taskkill', ['/F', '/IM', proc.name, '/T'], { timeout: 6000 })
       return true
     } catch {
       return false
@@ -322,17 +323,16 @@ async function killProcess(proc: RunningProcess): Promise<boolean> {
 }
 
 async function stopService(name: string): Promise<boolean> {
-  // Try PowerShell Stop-Service first (more reliable than net stop for some services)
+  // PowerShell Stop-Service is more reliable than `net stop` for SCM-managed
+  // services that don't expose a friendly stop verb. Pass the script body as
+  // a single argv token so cmd.exe never tokenizes the service name.
   try {
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "Stop-Service -Name '${name}' -Force -ErrorAction SilentlyContinue"`,
-      { timeout: 20000 }
-    )
+    const psScript = `Stop-Service -Name ${psQuote(name)} -Force -ErrorAction SilentlyContinue`
+    await execFileAsync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], { timeout: 20000 })
     return true
   } catch {
-    // Fallback: net stop (works when PS fails due to privilege issues)
     try {
-      await execAsync(`net stop "${name}" /Y`, { timeout: 20000 })
+      await execFileAsync('net', ['stop', name, '/Y'], { timeout: 20000 })
       return true
     } catch {
       return false
@@ -342,19 +342,25 @@ async function stopService(name: string): Promise<boolean> {
 
 async function startService(name: string): Promise<boolean> {
   try {
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "Start-Service -Name '${name}' -ErrorAction SilentlyContinue"`,
-      { timeout: 20000 }
-    )
+    const psScript = `Start-Service -Name ${psQuote(name)} -ErrorAction SilentlyContinue`
+    await execFileAsync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], { timeout: 20000 })
     return true
   } catch {
     try {
-      await execAsync(`net start "${name}"`, { timeout: 20000 })
+      await execFileAsync('net', ['start', name], { timeout: 20000 })
       return true
     } catch {
       return false
     }
   }
+}
+
+// Single-quote a string for inclusion inside a PowerShell -Command body.
+// Doubles any embedded single quotes per PS literal-string escaping rules.
+// Argv-level injection is already neutralised by execFile; this protects
+// the inner PS parser from a service name that contains `'`.
+function psQuote(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`
 }
 
 // ── Process Lasso-style management functions ──────────────────────────────────
@@ -387,8 +393,9 @@ foreach ($name in $targets) {
 Write-Output "boosted:$boosted"
 `
   try {
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "${script.replace(/\n/g, ';').replace(/"/g, '\\"')}"`,
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
       { timeout: 10000 }
     )
     const match = stdout.match(/boosted:(\d+)/)
@@ -459,8 +466,9 @@ Write-Output "throttled:$count"
 `
 
   try {
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "${priorityScript.replace(/\n/g, ';').replace(/"/g, '\\"')}"`,
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', priorityScript],
       { timeout: 15000 }
     )
     const match = stdout.match(/throttled:(\d+)/)
@@ -484,8 +492,9 @@ foreach ($pid in $pids) {
 Write-Output "eco:$ok"
 `
     try {
-      const { stdout } = await execAsync(
-        `powershell -NoProfile -NonInteractive -Command "& { ${ecoScript.replace(/\n/g, ' ')} }"`,
+      const { stdout } = await execFileAsync(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command', ecoScript],
         { timeout: 20000 }
       )
       const match = stdout.match(/eco:(\d+)/)
@@ -520,8 +529,9 @@ foreach ($pid in $pids) {
 Write-Output "trimmed:$ok"
 `
   try {
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "& { ${script.replace(/\n/g, ' ')} }"`,
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
       { timeout: 20000 }
     )
     const match = stdout.match(/trimmed:(\d+)/)
@@ -555,8 +565,9 @@ foreach ($name in $names) {
 }
 `
   try {
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "${script.replace(/\n/g, ';').replace(/"/g, '\\"')}"`,
+    await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
       { timeout: 15000 }
     )
     addLog('restore', '↑ Restored background process priorities to Normal')
@@ -617,7 +628,7 @@ async function lockTimerResolution(): Promise<void> {
 async function unlockTimerResolution(): Promise<void> {
   if (timerResolutionHolderPid === null) return
   try {
-    await execAsync(`taskkill /F /PID ${timerResolutionHolderPid}`, { timeout: 5000 })
+    await execFileAsync('taskkill', ['/F', '/PID', String(timerResolutionHolderPid)], { timeout: 5000 })
     addLog('restore', '↑ Restored Windows timer resolution to default')
   } catch {
     // Process may have died on its own (e.g. sleep completed); not an error.
@@ -684,8 +695,9 @@ if ($shouldFlush) {
 
 async function cleanStandbyListIfNeeded(quiet: boolean): Promise<void> {
   try {
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "& { ${STANDBY_CLEANER_SCRIPT.replace(/\n/g, ' ').replace(/"/g, '\\"')} }"`,
+    const { stdout } = await execFileAsync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', STANDBY_CLEANER_SCRIPT],
       { timeout: 15000 }
     )
     const match = stdout.match(/result:(\S+)\s+(.*)?/)

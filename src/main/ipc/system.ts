@@ -2,7 +2,7 @@
 // Setup wizard, config, and system utility handlers.
 
 import { ipcMain, shell } from 'electron'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { loadAllProfiles, getProfile, getProfileSummaries } from '../headsets/loader'
 import Store from 'electron-store'
 
@@ -13,7 +13,7 @@ export function registerSystemHandlers(): void {
   // Admin detection
   ipcMain.handle('system:isAdmin', () => {
     try {
-      execSync('net session', { stdio: 'ignore' })
+      execFileSync('net', ['session'], { stdio: 'ignore' })
       console.log('[system:isAdmin] Running as administrator')
       return true
     } catch {

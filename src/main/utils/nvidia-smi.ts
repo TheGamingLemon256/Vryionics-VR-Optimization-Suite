@@ -4,7 +4,7 @@
 // IMPORTANT: nvidia-smi only works for NVIDIA GPUs.
 // Detect GPU vendor FIRST — skip all nvidia-smi calls for AMD/Intel.
 
-import { execFile } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 
 /** Standard nvidia-smi location (may not be on PATH) */
@@ -28,10 +28,10 @@ export function findNvidiaSmi(): string | null {
 
   for (const p of NVIDIA_SMI_PATHS) {
     if (p === 'nvidia-smi') {
-      // Check if it's on PATH by trying to run it
+      // Probe PATH by invoking the binary directly. Failure means it's not
+      // installed (common on AMD/Intel systems) and the next candidate is tried.
       try {
-        const { execSync } = require('child_process')
-        execSync('nvidia-smi --version', { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
+        execFileSync('nvidia-smi', ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
         resolvedPath = 'nvidia-smi'
         return resolvedPath
       } catch {
