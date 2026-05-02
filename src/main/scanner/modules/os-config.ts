@@ -2,8 +2,9 @@
 // Collects Windows version, Game Mode, Defender exclusions, virtualization drivers.
 
 import { readRegistryDword, readRegistry, registryKeyExists, enumerateRegistrySubkeys } from '../../utils/registry'
-import { readKey } from '../../utils/registry-read'
-import { tryRunPowerShell } from '../../utils/powershell'
+import { readKey, readValue } from '../../utils/registry-read'
+import { runExe } from '../../utils/exec'
+import os from 'node:os'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { ScanModuleResult, OsConfigData } from '../types'
@@ -40,30 +41,19 @@ async function getStartupItems(): Promise<StartupItem[]> {
 }
 
 async function getDefenderExclusions(): Promise<string[]> {
-  const script = `
-try {
-  $prefs = Get-MpPreference -ErrorAction Stop
-  $paths = @()
-  if ($prefs.ExclusionPath) { $paths += $prefs.ExclusionPath }
-  if ($prefs.ExclusionProcess) { $paths += $prefs.ExclusionProcess }
-  $paths | ConvertTo-Json -Compress
-} catch {
-  '[]'
-}
-`
-  try {
-    const raw = await tryRunPowerShell(script, 10000)
-    if (!raw || raw === '[]') return []
-    const parsed = JSON.parse(raw)
-    // PowerShell's ConvertTo-Json emits a bare string when there's exactly one
-    // element — not a 1-item array. Coerce so downstream .join()/.map() calls
-    // never blow up.
-    if (typeof parsed === 'string') return [parsed]
-    if (Array.isArray(parsed)) return parsed.filter((p): p is string => typeof p === 'string')
-    return []
-  } catch {
-    return []
+  // Defender stores exclusion lists as registry value names (the value data
+  // is always 0). Tamper Protection blocks read access on most consumer
+  // systems, in which case readKey returns null and we report none. Rules
+  // already treat an empty list as "unknown / not granted".
+  const out: string[] = []
+  for (const sub of ['Paths', 'Processes']) {
+    const key = await readKey(`HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\${sub}`).catch(() => null)
+    if (!key) continue
+    for (const name of Object.keys(key.values)) {
+      if (name) out.push(name)
+    }
   }
+  return out
 }
 
 async function detectVirtualizationDrivers(): Promise<string[]> {
@@ -92,73 +82,62 @@ function getXboxDvrEnabled(): boolean {
   return val !== 0  // null (missing key) means default = enabled
 }
 
+async function readPowercfgIndex(args: string[]): Promise<number | null> {
+  // powercfg.exe is a stock Windows executable; we shell to it directly
+  // rather than going through PowerShell.
+  const out = await runExe('powercfg', args, 8000)
+  if (!out) return null
+  const match = out.match(/Current AC Power Setting Index:\s*(0x[0-9a-f]+|\d+)/i)
+  if (!match) return null
+  const val = match[1].startsWith('0x') ? parseInt(match[1], 16) : parseInt(match[1], 10)
+  return Number.isFinite(val) ? val : null
+}
+
 async function getUsbSelectiveSuspendEnabled(): Promise<boolean> {
-  try {
-    const out = await tryRunPowerShell(
-      'powercfg /query SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226',
-      8000
-    )
-    if (!out) return true  // assume enabled if can't read
-    const match = out.match(/Current AC Power Setting Index:\s*(0x[0-9a-f]+|\d+)/i)
-    if (match) {
-      const val = parseInt(match[1])
-      return val !== 0  // 0 = disabled (good), non-zero = enabled (bad)
-    }
-    return true
-  } catch {
-    return true
-  }
+  const idx = await readPowercfgIndex([
+    '/query',
+    'SCHEME_CURRENT',
+    '2a737441-1930-4402-8d77-b2bebba308a3',
+    '48e6b7a6-50f5-4782-a5d4-53bb8f07e226',
+  ])
+  // Default to enabled when unreadable; non-zero index = enabled.
+  if (idx === null) return true
+  return idx !== 0
 }
 
 async function getPcieAspmActive(): Promise<boolean | null> {
-  // PCIE_LINK_STATE subgroup 501a4d13-42af-4429-9fd1-a8218c268e20,
-  // ASPM setting ee12f906-d277-404b-b6da-e5fa1a576df5.
+  // PCIE_LINK_STATE subgroup 501a4d13-..., ASPM setting ee12f906-...
   // Value 0 = Off, 1 = Moderate power savings, 2 = Maximum power savings.
-  try {
-    const out = await tryRunPowerShell(
-      'powercfg /query SCHEME_CURRENT 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5',
-      8000
-    )
-    if (!out) return null
-    const match = out.match(/Current AC Power Setting Index:\s*(0x[0-9a-f]+|\d+)/i)
-    if (!match) return null
-    const val = parseInt(match[1])
-    return val !== 0
-  } catch {
-    return null
-  }
+  const idx = await readPowercfgIndex([
+    '/query',
+    'SCHEME_CURRENT',
+    '501a4d13-42af-4429-9fd1-a8218c268e20',
+    'ee12f906-d277-404b-b6da-e5fa1a576df5',
+  ])
+  if (idx === null) return null
+  return idx !== 0
 }
 
 async function getCoresMinParkedPercent(): Promise<number> {
-  try {
-    const out = await tryRunPowerShell(
-      'powercfg /query SCHEME_CURRENT SUB_PROCESSOR CPMINCORES',
-      8000
-    )
-    if (!out) return 0  // assume 0% min (parking enabled) if can't read
-    const match = out.match(/Current AC Power Setting Index:\s*(0x[0-9a-f]+|\d+)/i)
-    if (match) return parseInt(match[1])
-    return 0
-  } catch {
-    return 0
-  }
+  const idx = await readPowercfgIndex(['/query', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES'])
+  return idx ?? 0
 }
 
 async function getNagleEnabled(): Promise<boolean> {
-  try {
-    const out = await tryRunPowerShell(`
-$ifaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue
-$disabled = $ifaces | Where-Object {
-  (Get-ItemProperty $_.PSPath -Name 'TcpAckFrequency' -EA SilentlyContinue).TcpAckFrequency -eq 1
-} | Measure-Object
-Write-Output $disabled.Count
-`, 6000)
-    if (!out) return true
-    const count = parseInt(out.trim())
-    return count === 0  // 0 interfaces have Nagle disabled = Nagle is still enabled everywhere
-  } catch {
-    return true
+  // Walk Tcpip\Parameters\Interfaces and check TcpAckFrequency on each.
+  // Nagle is "still enabled everywhere" iff no interface has it disabled (==1).
+  const interfaces = enumerateRegistrySubkeys(
+    'HKLM',
+    'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
+  )
+  for (const guid of interfaces) {
+    const v = await readValue(
+      `HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`,
+      'TcpAckFrequency'
+    )
+    if (v && v.type === 'REG_DWORD' && v.data === 1) return false
   }
+  return true
 }
 
 function getHyperVRunning(): boolean {
@@ -270,21 +249,48 @@ function getHpetStatus(): boolean | null {
 }
 
 async function getVpnActive(): Promise<boolean> {
-  const out = await tryRunPowerShell(`
-Get-NetAdapter -EA SilentlyContinue |
-  Where-Object {
-    $_.InterfaceDescription -like '*VPN*' -or
-    $_.InterfaceDescription -like '*TAP*' -or
-    $_.InterfaceDescription -like '*Tunnel*' -or
-    $_.InterfaceDescription -like '*WireGuard*' -or
-    $_.InterfaceDescription -like '*OpenVPN*' -or
-    $_.Name -like '*VPN*' -or
-    $_.Name -like '*WireGuard*'
-  } |
-  Where-Object { $_.Status -eq 'Up' } |
-  Select-Object -First 1 -ExpandProperty Name
-`, 8000)
-  return !!(out?.trim())
+  // Cross-reference two sources: the network adapter class subkeys (for
+  // friendly descriptions and naming) against os.networkInterfaces() (for
+  // which interfaces actually have an IP and aren't internal). If a
+  // non-internal interface's name or description matches a VPN-like
+  // pattern, we count the VPN as active.
+  const NETWORK_CLASS = '{4d36e972-e325-11ce-bfc1-08002be10318}'
+  const subkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    `SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS}`
+  )
+
+  const vpnPattern = /vpn|tap|tunnel|wireguard|openvpn|nordlynx|tailscale|zerotier/i
+  const vpnDescriptions = new Set<string>()
+
+  for (const sk of subkeys) {
+    if (!/^\d{4}$/.test(sk)) continue
+    const desc = await readValue(
+      `HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS}\\${sk}`,
+      'DriverDesc'
+    )
+    if (
+      desc &&
+      (desc.type === 'REG_SZ' || desc.type === 'REG_EXPAND_SZ') &&
+      vpnPattern.test(desc.data)
+    ) {
+      vpnDescriptions.add(desc.data.toLowerCase())
+    }
+  }
+
+  if (vpnDescriptions.size === 0) return false
+
+  // os.networkInterfaces() doesn't expose driver descriptions, so we fall
+  // back to checking that *any* non-internal interface is up. If a
+  // VPN-named driver is loaded and at least one tunnel-like interface
+  // shows up with a non-internal address, treat the VPN as active.
+  const ifaces = os.networkInterfaces()
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    if (!addrs) continue
+    if (vpnPattern.test(name) && addrs.some((a) => !a.internal)) return true
+  }
+
+  return false
 }
 
 function getThirdPartyAv(): string | null {
