@@ -70,9 +70,7 @@ const api = {
   // ── System ────────────────────────────────────────────────
   system: {
     isAdmin: () =>
-      ipcRenderer.invoke('system:isAdmin') as Promise<boolean>,
-    requestElevation: () =>
-      ipcRenderer.invoke('system:requestElevation') as Promise<boolean>
+      ipcRenderer.invoke('system:isAdmin') as Promise<boolean>
   },
 
   // ── Setup Wizard ──────────────────────────────────────────

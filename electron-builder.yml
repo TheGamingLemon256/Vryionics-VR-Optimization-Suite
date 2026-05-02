@@ -34,7 +34,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   artifactName: "Vryionics-VR-Optimization-Suite-Setup-${version}.exe"
-  allowElevation: true
+  allowElevation: false
 asar: true
 extraResources:
   # The app-side .gh-token bundle was used when the repo was private —
