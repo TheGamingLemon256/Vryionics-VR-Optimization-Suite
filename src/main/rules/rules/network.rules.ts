@@ -100,10 +100,9 @@ export const networkRules: Rule[] = [
         severity: 'warning',
         category: 'network',
         explanation: {
-          simple: 'Your Wi-Fi adapter is in power-saving mode, which makes it "doze off" between packets to save battery. For wireless VR, this adds unpredictable delays. Disable it for a smoother experience.',
-          advanced: `Wi-Fi adapter power saving mode is enabled. Power management causes the adapter to enter low-power states between packet bursts, adding 10-50ms wake-up latency. For wireless VR, every packet must be received without delay. Disable via Device Manager → Wi-Fi adapter → Properties → Power Management → uncheck "Allow the computer to turn off this device to save power". Also set Wi-Fi adapter to Maximum Performance in Power Plan advanced settings.`
-        },
-        fixId: 'fix-wifi-power-saving'
+          simple: 'Your Wi-Fi adapter is in power-saving mode, which makes it doze briefly between packet bursts. For wireless VR that produces occasional 10-50ms wake-up spikes that show up as glitches in Virtual Desktop or AirLink. The toggle lives in Device Manager → your Wi-Fi adapter → Properties → Power Management. Changing it touches a system-wide adapter setting, so VOS no longer applies it automatically.',
+          advanced: 'Wi-Fi adapter has its PnPCapabilities power-management bit enabled. Between packet bursts the radio drops into a low-power state and pays a 10-50ms wake-up cost on the next packet, which is visible as jitter on VR streaming codecs. The fix is uncheck "Allow the computer to turn off this device to save power" in Device Manager, or write PnPCapabilities = 0x18 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}\\<adapter-id>. Both paths require admin and modify a class-driver setting that survives reboot, which is outside the safe-by-default scope; the recommended setting is also worth pairing with Power Plan -> Wireless Adapter Settings -> Maximum Performance.'
+        }
       }
     }
   },

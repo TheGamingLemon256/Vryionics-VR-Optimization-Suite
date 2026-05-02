@@ -154,29 +154,6 @@ function buildWifi6ePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildWifiPowerSavingPlan(data: ScanData): ActionPlan | null {
-  if (data.network?.wifi?.powerSavingEnabled !== true) return null
-  return {
-    id: 'action-wifi-power-saving',
-    priority: 4,
-    category: 'Network',
-    title: 'Disable Wi-Fi Adapter Power Saving',
-    summary: 'Power saving makes your Wi-Fi adapter "sleep" between packets, adding unpredictable delay spikes.',
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Reduces unpredictable latency spikes during wireless VR.',
-    fixId: 'fix-wifi-power-saving',
-    steps: [
-      step('Open Device Manager: right-click Start → Device Manager', 'open'),
-      step('Expand "Network adapters" → right-click your Wi-Fi adapter → Properties'),
-      step('Click the "Power Management" tab'),
-      step('Uncheck "Allow the computer to turn off this device to save power"'),
-      step('Click OK. Also: right-click the desktop → Display settings → Power & battery → Power mode: Best performance')
-    ],
-    relatedRuleIds: ['wifi-power-saving-on']
-  }
-}
-
 function buildReBarPlan(data: ScanData): ActionPlan | null {
   if (!data.gpu) return null
   const gpu = data.gpu.devices[0]
@@ -776,34 +753,6 @@ function buildCoreParkingPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildNaglePlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.nagleEnabled) return null
-  const isWireless =
-    data.headsetConnection?.method === 'virtual-desktop' ||
-    data.headsetConnection?.method === 'airlink' ||
-    data.headsetConnection?.method === 'alvr' ||
-    data.headsetConnection?.method === 'unknown-wireless'
-  if (!isWireless) return null
-  return {
-    id: 'action-nagle',
-    priority: 8,
-    category: 'Network',
-    title: 'Disable Nagle Algorithm for Lower Wireless VR Latency',
-    summary: 'TCP Nagle algorithm is bundling packets together — adding consistent latency to your wireless VR stream. Disabling it lets packets send immediately.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces consistent TCP packet latency by 1-5ms for wireless VR streaming.',
-    fixId: 'fix-nagle-disable',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below (sets TcpAckFrequency + TCPNoDelay per adapter)', 'info'),
-      step('Or manually: open regedit → HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces', 'open'),
-      step('For each adapter GUID subkey: add DWORD "TcpAckFrequency" = 1 and "TCPNoDelay" = 1', 'setting'),
-      step('No reboot required — changes take effect on next TCP connection')
-    ],
-    relatedRuleIds: ['nagle-algorithm-active']
-  }
-}
-
 function buildGpuTdrPlan(data: ScanData): ActionPlan | null {
   if (!data.eventLog) return null
   if (data.eventLog.gpuTdrEvents < 2) return null
@@ -873,30 +822,6 @@ function buildBiosUpdatePlan(data: ScanData): ActionPlan | null {
       step('After updating, re-enable XMP/EXPO in BIOS if it was enabled', 'info')
     ],
     relatedRuleIds: ['bios-outdated']
-  }
-}
-
-function buildTimerResolutionPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.globalTimerResolutionEnabled) return null
-  if (data.osConfig.windowsBuild < 22621) return null // Win 11 22H2
-  return {
-    id: 'action-timer-resolution',
-    priority: 9,
-    category: 'OS Config',
-    title: 'Enable Global Timer Resolution for VR Frame Scheduling (Win 11)',
-    summary: 'Windows 11 changed timer behavior so VR runtime timer requests don\'t apply system-wide. This registry flag restores the precise 0.5ms tick rate that VR compositors need.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Restores 0.5ms timer precision for VR compositors, reducing micro-judder from frame scheduling imprecision.',
-    fixId: 'fix-windows-timer-resolution',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Or manually: open regedit → HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel', 'open'),
-      step('Create or set DWORD value "GlobalTimerResolutionRequests" = 1', 'setting'),
-      step('Reboot for the change to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['timer-resolution-not-optimized']
   }
 }
 
@@ -1427,7 +1352,6 @@ export function buildActionPlan(
 
   // ── Medium-impact tuning ──────────────────────────────────────
   add(buildWifiSignalPlan(scanData))
-  add(buildWifiPowerSavingPlan(scanData))
   add(buildWifi6ePlan(scanData))
   add(buildXmpPlan(scanData))
   add(buildXboxDvrPlan(scanData))
@@ -1437,8 +1361,6 @@ export function buildActionPlan(
   // improvement in testing (powercfg setting persisted but VR frame-pacing
   // data showed no change). Modern Windows no longer parks cores under VR
   // workloads in practice.
-  add(buildNaglePlan(scanData))
-  add(buildTimerResolutionPlan(scanData))
   add(buildGpuTdrPlan(scanData))
   add(buildLaptopBatteryPlan(scanData))
   add(buildBiosUpdatePlan(scanData))

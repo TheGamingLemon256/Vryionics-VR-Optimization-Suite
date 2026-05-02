@@ -185,10 +185,9 @@ export const osConfigRules: Rule[] = [
         severity: 'info',
         category: 'os-config',
         explanation: {
-          simple: 'The TCP Nagle algorithm is active — it bundles small packets together to reduce network overhead, but this adds latency. For wireless VR streaming (where every millisecond counts), disabling it gives lower, more consistent packet delivery times.',
-          advanced: 'RFC 896 Nagle algorithm coalesces small TCP segments to reduce the number of packets, introducing up to 200ms of artificial delay waiting for a full segment. For wireless VR streaming, this means control/pose packets are delayed unnecessarily. Disable by setting TcpAckFrequency = 1 and TCPNoDelay = 1 in HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\{adapter-guid}. Typical improvement: 1-5ms reduction in consistent latency.'
-        },
-        fixId: 'fix-nagle-disable'
+          simple: 'The TCP Nagle algorithm is active — Windows is bundling small packets together before sending them, which trades a millisecond or two of latency for slightly less network overhead. For wireless VR you would rather keep that latency. Disabling Nagle is a per-adapter HKLM tweak, so it requires admin and we no longer ship it as a one-click fix.',
+          advanced: 'RFC 896 Nagle algorithm coalesces small TCP segments. For wireless VR streaming (Virtual Desktop, AirLink, ALVR), control and pose packets pay this batching cost unnecessarily. The standard mitigation is TcpAckFrequency = 1 and TCPNoDelay = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\{adapter-guid}, applied to each interface. Typical improvement is 1-5ms of consistent latency. VOS only flags the condition; making the change requires an elevated registry edit, which is outside the safe-by-default scope.'
+        }
       }
     }
   },
@@ -209,26 +208,6 @@ export const osConfigRules: Rule[] = [
           simple: 'Hyper-V or Memory Integrity is enabled. This costs roughly 5 to 10 percent CPU performance in CPU-bound VR titles. Disabling it improves VR performance but reduces protection against kernel-mode exploits. VOS does not change this for you.',
           advanced: `Hyper-V running: ${hyperV ? 'yes' : 'no'}. Memory Integrity (HVCI): ${memIntegrity ? 'on' : 'off or unknown'}. When the hypervisor launch type is Auto, Windows itself runs as a guest under a thin Type-1 hypervisor (the "root partition"), which virtualizes the TSC and routes hardware interrupts through the hypervisor first. HVCI adds VBS-backed code integrity checks on every kernel-mode driver load. Both features harden the kernel against rootkits and signed-driver attacks. The cost in CPU-bound VR is typically 5 to 10 percent in titles like VRChat and Pavlov; less in GPU-bound titles. To turn off: Windows Features, uncheck Hyper-V / Virtual Machine Platform / Windows Hypervisor Platform; and Windows Security, Device security, Core isolation, Memory integrity, Off. Reboot required.`
         }
-      }
-    }
-  },
-  {
-    id: 'timer-resolution-not-optimized',
-    category: 'os-config',
-    name: 'Global Timer Resolution Not Optimized (Win 11)',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      if (data.osConfig.globalTimerResolutionEnabled) return null
-      if (data.osConfig.windowsBuild < 22621) return null // Win 11 22H2 = build 22621
-      return {
-        ruleId: 'timer-resolution-not-optimized',
-        severity: 'info',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows uses a 15.6ms timer tick by default. VR compositors need sub-millisecond precision for frame scheduling — without it, frames can be delivered slightly late causing micro-judder. This registry flag lets VR runtimes request the more precise 0.5ms tick.',
-          advanced: 'On Windows 11, Microsoft changed timer resolution behavior so that timeBeginPeriod(1) calls from applications no longer affect the global system timer — only that process\'s timer is affected. Setting GlobalTimerResolutionRequests = 1 in HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel restores the previous behavior where any app requesting high-resolution timers raises the global tick rate to ~0.5ms. SteamVR and Oculus runtime both call timeBeginPeriod(1) for frame scheduling — this flag ensures their requests apply system-wide.'
-        },
-        fixId: 'fix-windows-timer-resolution'
       }
     }
   },

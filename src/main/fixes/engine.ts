@@ -74,9 +74,6 @@ function markUndone(fixId: string): void {
 
 // ── Registry helpers ──────────────────────────────────────────
 
-const MMCSS_PATH = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile'
-const MMCSS_GAMES_PATH = `${MMCSS_PATH}\\Tasks\\Games`
-
 async function regWriteDword(hive: 'HKLM' | 'HKCU', path: string, name: string, value: number): Promise<void> {
   // execFile passes argv elements verbatim, so paths with spaces don't need
   // shell-quoting. /f forces overwrite without prompting; reg.exe creates
@@ -90,161 +87,6 @@ async function regWriteSz(hive: 'HKLM' | 'HKCU', path: string, name: string, val
 
 async function regDeleteValue(hive: 'HKLM' | 'HKCU', path: string, name: string): Promise<void> {
   await regExe(['delete', `${hive}\\${path}`, '/v', name, '/f'])
-}
-
-const NETWORK_CLASS_GUID = '{4d36e972-e325-11ce-bfc1-08002be10318}'
-
-/**
- * Set the PnPCapabilities DWORD on every 802.11 adapter under the network
- * class. Bit 0x18 disables "Allow the computer to turn off this device to
- * save power" (the toggle Device Manager exposes); 0x00 re-enables it.
- *
- * The same write that Set-NetAdapterPowerManagement performs internally;
- * this is the documented Microsoft-supported registry path.
- */
-async function setWifiAdapterPnpCapabilities(value: number): Promise<void> {
-  const subkeys = enumerateRegistrySubkeys(
-    'HKLM',
-    `SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS_GUID}`
-  )
-  for (const sk of subkeys) {
-    if (!/^\d{4}$/.test(sk)) continue
-    const path = `SYSTEM\\CurrentControlSet\\Control\\Class\\${NETWORK_CLASS_GUID}\\${sk}`
-    const desc = await readValue(`HKLM\\${path}`, 'DriverDesc').catch(() => null)
-    if (
-      !desc ||
-      (desc.type !== 'REG_SZ' && desc.type !== 'REG_EXPAND_SZ') ||
-      !/wi-?fi|wireless|802\.11/i.test(desc.data)
-    ) {
-      continue
-    }
-    await regWriteDword('HKLM', path, 'PnPCapabilities', value)
-  }
-}
-
-// ── Fix 2: MMCSS NetworkThrottlingIndex ───────────────────────
-
-const fixMmcssNetworkThrottling: Fix = {
-  id: 'fix-mmcss-network-throttling',
-  name: 'Disable MMCSS Network Throttling',
-  description: 'Sets NetworkThrottlingIndex to 0xFFFFFFFF to prevent Windows throttling network-heavy multimedia tasks.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex') ?? 10
-    return {
-      fixId: 'fix-mmcss-network-throttling',
-      name: 'Disable MMCSS Network Throttling',
-      description: 'Removes artificial packet throttling that adds latency to wireless VR streaming.',
-      changes: [{
-        target: `Registry: HKLM\\${MMCSS_PATH}\\NetworkThrottlingIndex`,
-        currentValue: current === 0xffffffff ? '0xFFFFFFFF (already disabled)' : `${current} (throttling active)`,
-        newValue: '0xFFFFFFFF (disabled)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backup = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex') ?? 10
-    storeBackup('fix-mmcss-network-throttling', { NetworkThrottlingIndex: String(backup) })
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex', 0xffffffff)
-      const verify = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex')
-      const success = verify === 0xffffffff
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-network-throttling', name: 'Disable MMCSS Network Throttling',
-        appliedAt: Date.now(),
-        changes: [{ target: `NetworkThrottlingIndex`, currentValue: String(backup), newValue: '4294967295' }],
-        backupValues: { NetworkThrottlingIndex: String(backup) }, undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-network-throttling', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-network-throttling', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-network-throttling')
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex', parseInt(backup?.NetworkThrottlingIndex ?? '10'))
-      markUndone('fix-mmcss-network-throttling')
-      return { fixId: 'fix-mmcss-network-throttling', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-network-throttling', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 3: MMCSS Games task priority ─────────────────────────
-
-const fixMmcssGamesPriority: Fix = {
-  id: 'fix-mmcss-games-priority',
-  name: 'Set Games Scheduling Priority',
-  description: 'Configures MMCSS Games task: Priority=6, Scheduling Category=High, GPU Priority=8.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const prio = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2
-    const cat = readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium'
-    const gpuPrio = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8
-    return {
-      fixId: 'fix-mmcss-games-priority',
-      name: 'Set Games Scheduling Priority',
-      description: 'Elevates MMCSS Games task so VR processes get CPU time before lower-priority tasks.',
-      changes: [
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\Priority`, currentValue: String(prio), newValue: '6' },
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\Scheduling Category`, currentValue: cat, newValue: 'High' },
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\GPU Priority`, currentValue: String(gpuPrio), newValue: '8' }
-      ],
-      requiresAdmin: true, requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupValues: Record<string, string> = {
-      Priority: String(readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2),
-      SchedulingCategory: readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium',
-      GpuPriority: String(readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8)
-    }
-    storeBackup('fix-mmcss-games-priority', backupValues)
-    try {
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', 6)
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', 'High')
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', 8)
-      const verify = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority')
-      const success = verify === 6
-      const changes: FixChange[] = [
-        { target: 'Priority', currentValue: backupValues.Priority, newValue: '6' },
-        { target: 'Scheduling Category', currentValue: backupValues.SchedulingCategory, newValue: 'High' },
-        { target: 'GPU Priority', currentValue: backupValues.GpuPriority, newValue: '8' }
-      ]
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-games-priority', name: 'Set Games Scheduling Priority',
-        appliedAt: Date.now(), changes, backupValues, undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-games-priority', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-games-priority', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-games-priority')
-    if (!backup) return { fixId: 'fix-mmcss-games-priority', success: false, error: 'No backup' }
-    try {
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', parseInt(backup.Priority))
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', backup.SchedulingCategory)
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', parseInt(backup.GpuPriority))
-      markUndone('fix-mmcss-games-priority')
-      return { fixId: 'fix-mmcss-games-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-games-priority', success: false, error: (e as Error).message }
-    }
-  }
 }
 
 // ── Fix 6: Enable Game Mode ───────────────────────────────────
@@ -294,49 +136,6 @@ const fixEnableGameMode: Fix = {
       return { fixId: 'fix-game-mode-disabled', success: true }
     } catch (e) {
       return { fixId: 'fix-game-mode-disabled', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 7: Disable Wi-Fi Power Saving ────────────────────────
-
-const fixWifiPowerSaving: Fix = {
-  id: 'fix-wifi-power-saving',
-  name: 'Disable Wi-Fi Adapter Power Saving',
-  description: 'Prevents the Wi-Fi adapter from dozing between packets, eliminating wake-up latency spikes in wireless VR.',
-  requiresAdmin: false,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => ({
-    fixId: 'fix-wifi-power-saving', name: 'Disable Wi-Fi Adapter Power Saving',
-    description: 'Wi-Fi power management causes 10-50ms wake-up spikes that appear as glitches in wireless VR.',
-    changes: [{ target: 'Wi-Fi Adapter Power Management', currentValue: 'AllowComputerToTurnOffDevice = Enabled', newValue: 'Disabled' }],
-    requiresAdmin: false, requiresReboot: false
-  }),
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-wifi-power-saving', { applied: 'true' })
-    try {
-      await setWifiAdapterPnpCapabilities(0x18)
-      recordHistory({
-        fixId: 'fix-wifi-power-saving', name: 'Disable Wi-Fi Adapter Power Saving',
-        appliedAt: Date.now(),
-        changes: [{ target: 'Wi-Fi Power Management', currentValue: 'Enabled', newValue: 'Disabled' }],
-        backupValues: { applied: 'true' }, undoneAt: null
-      })
-      return { fixId: 'fix-wifi-power-saving', success: true }
-    } catch (e) {
-      return { fixId: 'fix-wifi-power-saving', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    try {
-      await setWifiAdapterPnpCapabilities(0)
-      markUndone('fix-wifi-power-saving')
-      return { fixId: 'fix-wifi-power-saving', success: true }
-    } catch (e) {
-      return { fixId: 'fix-wifi-power-saving', success: false, error: (e as Error).message }
     }
   }
 }
@@ -1080,87 +879,6 @@ const fixCoreParkingDisable: Fix = {
   }
 }
 
-// ── Fix 17: Disable TCP Nagle Algorithm ──────────────────────
-
-const fixNagleDisable: Fix = {
-  id: 'fix-nagle-disable',
-  name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-  description: 'Disables Nagle\'s algorithm on all network adapters. Nagle batches small TCP packets together — great for throughput but adds latency. Disabling it reduces VR streaming latency.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    let needsFixCount = 0
-    const interfaces = enumerateRegistrySubkeys(
-      'HKLM',
-      'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
-    )
-    for (const guid of interfaces) {
-      const v = await readValue(
-        `HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`,
-        'TcpAckFrequency'
-      ).catch(() => null)
-      if (!(v && v.type === 'REG_DWORD' && v.data === 1)) needsFixCount++
-    }
-    return {
-      fixId: 'fix-nagle-disable',
-      name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-      description: 'Sets TcpAckFrequency=1 and TCPNoDelay=1 on all network adapter interfaces to eliminate Nagle batching delay.',
-      changes: [{
-        target: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\* -> TcpAckFrequency, TCPNoDelay',
-        currentValue: `${needsFixCount} interface(s) without Nagle disabled`,
-        newValue: 'TcpAckFrequency=1, TCPNoDelay=1 on all interfaces'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-nagle-disable', { applied: 'true' })
-    try {
-      const interfaces = enumerateRegistrySubkeys(
-        'HKLM',
-        'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
-      )
-      for (const guid of interfaces) {
-        const path = `SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`
-        await regWriteDword('HKLM', path, 'TcpAckFrequency', 1)
-        await regWriteDword('HKLM', path, 'TCPNoDelay', 1)
-      }
-      recordHistory({
-        fixId: 'fix-nagle-disable',
-        name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-        appliedAt: Date.now(),
-        changes: [{ target: 'All TCP interfaces', currentValue: 'Nagle enabled', newValue: 'TcpAckFrequency=1, TCPNoDelay=1' }],
-        backupValues: { applied: 'true' },
-        undoneAt: null
-      })
-      return { fixId: 'fix-nagle-disable', success: true }
-    } catch (e) {
-      return { fixId: 'fix-nagle-disable', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    try {
-      const interfaces = enumerateRegistrySubkeys(
-        'HKLM',
-        'SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces'
-      )
-      for (const guid of interfaces) {
-        const path = `SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\${guid}`
-        await tryRegExe(['delete', `HKLM\\${path}`, '/v', 'TcpAckFrequency', '/f'])
-        await tryRegExe(['delete', `HKLM\\${path}`, '/v', 'TCPNoDelay', '/f'])
-      }
-      markUndone('fix-nagle-disable')
-      return { fixId: 'fix-nagle-disable', success: true }
-    } catch (e) {
-      return { fixId: 'fix-nagle-disable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
 // ── Fix 18: Disable Fullscreen Optimizations for VR Apps ─────
 
 const FS_OPT_REG_PATH = 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers'
@@ -1430,64 +1148,6 @@ const fixVRChatAvatarCulling: Fix = {
   }
 }
 
-// ── Fix 22: Enable High-Resolution System Timer (Win 11) ──────
-
-const KERNEL_PATH = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel'
-
-const fixWindowsTimerResolution: Fix = {
-  id: 'fix-windows-timer-resolution',
-  name: 'Enable High-Resolution System Timer (Win 11)',
-  description: 'Allows VR processes to request 0.5ms timer resolution system-wide on Windows 11 22H2+. The default 15.6ms timer tick causes VR frame scheduling to be imprecise. This fix enables the kernel flag so VR runtimes can take advantage of it.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests') ?? 0
-    return {
-      fixId: 'fix-windows-timer-resolution',
-      name: 'Enable High-Resolution System Timer (Win 11)',
-      description: 'Enables GlobalTimerResolutionRequests so VR runtimes can request 0.5ms timer precision on Windows 11 22H2+. Requires Windows 11 22H2 or later.',
-      changes: [{
-        target: `Registry: HKLM\\${KERNEL_PATH}\\GlobalTimerResolutionRequests`,
-        currentValue: `${current} (${current === 1 ? 'already enabled' : '0 = default 15.6ms tick'})`,
-        newValue: '1 (enabled — allows 0.5ms timer resolution requests) — Win 11 22H2+ required'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backup = readRegistryDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests') ?? 0
-    storeBackup('fix-windows-timer-resolution', { GlobalTimerResolutionRequests: String(backup) })
-    try {
-      await regWriteDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests', 1)
-      recordHistory({
-        fixId: 'fix-windows-timer-resolution',
-        name: 'Enable High-Resolution System Timer (Win 11)',
-        appliedAt: Date.now(),
-        changes: [{ target: 'GlobalTimerResolutionRequests', currentValue: String(backup), newValue: '1' }],
-        backupValues: { GlobalTimerResolutionRequests: String(backup) },
-        undoneAt: null
-      })
-      return { fixId: 'fix-windows-timer-resolution', success: true }
-    } catch (e) {
-      return { fixId: 'fix-windows-timer-resolution', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-windows-timer-resolution')
-    try {
-      await regWriteDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests', parseInt(backup?.GlobalTimerResolutionRequests ?? '0'))
-      markUndone('fix-windows-timer-resolution')
-      return { fixId: 'fix-windows-timer-resolution', success: true }
-    } catch (e) {
-      return { fixId: 'fix-windows-timer-resolution', success: false, error: (e as Error).message }
-    }
-  }
-}
-
 // ── Fix 27: VRChat per-avatar physics caps ───────────────────
 // Note on naming: the config keys are still `dynamic_bone_max_*` for legacy
 // reasons — VRChat used the Dynamic Bone Unity asset before 2022 and kept
@@ -1666,11 +1326,13 @@ const fixVRChatMsaa: Fix = {
 
 // ── Fix Registry ─────────────────────────────────────────────
 
+// fixMmcssNetworkThrottling, fixMmcssGamesPriority, fixWifiPowerSaving,
+// fixNagleDisable, and fixWindowsTimerResolution were removed when the admin
+// requirement was dropped. All five wrote HKLM, which standard users can't
+// touch, so they would silently fail. Their detection rules remain (where the
+// underlying signal is real) so the user is still told the condition exists.
 const ALL_FIXES: Fix[] = [
-  fixMmcssNetworkThrottling,
-  fixMmcssGamesPriority,
   fixEnableGameMode,
-  fixWifiPowerSaving,
   fixVCacheAffinity,
   fixSteamVRSupersampling,
   fixSteamVRMotionSmoothing,
@@ -1684,13 +1346,11 @@ const ALL_FIXES: Fix[] = [
   // fixCoreParkingDisable — removed. powercfg CPMINCORES=100 setting persisted
   // but VR frame-pacing data showed no change; modern Windows schedulers
   // don't park cores under VR workloads in practice.
-  fixNagleDisable,
   // fixDisableFullscreenOptimizations — removed. AppCompatFlags
   // DISABLEDXMAXIMIZEDWINDOWEDMODE only affects legacy fullscreen; VR runtimes
   // use DXGI flip model regardless, so the flag made no observable difference.
   fixSteamVRAsyncReprojection,
   fixVRChatAvatarCulling,
-  fixWindowsTimerResolution,
   // NEW — Fixes 23-26:
   fixVRChatDynamicBoneLimits,
   fixVRChatMsaa
