@@ -99,6 +99,25 @@ async function getUsbSelectiveSuspendEnabled(): Promise<boolean> {
   }
 }
 
+async function getPcieAspmActive(): Promise<boolean | null> {
+  // PCIE_LINK_STATE subgroup 501a4d13-42af-4429-9fd1-a8218c268e20,
+  // ASPM setting ee12f906-d277-404b-b6da-e5fa1a576df5.
+  // Value 0 = Off, 1 = Moderate power savings, 2 = Maximum power savings.
+  try {
+    const out = await tryRunPowerShell(
+      'powercfg /query SCHEME_CURRENT 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5',
+      8000
+    )
+    if (!out) return null
+    const match = out.match(/Current AC Power Setting Index:\s*(0x[0-9a-f]+|\d+)/i)
+    if (!match) return null
+    const val = parseInt(match[1])
+    return val !== 0
+  } catch {
+    return null
+  }
+}
+
 async function getCoresMinParkedPercent(): Promise<number> {
   try {
     const out = await tryRunPowerShell(
@@ -320,7 +339,8 @@ export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
       services,
       usbSelectiveSuspendEnabled,
       coresMinParkedPercent,
-      nagleEnabled
+      nagleEnabled,
+      pcieAspmActive
     ] = await Promise.all([
       queryWindowsVersion(),
       getStartupItems(),
@@ -329,7 +349,8 @@ export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
       queryServices(),
       getUsbSelectiveSuspendEnabled(),
       getCoresMinParkedPercent(),
-      getNagleEnabled()
+      getNagleEnabled(),
+      getPcieAspmActive()
     ])
 
     // GPU PNP device ID must be fetched before the interrupt priority check (sequential)
@@ -400,6 +421,7 @@ export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
         wuAutoRebootEnabled: getWuAutoRebootEnabled(),
         deliveryOptimizationP2pEnabled: getDeliveryOptimizationP2pEnabled(),
         win11EcoQosRisk: getWin11EcoQosRisk(build),
+        pcieAspmActive,
         vpnActive,
         thirdPartyAv,
         biosDate: biosInfo.date,

@@ -267,6 +267,7 @@ export interface OsConfigData {
   wuAutoRebootEnabled: boolean           // NoAutoRebootWithLoggedOnUsers is absent or 0 (auto-reboot risk)
   deliveryOptimizationP2pEnabled: boolean // DODownloadMode is null or 1/2/3 (P2P seeding active)
   win11EcoQosRisk: boolean  // Win 11 22H2+ + non-High-Performance power plan = risk of VR process throttling
+  pcieAspmActive: boolean | null         // PCIe Active State Power Management is set to anything other than Off on the active power plan; null if unreadable
   // ── System identification ────────────────────────────────────
   vpnActive: boolean                  // VPN adapter detected as connected
   thirdPartyAv: string | null         // Name of third-party AV product (null if only Defender)

@@ -159,8 +159,8 @@ export const gpuRules: Rule[] = [
         severity: 'info',
         category: 'gpu',
         explanation: {
-          simple: `Hardware Accelerated GPU Scheduling (HAGS) is disabled. Enabling it lets your GPU manage its own memory scheduling, reducing VR frame time variance. Safe to enable on ${primary.name} — takes effect after a reboot.`,
-          advanced: `HAGS is disabled (HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\HwSchMode = 1, should be 2). Supported on NVIDIA GTX 10xx+, AMD RX 400+, Intel Arc/Xe, and most GPUs with WDDM 2.7+ drivers. It moves GPU memory scheduling from the CPU driver to the hardware, reducing scheduling overhead. In VR, this can lower frame time variance by 0.5–2ms. Enable via Windows Settings → Display → Graphics → Hardware-accelerated GPU scheduling, or use the Auto-Fix button.`
+          simple: `Hardware Accelerated GPU Scheduling (HAGS) is off on your ${primary.name}. Turning it on can reduce VR frame-time variance by roughly half a millisecond to two milliseconds, but a few NVIDIA driver branches have shipped HAGS-related compositor bugs (most notoriously the 545.x and 566.x series on Ampere). The toggle lives in Windows Settings, System, Display, Graphics. VOS does not change this for you.`,
+          advanced: `HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\HwSchMode is 1 (off); 2 means on. Requires WDDM 2.7+ (Windows 10 v2004 or newer) and a driver that advertises HAGS support: NVIDIA GTX 10xx and later, AMD RX 400 and later, Intel Arc and Iris Xe. When supported, HAGS hands GPU memory scheduling from the kernel-mode driver to firmware on the GPU itself, which trims a small amount of CPU overhead and frame-time jitter. The reason to leave it as a manual choice rather than auto-applied: the same setting has been responsible for documented VR compositor crashes and flicker on specific NVIDIA driver versions, and the right answer is sometimes "wait for the next driver" rather than "flip the bit." Reboot required either way.`
         }
       }
     }

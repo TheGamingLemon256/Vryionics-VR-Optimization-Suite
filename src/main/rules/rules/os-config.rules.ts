@@ -18,13 +18,12 @@ export const osConfigRules: Rule[] = [
       ) return null
       return {
         ruleId: 'power-plan-not-performance',
-        severity: 'warning',
+        severity: 'info',
         category: 'os-config',
         explanation: {
-          simple: `Your PC is set to "${data.osConfig.powerPlan}" power mode, which tells it to save electricity by slowing down when not under load. For VR, you want "High Performance" so your PC is always ready to respond instantly.`,
-          advanced: `Active power plan: "${data.osConfig.powerPlan}". For VR, use High Performance or Ultimate Performance plan to prevent CPU frequency scaling delays (P-state transitions add 1-10ms latency). AMD users: use "AMD Ryzen Balanced" as a compromise. Set via: powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c (High Performance) or powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61 (Ultimate Performance).`
-        },
-        fixId: 'fix-power-plan'
+          simple: `Your active power plan is "${data.osConfig.powerPlan}". Settings, System, Power has the option to change this if you want to. The Ultimate Performance plan typically gives the best VR frame consistency.`,
+          advanced: `Active power plan: "${data.osConfig.powerPlan}". On a non-performance plan, CPU P-state transitions can add 1 to 10 ms of latency under sudden load, which shows up as occasional frame-time spikes in VR. The Ultimate Performance plan disables most of this gating. Tradeoff: sustained higher idle power draw and warmer components. To switch: Settings, System, Power, or powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c (High Performance) or e9a42b02-d5df-448d-aa00-03f14749eb61 (Ultimate Performance).`
+        }
       }
     }
   },
@@ -196,19 +195,20 @@ export const osConfigRules: Rule[] = [
   {
     id: 'hyper-v-overhead',
     category: 'os-config',
-    name: 'Hyper-V Overhead Active',
+    name: 'Hyper-V or Memory Integrity Active',
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.osConfig) return null
-      if (!data.osConfig.hyperVRunning) return null
+      const hyperV = data.osConfig.hyperVRunning
+      const memIntegrity = data.compat?.hvciEnabled === true
+      if (!hyperV && !memIntegrity) return null
       return {
         ruleId: 'hyper-v-overhead',
-        severity: 'warning',
+        severity: 'info',
         category: 'os-config',
         explanation: {
-          simple: 'Hyper-V is active on your system. Even with no VMs running, Hyper-V makes Windows itself run as a virtual machine on a hypervisor. This adds interrupt latency and can disrupt VR compositor timing. Disabling it restores native Windows scheduling.',
-          advanced: 'Hyper-V is a Type-1 hypervisor — when enabled, Windows itself runs as a guest VM (the "root partition"). This virtualizes the TSC (Time Stamp Counter), adds IOMMU overhead, and introduces ~1ms+ additional interrupt latency because hardware interrupts are now fielded by the hypervisor first before being forwarded to Windows. VR compositors rely on precise timer interrupts for frame scheduling; hypervisor overhead can cause compositor deadline misses. Requires reboot to disable: Turn Windows Features → uncheck Hyper-V, Virtual Machine Platform, and Windows Hypervisor Platform.'
-        },
-        fixId: 'fix-hyper-v-disable'
+          simple: 'Hyper-V or Memory Integrity is enabled. This costs roughly 5 to 10 percent CPU performance in CPU-bound VR titles. Disabling it improves VR performance but reduces protection against kernel-mode exploits. VOS does not change this for you.',
+          advanced: `Hyper-V running: ${hyperV ? 'yes' : 'no'}. Memory Integrity (HVCI): ${memIntegrity ? 'on' : 'off or unknown'}. When the hypervisor launch type is Auto, Windows itself runs as a guest under a thin Type-1 hypervisor (the "root partition"), which virtualizes the TSC and routes hardware interrupts through the hypervisor first. HVCI adds VBS-backed code integrity checks on every kernel-mode driver load. Both features harden the kernel against rootkits and signed-driver attacks. The cost in CPU-bound VR is typically 5 to 10 percent in titles like VRChat and Pavlov; less in GPU-bound titles. To turn off: Windows Features, uncheck Hyper-V / Virtual Machine Platform / Windows Hypervisor Platform; and Windows Security, Device security, Core isolation, Memory integrity, Off. Reboot required.`
+        }
       }
     }
   },
@@ -275,39 +275,37 @@ export const osConfigRules: Rule[] = [
   {
     id: 'gpu-interrupt-priority-normal',
     category: 'os-config',
-    name: 'GPU Interrupt Priority Not Optimized',
+    name: 'GPU Not Using MSI Interrupt Mode',
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.osConfig) return null
       if (data.osConfig.gpuInterruptPrioritySet) return null
       if (data.osConfig.gpuPnpDeviceId === null) return null
       return {
         ruleId: 'gpu-interrupt-priority-normal',
-        severity: 'warning',
+        severity: 'info',
         category: 'os-config',
         explanation: {
-          simple: 'Your GPU\'s interrupt signals are being processed at normal Windows priority. Setting MSI (Message Signaled Interrupt) mode and High interrupt priority ensures that GPU frame-completion signals are handled immediately — reducing frame latency by 1-2ms.',
-          advanced: `GPU PNP device ID: ${data.osConfig.gpuPnpDeviceId}. GPU interrupt processing priority (DevicePriority) is not set to 3 (High) in HKLM\\SYSTEM\\CurrentControlSet\\Enum\\{PNPDeviceID}\\Device Parameters\\Interrupt Management\\Affinity Policy. MSISupported should also be set to 1 in the MessageSignaledInterruptProperties subkey. These settings tell Windows to use Message Signaled Interrupts (level-triggered, lower latency than legacy line-based IRQs) and to process the GPU's interrupt at High device priority. Requires reboot.`
-        },
-        fixId: 'fix-gpu-interrupt-priority'
+          simple: 'Your GPU is handling interrupts in legacy line-based mode at normal priority. Switching to MSI mode and raising the interrupt priority can shave 1 to 2 ms off frame-completion latency, but it is a manual registry change with a small risk of driver instability if the GPU does not implement MSI cleanly. VOS does not change this for you.',
+          advanced: `GPU PNP device ID: ${data.osConfig.gpuPnpDeviceId}. DevicePriority is not 3 (High) at HKLM\\SYSTEM\\CurrentControlSet\\Enum\\{PNPDeviceID}\\Device Parameters\\Interrupt Management\\Affinity Policy, and MSISupported is not 1 under the MessageSignaledInterruptProperties subkey. Setting both moves the GPU from legacy line-based IRQs to Message Signaled Interrupts and bumps the kernel's interrupt-processing priority for that device. The downside: a small minority of older GPUs and some virtualization passthrough scenarios behave badly with MSI on, and a bad write here is annoying to diagnose. Reboot required to take effect; reboot again if the result is glitchy and you want to revert.`
+        }
       }
     }
   },
   {
     id: 'wu-auto-reboot-risk',
     category: 'os-config',
-    name: 'Windows Update Auto-Restart Active During VR',
+    name: 'Windows Update May Reboot During VR Sessions',
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.osConfig) return null
       if (!data.osConfig.wuAutoRebootEnabled) return null
       return {
         ruleId: 'wu-auto-reboot-risk',
-        severity: 'warning',
+        severity: 'info',
         category: 'os-config',
         explanation: {
-          simple: 'Windows Update can force-restart your PC even while you\'re in a VR session. Setting NoAutoRebootWithLoggedOnUsers prevents automatic reboots while you\'re logged in — Windows will wait until next manual restart to apply updates.',
-          advanced: 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoRebootWithLoggedOnUsers is absent or set to 0. This allows Windows Update to initiate automatic reboots when it considers a reboot "needed" after an update, even with active user sessions. Setting NoAutoRebootWithLoggedOnUsers = 1 suppresses the forced reboot. Setting AUOptions = 2 (notify before download) also prevents background downloads from consuming bandwidth during VR. These are group policy registry equivalents — no domain controller required.'
-        },
-        fixId: 'fix-disable-wu-reboot'
+          simple: 'Windows Update is allowed to restart your PC automatically after applying updates, including while a VR session is active. You can defer that reboot through Windows settings or group policy. Deferral keeps your session uninterrupted but also delays security patches actually taking effect. VOS does not change this for you.',
+          advanced: 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoRebootWithLoggedOnUsers is absent or 0. With that policy set to 1, Windows Update still downloads and stages updates but waits for a manual restart instead of forcing one while you are logged in. Active hours and the Pause updates option in Settings, Windows Update, do similar work for shorter windows. Whichever route you pick, the patch is not applied until the reboot actually happens, so this is a tradeoff between session continuity and time-to-patched.'
+        }
       }
     }
   },
@@ -329,6 +327,24 @@ export const osConfigRules: Rule[] = [
           advanced: `Windows 11 22H2+ introduced stricter EcoQoS (Quality of Service) enforcement in non-High-Performance power plans. The OS uses "Efficient QoS" hints to throttle background processes via PROCESS_POWER_THROTTLING_EXECUTION_SPEED. While VR runtimes attempt to opt out, this interacts with the scheduler in ways that can degrade frame timing. High Performance power plan disables EcoQoS globally. Current plan: "${data.osConfig.powerPlan}".`
         },
         fixId: 'fix-power-plan'
+      }
+    }
+  },
+  {
+    id: 'pcie-aspm-active',
+    category: 'os-config',
+    name: 'PCIe ASPM Power Savings Active',
+    evaluate: (data: ScanData): RuleResult | null => {
+      if (!data.osConfig) return null
+      if (data.osConfig.pcieAspmActive !== true) return null
+      return {
+        ruleId: 'pcie-aspm-active',
+        severity: 'info',
+        category: 'os-config',
+        explanation: {
+          simple: 'PCIe Active State Power Management is on. When the GPU or NVMe sits idle for a moment between frames, the PCIe link drops to a low-power state and has to wake back up the next time it is used. The wake delay is small but irregular, which can show up as occasional frame pacing hitches. Turning it Off in advanced power settings trades a small amount of idle power draw for steadier link latency. VOS does not change this for you.',
+          advanced: 'Powercfg ASPM setting (PCIE_LINK_STATE subgroup 501a4d13-42af-4429-9fd1-a8218c268e20, value ee12f906-d277-404b-b6da-e5fa1a576df5) is currently 1 (Moderate) or 2 (Maximum). In those states the link transitions through L0s/L1 between bursts of traffic; coming back from L1 takes microseconds to single-digit milliseconds depending on chipset and device. On a steady VR workload the worst-case wakes are rare, but they can land on a frame and miss the compositor deadline. To turn off: powercfg, Change plan settings, Change advanced power settings, PCI Express, Link State Power Management, Off. Or: powercfg /setacvalueindex SCHEME_CURRENT 501a4d13-42af-4429-9fd1-a8218c268e20 ee12f906-d277-404b-b6da-e5fa1a576df5 0 (and the matching /setdcvalueindex on laptops).'
+        }
       }
     }
   }
