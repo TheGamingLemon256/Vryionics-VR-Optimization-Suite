@@ -242,20 +242,12 @@ export interface ProcessesData {
 
 // ── OS Config ────────────────────────────────────────────────
 
-export interface MmcssConfig {
-  systemResponsiveness: number
-  networkThrottlingIndex: number
-  gamesTaskPriority: number
-  gamesSchedulingCategory: string
-}
-
 export interface OsConfigData {
   windowsVersion: string
   windowsBuild: number
   gameModeEnabled: boolean
   hpetEnabled: boolean | null
   timerResolution: { current: number; minimum: number; maximum: number } | null // ms
-  mmcss: MmcssConfig
   powerPlan: string
   startupItems: Array<{ name: string; enabled: boolean; impact: string }>
   services: Array<{ name: string; displayName: string; status: string; startType: string }>
@@ -540,7 +532,6 @@ export type ScanModuleId =
   | 'vr-runtime'
   | 'processes'
   | 'os-config'
-  | 'mmcss'
   | 'power-plan'
   | 'steamvr'
   // Phase 1b modules

@@ -449,9 +449,6 @@ function formatRawDump(s: ScanData): string {
     lines.push(`  Game Mode         : ${o.gameModeEnabled ? 'Enabled' : 'Disabled'}`)
     lines.push(`  HPET              : ${o.hpetEnabled != null ? (o.hpetEnabled ? 'Enabled' : 'Disabled') : 'Unknown'}`)
     if (o.timerResolution) lines.push(`  Timer Resolution  : ${o.timerResolution.current.toFixed(3)} ms`)
-    lines.push(`  MMCSS Responsive  : ${o.mmcss.systemResponsiveness}`)
-    lines.push(`  MMCSS Net Throttle: ${o.mmcss.networkThrottlingIndex}`)
-    lines.push(`  MMCSS Games Prio  : ${o.mmcss.gamesTaskPriority} (${o.mmcss.gamesSchedulingCategory})`)
     // Defensive: tolerate old scan data where these fields may be a bare string
     const defExcl = Array.isArray(o.defenderExclusions) ? o.defenderExclusions : (typeof o.defenderExclusions === 'string' && o.defenderExclusions ? [o.defenderExclusions] : [])
     const virtDrv = Array.isArray(o.virtualizationDrivers) ? o.virtualizationDrivers : (typeof o.virtualizationDrivers === 'string' && o.virtualizationDrivers ? [o.virtualizationDrivers] : [])

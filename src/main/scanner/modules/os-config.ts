@@ -381,12 +381,6 @@ export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
         gameModeEnabled,
         hpetEnabled: getHpetStatus(),
         timerResolution: null, // Phase 1b: timer-resolution module
-        mmcss: {
-          systemResponsiveness: 20, // Populated by mmcss module merge
-          networkThrottlingIndex: 10,
-          gamesTaskPriority: 2,
-          gamesSchedulingCategory: 'Medium'
-        },
         powerPlan: 'Unknown', // Populated by power-plan module merge
         startupItems,
         services: relevantServices,

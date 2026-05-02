@@ -121,7 +121,7 @@ function buildQuickStats(category: RuleCategory, scanData: ScanData): string {
     case 'os-config': {
       const os = scanData.osConfig
       if (!os) return 'No data'
-      return `${os.powerPlan} · MMCSS ${os.mmcss.systemResponsiveness}`
+      return os.powerPlan
     }
     default:
       return ''
@@ -291,10 +291,6 @@ function buildRawData(category: RuleCategory, scanData: ScanData): RawRow[] | un
         { label: 'Game Mode', value: os.gameModeEnabled ? 'Enabled' : 'Disabled' },
         { label: 'HPET', value: os.hpetEnabled != null ? (os.hpetEnabled ? 'Enabled' : 'Disabled') : 'Unknown' },
         { label: 'Timer Resolution', value: os.timerResolution ? `${os.timerResolution.current.toFixed(3)} ms` : 'Unknown' },
-        { label: 'MMCSS Responsiveness', value: String(os.mmcss.systemResponsiveness) },
-        { label: 'MMCSS Network Throttle', value: String(os.mmcss.networkThrottlingIndex) },
-        { label: 'MMCSS Games Priority', value: String(os.mmcss.gamesTaskPriority) },
-        { label: 'MMCSS Games Category', value: os.mmcss.gamesSchedulingCategory },
         // Defensive coercion: old scans / PowerShell single-item returns can
         // leave defenderExclusions/virtualizationDrivers as a bare string.
         { label: 'Defender Exclusions', value: toStringList(os.defenderExclusions) || 'None' },

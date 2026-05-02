@@ -3,11 +3,11 @@
 
 import {
   scanCpu, scanGpu, scanRam, scanStorage, scanNetwork, scanProcesses,
-  scanOsConfig, scanMmcss, scanPowerPlan, scanSteamVr, scanVrRuntime,
+  scanOsConfig, scanPowerPlan, scanSteamVr, scanVrRuntime,
   scanSpeedTest, scanHeadsetConnection, scanDisplay, scanAudio, scanUsb,
   scanEventLog, scanCompat
 } from './modules/index'
-import type { ScanData, ScanProgress, ScanModuleResult, MmcssConfig, ScanCondition, UserScanSetup } from './types'
+import type { ScanData, ScanProgress, ScanModuleResult, ScanCondition, UserScanSetup } from './types'
 import { getProfile } from '../headsets/loader'
 import Store from 'electron-store'
 
@@ -84,7 +84,6 @@ const MODULE_LABELS: Record<string, string> = {
   processes: 'Processes',
   'vr-runtime': 'VR Runtime',
   'os-config': 'OS Configuration',
-  mmcss: 'MMCSS Settings',
   'power-plan': 'Power Plan',
   steamvr: 'SteamVR Settings',
   'headset-connection': 'Headset Detection',
@@ -114,7 +113,6 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanData> {
     { id: 'processes', run: scanProcesses as () => Promise<ScanModuleResult<unknown>> },
     { id: 'vr-runtime', run: scanVrRuntime as () => Promise<ScanModuleResult<unknown>> },
     { id: 'os-config', run: scanOsConfig as () => Promise<ScanModuleResult<unknown>> },
-    { id: 'mmcss', run: scanMmcss as () => Promise<ScanModuleResult<unknown>> },
     { id: 'power-plan', run: scanPowerPlan as () => Promise<ScanModuleResult<unknown>> },
     { id: 'steamvr', run: scanSteamVr as () => Promise<ScanModuleResult<unknown>> },
     { id: 'headset-connection', run: scanHeadsetConnection as () => Promise<ScanModuleResult<unknown>> },
@@ -214,12 +212,6 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanData> {
           break
 
         // Merge modules — update subsections of existing data
-        case 'mmcss': {
-          if (result.success && result.data && scanData.osConfig) {
-            scanData.osConfig.mmcss = result.data as unknown as MmcssConfig
-          }
-          break
-        }
         case 'power-plan': {
           if (result.success && result.data && scanData.osConfig) {
             const pd = result.data as unknown as { name: string; guid: string }

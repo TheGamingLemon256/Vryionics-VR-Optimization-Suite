@@ -5,66 +5,6 @@ import type { ScanData } from '../../scanner/types'
 
 export const osConfigRules: Rule[] = [
   {
-    id: 'mmcss-responsiveness-default',
-    category: 'os-config',
-    name: 'MMCSS SystemResponsiveness Not Optimized',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      const val = data.osConfig.mmcss.systemResponsiveness
-      if (val === 0) return null // Already optimal
-      return {
-        ruleId: 'mmcss-responsiveness-default',
-        severity: val >= 20 ? 'warning' : 'info',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows is set to share a significant chunk of your processor\'s power with background tasks instead of giving it all to your VR software. Setting this to 0 dedicates maximum CPU power to VR.',
-          advanced: `MMCSS SystemResponsiveness = ${val} (current). This value reserves ${val}% of CPU time for non-multimedia tasks. Setting to 0 allows MMCSS to give VR processes the maximum CPU time. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\SystemResponsiveness → Set to 0. Current value: ${val} → Recommended: 0.`
-        },
-        fixId: 'fix-mmcss-responsiveness'
-      }
-    }
-  },
-  {
-    id: 'mmcss-network-throttling',
-    category: 'os-config',
-    name: 'Network Throttling Enabled',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      const val = data.osConfig.mmcss.networkThrottlingIndex
-      if (val >= 0xfffffff0) return null // Already disabled (0xFFFFFFFF)
-      return {
-        ruleId: 'mmcss-network-throttling',
-        severity: 'warning',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows is artificially slowing down your network when multimedia is running, which is the exact wrong behavior for wireless VR. Disabling this throttle lets your headset stream data at full speed.',
-          advanced: `MMCSS NetworkThrottlingIndex = ${val} (default: 10 packets/ms max). This throttles network packet processing when multimedia tasks are active — counterproductive for wireless VR streaming. Set to 0xFFFFFFFF (4294967295) to disable throttling. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\NetworkThrottlingIndex → 0xFFFFFFFF.`
-        },
-        fixId: 'fix-mmcss-network-throttling'
-      }
-    }
-  },
-  {
-    id: 'mmcss-games-priority',
-    category: 'os-config',
-    name: 'MMCSS Games Task Priority Low',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      const { gamesTaskPriority, gamesSchedulingCategory } = data.osConfig.mmcss
-      if (gamesTaskPriority >= 6 && gamesSchedulingCategory === 'High') return null
-      return {
-        ruleId: 'mmcss-games-priority',
-        severity: 'warning',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows isn\'t giving your VR games the highest scheduling priority. Setting this correctly tells Windows to treat VR and gaming as the most important tasks on your system.',
-          advanced: `MMCSS Games task: Priority = ${gamesTaskPriority} (should be 6), Category = "${gamesSchedulingCategory}" (should be "High"). These settings control how MMCSS prioritizes processes that register as games. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games → Priority: ${gamesTaskPriority} → 6, Scheduling Category: "${gamesSchedulingCategory}" → "High".`
-        },
-        fixId: 'fix-mmcss-games'
-      }
-    }
-  },
-  {
     id: 'power-plan-not-performance',
     category: 'os-config',
     name: 'Power Plan Not Set to High Performance',

@@ -65,7 +65,7 @@ function formatTextReport(findings: Finding[], scanData: any): string {
     if (scanData.osConfig) {
       const o = scanData.osConfig
       lines.push(`  OS     : Windows ${o.windowsVersion} (Build ${o.windowsBuild})`)
-      lines.push(`         : ${o.powerPlan} | Game Mode: ${o.gameModeEnabled ? 'On' : 'Off'} | MMCSS Resp: ${o.mmcss.systemResponsiveness}`)
+      lines.push(`         : ${o.powerPlan} | Game Mode: ${o.gameModeEnabled ? 'On' : 'Off'}`)
     }
     if (scanData.vrRuntime) {
       const v = scanData.vrRuntime

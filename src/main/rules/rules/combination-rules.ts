@@ -484,31 +484,6 @@ export const combinationRules: Rule[] = [
   },
 
   {
-    id: 'combo-mmcss-bad-plus-audio-apps',
-    category: 'os-config',
-    name: 'MMCSS Misconfigured With Audio Apps Running',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig || !data.processes) return null
-      const mmcssNotOptimal =
-        data.osConfig.mmcss.systemResponsiveness > 20 ||
-        data.osConfig.mmcss.networkThrottlingIndex !== 0xFFFFFFFF
-      if (!mmcssNotOptimal) return null
-      const hasAudioApps = data.processes.audio.length > 0
-      if (!hasAudioApps) return null
-      return {
-        ruleId: 'combo-mmcss-bad-plus-audio-apps',
-        severity: 'warning',
-        category: 'os-config',
-        explanation: {
-          simple: `Your Windows multimedia settings (MMCSS) are not tuned for VR, and you have audio apps running (${data.processes.audio.map((p) => p.name).join(', ')}). VoiceMeeter, virtual cables, and audio middleware can cause extra audio latency that interrupts VR audio sync. Fix the MMCSS settings to give VR the scheduling priority it needs.`,
-          advanced: `MMCSS SystemResponsiveness: ${data.osConfig.mmcss.systemResponsiveness} (optimal: 10) | NetworkThrottlingIndex: ${data.osConfig.mmcss.networkThrottlingIndex} (optimal: 0xFFFFFFFF/4294967295). Audio software running: ${data.processes.audio.map((p) => p.name).join(', ')}. MMCSS controls how much CPU is reserved for multimedia (VR) vs background tasks. At SystemResponsiveness=20, Windows gives 20% CPU to background tasks during multimedia playback — reducing VR thread scheduling budget. Audio middleware adds DPC interrupt chains that can spike latency.`,
-          fixId: 'fix-mmcss-responsiveness'
-        } as any
-      }
-    }
-  },
-
-  {
     id: 'combo-game-mode-off-high-process-count',
     category: 'os-config',
     name: 'Game Mode Disabled With Many Background Processes',
@@ -940,17 +915,16 @@ export const combinationRules: Rule[] = [
       const cpuOk = data.cpu.avgUsage < 70 && (data.cpu.temperature == null || data.cpu.temperature < 80)
       const ramOk = data.ram.usagePercent < 80
       const powerOk = data.osConfig.powerPlan.toLowerCase().includes('high')
-      const mmcssOk = data.osConfig.mmcss.systemResponsiveness <= 10
 
-      if (!gpuOk || !cpuOk || !ramOk || !powerOk || !mmcssOk) return null
+      if (!gpuOk || !cpuOk || !ramOk || !powerOk) return null
 
       return {
         ruleId: 'combo-system-all-clear',
         severity: 'ok',
         category: 'os-config',
         explanation: {
-          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, power plan is correct, and MMCSS is tuned. Any remaining improvements are incremental — supersampling, per-game settings, or hardware upgrades.',
-          advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan} | MMCSS: ${data.osConfig.mmcss.systemResponsiveness}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
+          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, and the power plan is correct. Any remaining improvements are incremental — supersampling, per-game settings, or hardware upgrades.',
+          advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
         }
       }
     }

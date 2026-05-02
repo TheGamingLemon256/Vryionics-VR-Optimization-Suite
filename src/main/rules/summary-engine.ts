@@ -201,35 +201,6 @@ function buildWifiPowerSavingPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildMmcssPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  const needsFix =
-    data.osConfig.mmcss.systemResponsiveness > 10 ||
-    data.osConfig.mmcss.networkThrottlingIndex < 4294967295 ||
-    data.osConfig.mmcss.gamesTaskPriority < 6  // 6 is the recommended Games task Priority; fix sets it to 6
-  if (!needsFix) return null
-  return {
-    id: 'action-mmcss',
-    priority: 5,
-    category: 'OS Config',
-    title: 'Fix MMCSS Settings for VR Priority',
-    summary: 'Windows multimedia scheduling is not optimized — background tasks are stealing CPU time from VR.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces audio glitches and CPU scheduling jitter during VR.',
-    fixId: 'fix-mmcss-responsiveness',
-    steps: [
-      step('This fix can be applied automatically — click "Apply Fix" below', 'setting'),
-      step('Or manually: open regedit → HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile', 'open'),
-      step('Set SystemResponsiveness = 10 (decimal)'),
-      step('Set NetworkThrottlingIndex = ffffffff (hex)'),
-      step('In the Tasks\\Games subkey: set GPU Priority = 8, Priority = 6, Scheduling Category = High'),
-      step('Reboot for changes to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['mmcss-responsiveness-not-optimal', 'combo-mmcss-bad-plus-audio-apps']
-  }
-}
-
 function buildGpuHagsPlan(data: ScanData): ActionPlan | null {
   if (!data.gpu) return null
   const gpu = data.gpu.devices[0]
@@ -1718,7 +1689,6 @@ export function buildActionPlan(
   add(buildWifiSignalPlan(scanData))
   add(buildWifiPowerSavingPlan(scanData))
   add(buildWifi6ePlan(scanData))
-  add(buildMmcssPlan(scanData))
   add(buildXmpPlan(scanData))
   add(buildDefenderExclusionsPlan(scanData))
   add(buildXboxDvrPlan(scanData))
