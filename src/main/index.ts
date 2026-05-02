@@ -11,7 +11,7 @@ import { registerLiveOptimizerHandlers } from './ipc/live-optimizer'
 import { registerReportsHandlers } from './ipc/reports'
 import { registerMetricsHandlers } from './ipc/metrics'
 import { registerSupportHandlers } from './ipc/support'
-import { stopMonitoring, restore as restoreOptimizer } from './live-optimizer/optimizer'
+import { stop as stopOptimizer } from './live-optimizer/optimizer'
 import { AutoUpdater } from './updater'
 import { log, installGlobalErrorHandlers, logFromRenderer, getCurrentLogFile, getLogDir } from './logger'
 import { driverUpdater } from './drivers/updater'
@@ -272,9 +272,8 @@ app.on('will-quit', (e) => {
   e.preventDefault()
   log.info('app', 'Will-quit: restoring optimizer state before exit...')
   const cleanup = (async (): Promise<void> => {
-    try { await Promise.race([restoreOptimizer(), new Promise((res) => setTimeout(res, 10_000))]) } catch { /* ignore */ }
-    stopMonitoring()
-    log.info('app', 'Cleanup complete — quitting')
+    try { await Promise.race([stopOptimizer(), new Promise((res) => setTimeout(res, 10_000))]) } catch { /* ignore */ }
+    log.info('app', 'Cleanup complete - quitting')
     app.exit(0)
   })()
   void cleanup

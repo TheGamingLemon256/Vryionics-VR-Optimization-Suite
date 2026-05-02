@@ -5,9 +5,7 @@ import { loadTriggers, loadAllowlist } from './allowlist'
 import { NEVER_TOUCH_PROCESSES } from './never-touch'
 import * as state from './state-store'
 import * as activity from './activity-log'
-import type {
-  LiveOptimizerConfig, LiveOptimizerStatus,
-} from './types'
+import type { LiveOptimizerStatus } from './types'
 
 const POLL_INTERVAL_MS = 2000
 const MAX_LOWERED = 25
@@ -180,30 +178,4 @@ async function deactivate(): Promise<void> {
   await activity.appendSession(activeSession)
   log.info('live-optimizer', `deactivated, restored ${entries.length} processes`)
   activeSession = null
-}
-
-// Compatibility surface for the existing IPC layer. Chunk 10 will replace
-// this; until then we map the old call sites onto start/stop.
-export function startMonitoring(_config: LiveOptimizerConfig, onStatus: (s: LiveOptimizerStatus) => void): void {
-  void start(onStatus)
-}
-
-export function stopMonitoring(): void {
-  void stop()
-}
-
-export function updateConfig(_config: LiveOptimizerConfig): void {
-  // Settings flow lands in chunk 10. The current optimizer has no per-config
-  // knobs beyond on/off, which startMonitoring/stopMonitoring already handle.
-}
-
-export async function forceOptimize(_config: LiveOptimizerConfig): Promise<void> {
-  if (!running) await start()
-  await poll()
-  emitStatus()
-}
-
-export async function restore(): Promise<void> {
-  await deactivate()
-  emitStatus()
 }

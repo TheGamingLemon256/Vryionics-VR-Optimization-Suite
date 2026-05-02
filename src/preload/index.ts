@@ -114,17 +114,20 @@ const api = {
     isOpen:  () => ipcRenderer.invoke('overlay:isOpen') as Promise<boolean>,
   },
 
-  // ── Live Optimizer ────────────────────────────────────────
   liveOptimizer: {
-    getStatus: () => ipcRenderer.invoke('liveopt:getStatus'),
-    getConfig: () => ipcRenderer.invoke('liveopt:getConfig'),
-    setConfig: (config: unknown) => ipcRenderer.invoke('liveopt:setConfig', config),
+    status: () => ipcRenderer.invoke('liveopt:status'),
     enable: () => ipcRenderer.invoke('liveopt:enable'),
     disable: () => ipcRenderer.invoke('liveopt:disable'),
-    forceOptimize: () => ipcRenderer.invoke('liveopt:forceOptimize'),
-    restore: () => ipcRenderer.invoke('liveopt:restore'),
+    getFlags: () => ipcRenderer.invoke('liveopt:getFlags'),
+    setDisclosureAccepted: (accepted: boolean) =>
+      ipcRenderer.invoke('liveopt:setDisclosureAccepted', accepted),
+    setAutoEnable: (value: boolean) =>
+      ipcRenderer.invoke('liveopt:setAutoEnable', value),
+    openTriggerFile: () => ipcRenderer.invoke('liveopt:openTriggerFile'),
+    openAllowlistFile: () => ipcRenderer.invoke('liveopt:openAllowlistFile'),
+    readActivityLog: () => ipcRenderer.invoke('liveopt:readActivityLog'),
     onStatusUpdate: (callback: (status: unknown) => void) => {
-      const handler = (_: unknown, status: unknown) => callback(status)
+      const handler = (_: unknown, status: unknown): void => callback(status)
       ipcRenderer.on('liveopt:statusUpdate', handler)
       return (): void => { ipcRenderer.removeListener('liveopt:statusUpdate', handler) }
     }
