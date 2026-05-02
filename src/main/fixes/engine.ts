@@ -13,6 +13,9 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import * as vdf from 'vdf'
+import psList from 'ps-list'
+import { buildLaunchOption } from './x3d-launch-option'
 const execFileAsync = promisify(execFile)
 
 // Run reg.exe with explicit arg array; no cmd.exe parsing in the middle.
@@ -141,23 +144,23 @@ const fixEnableGameMode: Fix = {
 }
 
 // ── Fix 8: VRChat V-Cache Affinity via Steam Launch Option ───────────────
-// Sets VRChat's Steam launch option to pin it to V-Cache cores (FFFF = first
-// 16 logical processors = V-Cache CCD on 7950X3D/9950X3D) and High priority.
-// This is the only reliable method — the amd3dvcacheSvc registry approach
-// depends on AMD's scheduler service timing which is not guaranteed.
-//
-// Steam launch option: cmd /c start /affinity FFFF /high "" %command%
+// The amd3dvcacheSvc registry approach depends on AMD's scheduler service
+// timing, which is not guaranteed. Writing the launch option directly into
+// Steam's localconfig.vdf is reliable: it is applied at process spawn before
+// the scheduler can place the threads anywhere. The mask itself is computed
+// per-CPU by buildLaunchOption — only single-CCD X3D parts get an /affinity
+// portion in v0.2.9 because shipping a wrong mask on a dual-CCD chip would
+// silently push VR threads onto the non-V-Cache die.
 
-const VCACHE_LAUNCH_OPTION = 'cmd /c start /affinity FFFF /high "" %command%'
 const VRCHAT_APP_ID = '438100'
+const STEAM_RUNNING_MESSAGE =
+  'Close Steam before applying this fix. Steam rewrites the config file on exit and would overwrite VOS\'s change.'
 
 function findSteamInstallPath(): string | null {
-  // Try registry first
   try {
     const regPath = readRegistry('HKCU', 'SOFTWARE\\Valve\\Steam', 'SteamPath')
     if (regPath && existsSync(regPath)) return regPath.replace(/\//g, '\\')
   } catch { /* ignore */ }
-  // Common fallbacks
   for (const p of [
     'C:\\Program Files (x86)\\Steam',
     'C:\\Program Files\\Steam',
@@ -168,6 +171,10 @@ function findSteamInstallPath(): string | null {
   return null
 }
 
+function localConfigPathFor(steamPath: string, userId: string): string {
+  return join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+}
+
 function findSteamUserId(steamPath: string): string | null {
   const userdataPath = join(steamPath, 'userdata')
   if (!existsSync(userdataPath)) return null
@@ -175,17 +182,15 @@ function findSteamUserId(steamPath: string): string | null {
     const dirs = readdirSync(userdataPath, { withFileTypes: true })
       .filter(d => d.isDirectory() && /^\d+$/.test(d.name) && d.name !== '0')
       .map(d => d.name)
-    // Prefer the one that already has VRChat app data
     for (const uid of dirs) {
-      const configPath = join(userdataPath, uid, 'config', 'localconfig.vdf')
+      const configPath = localConfigPathFor(steamPath, uid)
       if (existsSync(configPath)) {
         const content = readFileSync(configPath, 'utf8')
         if (content.includes(`"${VRCHAT_APP_ID}"`)) return uid
       }
     }
-    // Fallback: return first valid user dir that has a localconfig.vdf
     for (const uid of dirs) {
-      if (existsSync(join(userdataPath, uid, 'config', 'localconfig.vdf'))) return uid
+      if (existsSync(localConfigPathFor(steamPath, uid))) return uid
     }
     return dirs[0] ?? null
   } catch {
@@ -193,50 +198,70 @@ function findSteamUserId(steamPath: string): string | null {
   }
 }
 
+type VdfNode = string | { [key: string]: VdfNode }
+
+// localconfig.vdf nests VRChat under
+// UserLocalConfigStore.Software.Valve.Steam.apps."438100".LaunchOptions
+// but capitalisation has drifted across Steam versions, so resolve keys
+// case-insensitively while leaving the rest of the document untouched.
+function findChild(node: { [key: string]: VdfNode }, name: string): { [key: string]: VdfNode } | null {
+  const target = name.toLowerCase()
+  for (const key of Object.keys(node)) {
+    if (key.toLowerCase() === target) {
+      const v = node[key]
+      if (typeof v === 'object') return v as { [key: string]: VdfNode }
+    }
+  }
+  return null
+}
+
+function findVRChatAppNode(root: { [key: string]: VdfNode }): { [key: string]: VdfNode } | null {
+  const store = findChild(root, 'UserLocalConfigStore') ?? root
+  const software = findChild(store, 'Software')
+  if (!software) return null
+  const valve = findChild(software, 'Valve')
+  if (!valve) return null
+  const steam = findChild(valve, 'Steam')
+  if (!steam) return null
+  const apps = findChild(steam, 'apps') ?? findChild(steam, 'Apps')
+  if (!apps) return null
+  return findChild(apps, VRCHAT_APP_ID)
+}
+
 function readVRChatLaunchOption(steamPath: string, userId: string): string | null {
-  const configPath = join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+  const configPath = localConfigPathFor(steamPath, userId)
   if (!existsSync(configPath)) return null
   try {
-    const content = readFileSync(configPath, 'utf8')
-    // Find VRChat section and extract LaunchOptions
-    // VDF format: "438100"\n{\n\t"LaunchOptions"\t"value"\n}
-    const match = content.match(new RegExp(
-      `"${VRCHAT_APP_ID}"[^{]*\\{[^}]*?"LaunchOptions"\\s+"([^"]*)"`,
-      's'
-    ))
-    return match ? match[1] : null
+    const parsed = vdf.parse(readFileSync(configPath, 'utf8')) as { [key: string]: VdfNode }
+    const app = findVRChatAppNode(parsed)
+    if (!app) return null
+    for (const k of Object.keys(app)) {
+      if (k.toLowerCase() === 'launchoptions') {
+        const v = app[k]
+        return typeof v === 'string' ? v : null
+      }
+    }
+    return null
   } catch {
     return null
   }
 }
 
-function setVRChatLaunchOptionInFile(steamPath: string, userId: string, option: string, backup: string | null): boolean {
-  const configPath = join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+function writeVRChatLaunchOption(steamPath: string, userId: string, option: string): boolean {
+  const configPath = localConfigPathFor(steamPath, userId)
   if (!existsSync(configPath)) return false
   try {
-    let content = readFileSync(configPath, 'utf8')
-
-    // Case 1: LaunchOptions key already exists for this app — replace it
-    const replacer = new RegExp(
-      `("${VRCHAT_APP_ID}"[^{]*\\{[^}]*?)"LaunchOptions"(\\s+)"[^"]*"`,
-      's'
-    )
-    if (replacer.test(content)) {
-      content = content.replace(replacer, `$1"LaunchOptions"$2"${option}"`)
-      writeFileSync(configPath, content, 'utf8')
-      return true
+    const raw = readFileSync(configPath, 'utf8')
+    const parsed = vdf.parse(raw) as { [key: string]: VdfNode }
+    const app = findVRChatAppNode(parsed)
+    if (!app) return false
+    let key: string | null = null
+    for (const k of Object.keys(app)) {
+      if (k.toLowerCase() === 'launchoptions') { key = k; break }
     }
-
-    // Case 2: App section exists but no LaunchOptions — insert it
-    const inserter = new RegExp(`("${VRCHAT_APP_ID}"[^{]*\\{)`, 's')
-    if (inserter.test(content)) {
-      content = content.replace(inserter, `$1\n\t\t\t\t\t\t"LaunchOptions"\t\t"${option}"`)
-      writeFileSync(configPath, content, 'utf8')
-      return true
-    }
-
-    // Case 3: App section doesn't exist — can't auto-apply, return false
-    return false
+    app[key ?? 'LaunchOptions'] = option
+    writeFileSync(configPath, vdf.dump(parsed), 'utf8')
+    return true
   } catch {
     return false
   }
@@ -244,17 +269,32 @@ function setVRChatLaunchOptionInFile(steamPath: string, userId: string, option: 
 
 async function isSteamRunning(): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync('tasklist', ['/FI', 'IMAGENAME eq steam.exe', '/FO', 'CSV', '/NH'], { timeout: 5000 })
-    return stdout.toLowerCase().includes('steam.exe')
+    const procs = await psList()
+    return procs.some(p => p.name.toLowerCase() === 'steam.exe')
   } catch {
     return false
   }
 }
 
+async function detectCpuModel(): Promise<string | null> {
+  try {
+    const key = await readKey('HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0')
+    const name = key?.values['ProcessorNameString']
+    if (name && name.type === 'REG_SZ') return name.data.trim()
+  } catch { /* ignore */ }
+  return null
+}
+
+async function buildVRChatLaunchOption(): Promise<string | null> {
+  const model = await detectCpuModel()
+  if (!model) return null
+  return buildLaunchOption({ model })
+}
+
 const fixVCacheAffinity: Fix = {
   id: 'fix-vcache-affinity',
   name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
-  description: 'Sets VRChat\'s Steam launch option to pin it to V-Cache cores with High CPU priority. This is the reliable method — works at process spawn time, before the scheduler can assign it elsewhere.',
+  description: 'Sets VRChat\'s Steam launch option to give the process High CPU priority, plus a per-CPU affinity mask on single-CCD X3D parts. Takes effect the next time VRChat launches from Steam.',
   requiresAdmin: false,
   requiresReboot: false,
 
@@ -263,19 +303,30 @@ const fixVCacheAffinity: Fix = {
     const userId = steamPath ? findSteamUserId(steamPath) : null
     const currentOption = steamPath && userId ? readVRChatLaunchOption(steamPath, userId) : null
     const steamFound = !!steamPath && !!userId
+    const target = await buildVRChatLaunchOption()
+    const steamRunning = await isSteamRunning()
+
+    let description: string
+    if (!target) {
+      description = 'CPU not recognised by VOS, so this fix does not apply. No changes will be made.'
+    } else if (steamRunning) {
+      description = STEAM_RUNNING_MESSAGE
+    } else if (steamFound) {
+      description = `Will write VRChat's Steam launch option to: ${target}`
+    } else {
+      description = `Steam installation not found. Copy this launch option into Steam manually: ${target}`
+    }
 
     return {
       fixId: 'fix-vcache-affinity',
       name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
-      description: steamFound
-        ? 'Will set VRChat\'s Steam launch option to pin it to the first 16 logical cores (V-Cache CCD on 7950X3D/9950X3D) and High CPU priority. Change takes effect next time VRChat is launched from Steam.'
-        : 'Steam installation not found. Will show manual instructions — you can copy the launch option and paste it into Steam manually.',
+      description,
       changes: [{
         target: steamFound
           ? `Steam → VRChat (App ${VRCHAT_APP_ID}) → Launch Options`
           : 'Steam → Library → VRChat → Properties → Launch Options',
         currentValue: currentOption ?? '(none / not set)',
-        newValue: VCACHE_LAUNCH_OPTION
+        newValue: target ?? '(no change)'
       }],
       requiresAdmin: false,
       requiresReboot: false
@@ -283,31 +334,44 @@ const fixVCacheAffinity: Fix = {
   },
 
   apply: async (): Promise<FixResult> => {
+    const target = await buildVRChatLaunchOption()
+    if (!target) {
+      return {
+        fixId: 'fix-vcache-affinity',
+        success: false,
+        error: 'CPU not recognised by VOS; no launch option to apply.'
+      }
+    }
+
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
+
     const steamPath = findSteamInstallPath()
     const userId = steamPath ? findSteamUserId(steamPath) : null
-
     if (!steamPath || !userId) {
       return {
         fixId: 'fix-vcache-affinity',
         success: false,
-        error: `Steam not found. Apply manually: In Steam → Library → right-click VRChat → Properties → Launch Options, paste: ${VCACHE_LAUNCH_OPTION}`
+        error: `Steam not found. Apply manually: In Steam → Library → right-click VRChat → Properties → Launch Options, paste: ${target}`
       }
     }
 
-    // Back up current value
     const current = readVRChatLaunchOption(steamPath, userId)
     storeBackup('fix-vcache-affinity', { launchOption: current ?? '' })
 
-    // Check if Steam is running (it will overwrite localconfig.vdf on exit)
-    const steamRunning = await isSteamRunning()
+    // Re-check Steam right before the write; the user might have launched it
+    // while we were doing the path probe and reading the previous value.
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
 
-    const applied = setVRChatLaunchOptionInFile(steamPath, userId, VCACHE_LAUNCH_OPTION, current)
-
+    const applied = writeVRChatLaunchOption(steamPath, userId, target)
     if (!applied) {
       return {
         fixId: 'fix-vcache-affinity',
         success: false,
-        error: `Could not auto-apply. Set manually in Steam → Library → VRChat → Properties → Launch Options:\n${VCACHE_LAUNCH_OPTION}`
+        error: `Could not auto-apply. Set manually in Steam → Library → VRChat → Properties → Launch Options:\n${target}`
       }
     }
 
@@ -315,39 +379,27 @@ const fixVCacheAffinity: Fix = {
       fixId: 'fix-vcache-affinity',
       name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
       appliedAt: Date.now(),
-      changes: [{ target: `VRChat Launch Options`, currentValue: current ?? '(none)', newValue: VCACHE_LAUNCH_OPTION }],
+      changes: [{ target: 'VRChat Launch Options', currentValue: current ?? '(none)', newValue: target }],
       backupValues: { launchOption: current ?? '' },
       undoneAt: null
     })
 
-    const warning = steamRunning
-      ? ' Note: Steam is currently running — restart Steam for the change to be saved permanently.'
-      : ''
-
-    return {
-      fixId: 'fix-vcache-affinity',
-      success: true,
-      error: warning || undefined
-    }
+    return { fixId: 'fix-vcache-affinity', success: true }
   },
 
   undo: async (): Promise<FixResult> => {
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
     const steamPath = findSteamInstallPath()
     const userId = steamPath ? findSteamUserId(steamPath) : null
-    const backup = getBackup('fix-vcache-affinity')
-    const original = backup?.launchOption ?? ''
-
     if (!steamPath || !userId) {
       return { fixId: 'fix-vcache-affinity', success: false, error: 'Steam not found for undo' }
     }
 
-    if (original === '') {
-      // Remove the launch option entirely by setting to empty string
-      setVRChatLaunchOptionInFile(steamPath, userId, '', null)
-    } else {
-      setVRChatLaunchOptionInFile(steamPath, userId, original, null)
-    }
-
+    const backup = getBackup('fix-vcache-affinity')
+    const original = backup?.launchOption ?? ''
+    writeVRChatLaunchOption(steamPath, userId, original)
     markUndone('fix-vcache-affinity')
     return { fixId: 'fix-vcache-affinity', success: true }
   }

@@ -72,6 +72,14 @@ export interface CpuDbEntry {
    */
   vrAffinityMask?: string
   vrAffinityNote?: string
+  /**
+   * Hex affinity mask (no '0x' prefix) for the Steam launch-option fix.
+   * Only set on single-CCD X3D parts where every core has V-Cache and is
+   * therefore a safe target. Dual-CCD X3D parts omit this: the V-Cache CCD
+   * index varies by BIOS, and shipping the wrong mask silently de-optimizes.
+   * Real runtime CCD detection lands in v0.3.
+   */
+  vcacheAffinityMask?: string
 
   // ── Intel hybrid (P/E-core) specifics ────────────────────────
   /** Only set for Alder Lake+ hybrid chips (12th gen and later, Core Ultra). */
@@ -493,6 +501,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     ],
     vrAffinityMask: '0xFF',
     vrAffinityNote: 'All 8 cores are V-Cache cores — no affinity split needed. All cores are equivalent.',
+    vcacheAffinityMask: 'FF',
     vrProfile: 'cache-dominant',
     quirks: [
       'THE original 3D V-Cache CPU — all 8 cores have V-Cache, no split topology.',
@@ -743,6 +752,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrAffinityMask: '0xFF',
     vrAffinityNote:
       'All 8 cores are V-Cache cores — no affinity split needed. Windows scheduler (with AMD driver) handles this correctly for single-CCD chips.',
+    vcacheAffinityMask: 'FF',
     vrProfile: 'cache-dominant',
     quirks: [
       'Best single-GPU gaming CPU as of 2024 — single CCD with full V-Cache coverage.',
@@ -956,6 +966,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrAffinityMask: '0xFF',
     vrAffinityNote:
       'All 8 cores are V-Cache cores — single CCD, no affinity split needed. Windows scheduler handles this correctly with AMD driver.',
+    vcacheAffinityMask: 'FF',
     vrProfile: 'cache-dominant',
     quirks: [
       'Best single-CCD gaming CPU as of 2024/2025 — Zen 5 IPC + 96 MB V-Cache on all 8 cores.',
