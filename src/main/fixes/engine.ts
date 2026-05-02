@@ -73,90 +73,6 @@ async function regWriteSz(hive: 'HKLM' | 'HKCU', path: string, name: string, val
   )
 }
 
-// ── Fix 1: MMCSS SystemResponsiveness ────────────────────────
-
-const fixMmcssResponsiveness: Fix = {
-  id: 'fix-mmcss-responsiveness',
-  name: 'Maximize VR CPU Priority (MMCSS)',
-  description: 'Sets SystemResponsiveness to 0 so the MMCSS scheduler dedicates maximum CPU headroom to real-time VR processes.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness') ?? 20
-    return {
-      fixId: 'fix-mmcss-responsiveness',
-      name: 'Maximize VR CPU Priority (MMCSS)',
-      description: 'Sets SystemResponsiveness to 0 — dedicates maximum CPU time to real-time audio/VR tasks.',
-      changes: [{
-        target: `Registry: HKLM\\${MMCSS_PATH}`,
-        currentValue: `SystemResponsiveness = ${current} (${current}% CPU reserved for background)`,
-        newValue: 'SystemResponsiveness = 0 (max CPU for VR/audio)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupResponsiveness = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness') ?? 20
-    const backupGamesPriority = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2
-    const backupGpuPriority = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8
-    const backupCategory = readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium'
-    storeBackup('fix-mmcss-responsiveness', {
-      SystemResponsiveness: String(backupResponsiveness),
-      GamesPriority: String(backupGamesPriority),
-      GpuPriority: String(backupGpuPriority),
-      SchedulingCategory: backupCategory
-    })
-    try {
-      // SystemProfile level
-      await regWriteDword('HKLM', MMCSS_PATH, 'SystemResponsiveness', 0)
-      // Games task level — Priority=6 and GPU Priority=8 are the recommended VR values.
-      // The rule fires when Priority < 6; setting it to 6 clears the condition.
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', 6)
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', 8)
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', 'High')
-      const verify = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness')
-      const success = verify === 0
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-responsiveness', name: 'Maximize VR CPU Priority (MMCSS)',
-        appliedAt: Date.now(),
-        changes: [
-          { target: `HKLM\\${MMCSS_PATH}\\SystemResponsiveness`, currentValue: String(backupResponsiveness), newValue: '0' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\Priority`, currentValue: String(backupGamesPriority), newValue: '6' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\GPU Priority`, currentValue: String(backupGpuPriority), newValue: '8' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\Scheduling Category`, currentValue: backupCategory, newValue: 'High' }
-        ],
-        backupValues: {
-          SystemResponsiveness: String(backupResponsiveness),
-          GamesPriority: String(backupGamesPriority),
-          GpuPriority: String(backupGpuPriority),
-          SchedulingCategory: backupCategory
-        },
-        undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-responsiveness', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-responsiveness', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-responsiveness')
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'SystemResponsiveness', parseInt(backup?.SystemResponsiveness ?? '20'))
-      if (backup?.GamesPriority != null) await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', parseInt(backup.GamesPriority))
-      if (backup?.GpuPriority != null) await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', parseInt(backup.GpuPriority))
-      if (backup?.SchedulingCategory != null) await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', backup.SchedulingCategory)
-      markUndone('fix-mmcss-responsiveness')
-      return { fixId: 'fix-mmcss-responsiveness', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-responsiveness', success: false, error: (e as Error).message }
-    }
-  }
-}
-
 // ── Fix 2: MMCSS NetworkThrottlingIndex ───────────────────────
 
 const fixMmcssNetworkThrottling: Fix = {
@@ -468,59 +384,6 @@ const fixPcieAspmDisable: Fix = {
       return { fixId: 'fix-pcie-aspm-disable', success: true }
     } catch (e) {
       return { fixId: 'fix-pcie-aspm-disable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 5: Windows Defender VR Exclusions ────────────────────
-
-const VR_EXCLUSION_PATHS = [
-  'C:\\Program Files (x86)\\Steam\\steamapps\\common',
-  'C:\\Program Files\\Oculus\\Software\\Software',
-  'C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR',
-  'C:\\Program Files\\Meta\\Horizon',
-  'C:\\Users\\Public\\Documents\\Meta'
-]
-
-const fixDefenderExclusions: Fix = {
-  id: 'fix-defender-exclusions',
-  name: 'Add VR Paths to Defender Exclusions',
-  description: 'Adds Steam, SteamVR, and Oculus directories to Windows Defender exclusions to eliminate real-time scan overhead during VR.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => ({
-    fixId: 'fix-defender-exclusions', name: 'Add VR Paths to Defender Exclusions',
-    description: 'Windows Defender scanning VR game files causes micro-stutters. Excluding known VR paths removes this overhead.',
-    changes: VR_EXCLUSION_PATHS.map((p) => ({ target: 'Defender Exclusion', currentValue: 'Not excluded', newValue: p })),
-    requiresAdmin: true, requiresReboot: false
-  }),
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-defender-exclusions', { applied: 'true' })
-    const pathList = VR_EXCLUSION_PATHS.map((p) => `'${p}'`).join(', ')
-    try {
-      await runPowerShell(`Add-MpPreference -ExclusionPath @(${pathList}) -Force`)
-      recordHistory({
-        fixId: 'fix-defender-exclusions', name: 'Add VR Paths to Defender Exclusions',
-        appliedAt: Date.now(),
-        changes: VR_EXCLUSION_PATHS.map((p) => ({ target: 'Exclusion', currentValue: 'none', newValue: p })),
-        backupValues: { paths: pathList }, undoneAt: null
-      })
-      return { fixId: 'fix-defender-exclusions', success: true }
-    } catch (e) {
-      return { fixId: 'fix-defender-exclusions', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const pathList = VR_EXCLUSION_PATHS.map((p) => `'${p}'`).join(', ')
-    try {
-      await runPowerShell(`Remove-MpPreference -ExclusionPath @(${pathList}) -Force`)
-      markUndone('fix-defender-exclusions')
-      return { fixId: 'fix-defender-exclusions', success: true }
-    } catch (e) {
-      return { fixId: 'fix-defender-exclusions', success: false, error: (e as Error).message }
     }
   }
 }
@@ -2036,96 +1899,6 @@ const fixGpuInterruptPriority: Fix = {
   }
 }
 
-// ── Fix 24: VR Process CPU Priority via IFEO ──────────────────
-
-const VR_IFEO_EXES = [
-  'vrserver.exe',
-  'vrcompositor.exe',
-  'vrclient.exe',
-  'VRChat.exe',
-  'OVRServer_x64.exe'
-]
-const IFEO_BASE = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options'
-
-const fixVrProcessPriority: Fix = {
-  id: 'fix-vr-process-priority',
-  name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-  description: 'Uses Windows Image File Execution Options (IFEO) PerfOptions\\CpuPriorityClass = 3 to force vrserver, vrcompositor, VRChat, and other VR processes to start at High CPU priority class — persistently, without any manual intervention each session.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const changes = VR_IFEO_EXES.map((exe) => {
-      const current = readRegistryDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass')
-      return {
-        target: `HKLM\\${IFEO_BASE}\\${exe}\\PerfOptions\\CpuPriorityClass`,
-        currentValue: current != null ? String(current) : 'not set (default Normal)',
-        newValue: '3 (High)'
-      }
-    })
-    return {
-      fixId: 'fix-vr-process-priority',
-      name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-      description: 'Sets CpuPriorityClass=3 (High) via IFEO PerfOptions for all major VR runtime executables. Takes effect on next process launch.',
-      changes,
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupValues: Record<string, string> = {}
-    for (const exe of VR_IFEO_EXES) {
-      const val = readRegistryDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass')
-      backupValues[exe] = val != null ? String(val) : ''
-    }
-    storeBackup('fix-vr-process-priority', backupValues)
-    try {
-      for (const exe of VR_IFEO_EXES) {
-        await regWriteDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass', 3)
-      }
-      const changes = VR_IFEO_EXES.map((exe) => ({
-        target: `${exe}\\PerfOptions\\CpuPriorityClass`,
-        currentValue: backupValues[exe] || 'not set',
-        newValue: '3'
-      }))
-      recordHistory({
-        fixId: 'fix-vr-process-priority',
-        name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-        appliedAt: Date.now(),
-        changes,
-        backupValues,
-        undoneAt: null
-      })
-      return { fixId: 'fix-vr-process-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-vr-process-priority', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-vr-process-priority')
-    if (!backup) return { fixId: 'fix-vr-process-priority', success: false, error: 'No backup found' }
-    try {
-      for (const exe of VR_IFEO_EXES) {
-        const prev = backup[exe]
-        if (prev === '' || prev == null) {
-          // Value didn't exist — remove it (and clean up empty PerfOptions key if possible)
-          await runPowerShell(
-            `Remove-ItemProperty -Path 'HKLM:\\${IFEO_BASE}\\${exe}\\PerfOptions' -Name 'CpuPriorityClass' -EA SilentlyContinue`
-          )
-        } else {
-          await regWriteDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass', parseInt(prev))
-        }
-      }
-      markUndone('fix-vr-process-priority')
-      return { fixId: 'fix-vr-process-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-vr-process-priority', success: false, error: (e as Error).message }
-    }
-  }
-}
-
 // ── Fix 25: Disable Windows Update Auto-Restart ───────────────
 
 const WU_AU_PATH = 'SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU'
@@ -2213,84 +1986,6 @@ const fixDisableWuReboot: Fix = {
       return { fixId: 'fix-disable-wu-reboot', success: true }
     } catch (e) {
       return { fixId: 'fix-disable-wu-reboot', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 26: Disable Delivery Optimization P2P ─────────────────
-
-const DO_PATH = 'SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization'
-
-const fixDisableDeliveryOptimization: Fix = {
-  id: 'fix-disable-delivery-optimization',
-  name: 'Disable Windows Delivery Optimization P2P Seeding',
-  description: 'Sets DODownloadMode=0 (HTTP only, no peer-to-peer) to stop Windows from uploading updates to other PCs using your internet connection during VR gameplay.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-    const modeLabel = current === null
-      ? 'not set (default — P2P active)'
-      : current === 0 ? '0 (HTTP only — already optimal)'
-      : current === 1 ? '1 (LAN peers — P2P active)'
-      : current === 2 ? '2 (Group peers — P2P active)'
-      : current === 3 ? '3 (Internet peers — P2P active)'
-      : `${current} (unknown mode)`
-    return {
-      fixId: 'fix-disable-delivery-optimization',
-      name: 'Disable Windows Delivery Optimization P2P Seeding',
-      description: 'Sets DODownloadMode=0 to stop P2P upload activity during VR gameplay.',
-      changes: [{
-        target: `HKLM\\${DO_PATH}\\DODownloadMode`,
-        currentValue: modeLabel,
-        newValue: '0 (HTTP only — no P2P seeding)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const current = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-    storeBackup('fix-disable-delivery-optimization', {
-      DODownloadMode: current != null ? String(current) : ''
-    })
-    try {
-      await regWriteDword('HKLM', DO_PATH, 'DODownloadMode', 0)
-      const verify = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-      const success = verify === 0
-      if (success) recordHistory({
-        fixId: 'fix-disable-delivery-optimization',
-        name: 'Disable Windows Delivery Optimization P2P Seeding',
-        appliedAt: Date.now(),
-        changes: [{ target: 'DODownloadMode', currentValue: current != null ? String(current) : 'not set', newValue: '0' }],
-        backupValues: { DODownloadMode: current != null ? String(current) : '' },
-        undoneAt: null
-      })
-      return { fixId: 'fix-disable-delivery-optimization', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-disable-delivery-optimization', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-disable-delivery-optimization')
-    if (!backup) return { fixId: 'fix-disable-delivery-optimization', success: false, error: 'No backup found' }
-    try {
-      const prev = backup.DODownloadMode
-      if (prev === '' || prev == null) {
-        // Key didn't exist — remove it (restoring default P2P behaviour)
-        await runPowerShell(
-          `Remove-ItemProperty -Path 'HKLM:\\${DO_PATH}' -Name 'DODownloadMode' -EA SilentlyContinue`
-        )
-      } else {
-        await regWriteDword('HKLM', DO_PATH, 'DODownloadMode', parseInt(prev))
-      }
-      markUndone('fix-disable-delivery-optimization')
-      return { fixId: 'fix-disable-delivery-optimization', success: true }
-    } catch (e) {
-      return { fixId: 'fix-disable-delivery-optimization', success: false, error: (e as Error).message }
     }
   }
 }
@@ -2476,12 +2171,10 @@ const fixVRChatMsaa: Fix = {
 // ── Fix Registry ─────────────────────────────────────────────
 
 const ALL_FIXES: Fix[] = [
-  fixMmcssResponsiveness,
   fixMmcssNetworkThrottling,
   fixMmcssGamesPriority,
   fixPowerPlan,
   fixPcieAspmDisable,
-  fixDefenderExclusions,
   fixEnableGameMode,
   fixWifiPowerSaving,
   fixVCacheAffinity,
@@ -2508,9 +2201,7 @@ const ALL_FIXES: Fix[] = [
   fixWindowsTimerResolution,
   // NEW — Fixes 23-26:
   fixGpuInterruptPriority,
-  fixVrProcessPriority,
   fixDisableWuReboot,
-  fixDisableDeliveryOptimization,
   fixVRChatDynamicBoneLimits,
   fixVRChatMsaa
 ]
