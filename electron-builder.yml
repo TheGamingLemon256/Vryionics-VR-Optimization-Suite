@@ -55,12 +55,6 @@ extraResources:
   # credential-stealer heuristics on AV scanners.
   - from: update-server/storage-categories.json
     to: storage-categories.json
-  # PowerShell helper module — contains all the .NET P/Invoke (Add-Type)
-  # blocks. Kept out of the compiled JS bundle so DllImport / kernel32 /
-  # ntdll / advapi32 / atiadlxx import patterns don't appear as embedded
-  # strings inside the Electron main-process binary.
-  - from: update-server/ps-helpers
-    to: ps-helpers
 publish:
   - provider: github
     owner: TheGamingLemon256
