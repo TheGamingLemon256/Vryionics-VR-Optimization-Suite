@@ -55,6 +55,10 @@ extraResources:
   # credential-stealer heuristics on AV scanners.
   - from: update-server/storage-categories.json
     to: storage-categories.json
+  # Live Optimizer trigger and allowlist data. Shipped as JSON so the
+  # detection lists can be tweaked without a code change.
+  - from: resources/
+    to: resources/
 publish:
   - provider: github
     owner: TheGamingLemon256
