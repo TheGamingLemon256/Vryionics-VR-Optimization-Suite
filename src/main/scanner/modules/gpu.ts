@@ -1,11 +1,11 @@
 // VR Optimization Suite — GPU Scan Module
 // Collects GPU info for NVIDIA (nvidia-smi) and AMD/Intel (registry + perf counters).
 
-import { readKey } from '../../utils/registry-read'
+import { readKey, readValue } from '../../utils/registry-read'
 import { readVramBytes } from '../../utils/vram'
 import { readRegistryDword, enumerateRegistrySubkeys } from '../../utils/registry'
 import { isNvidiaAvailable, nvidiaSmiQuery, nvidiaSmiRaw, resetNvidiaSmiCache } from '../../utils/nvidia-smi'
-import { tryRunPowerShell } from '../../utils/powershell'
+import { readCounters } from '../../utils/typeperf'
 import { getAmdClockMhz, getAmdGpuMetrics, getIntelClockMhz, getIntelGpuTemperature, getNvidiaGpuMetrics } from '../../utils/gpu-metrics'
 import type { ScanModuleResult, GpuData, GpuDevice } from '../types'
 
@@ -191,125 +191,102 @@ async function checkReBar(gpuIndex: number): Promise<boolean> {
 
 // ── AMD/Intel via Windows Performance Counters ────────────────
 
+function sumCounterMatching(samples: Awaited<ReturnType<typeof readCounters>>, instancePattern: RegExp): number {
+  if (!samples) return 0
+  let total = 0
+  for (const s of samples) {
+    if (instancePattern.test(s.counter) && s.value > 0) total += s.value
+  }
+  return Math.min(Math.round(total * 10) / 10, 100)
+}
+
 /**
- * Get GPU utilization for all GPUs using Windows GPU Engine performance counters.
+ * Total 3D utilization across all GPUs as a percentage, clamped to 0-100.
  * Works for AMD, Intel, and NVIDIA (as a fallback).
- * Returns total 3D utilization as a percentage, clamped to 0-100.
  */
 async function getGpuUtilizationViaCounters(): Promise<number> {
-  try {
-    const out = await tryRunPowerShell(`
-$samples = Get-Counter '\\GPU Engine(*engtype_3D)\\Utilization Percentage' -ErrorAction SilentlyContinue
-if ($samples -and $samples.CounterSamples) {
-  $total = ($samples.CounterSamples | Where-Object { $_.CookedValue -gt 0 } | Measure-Object CookedValue -Sum).Sum
-  [math]::Round([math]::Min([double]$total, 100.0), 1)
-} else { '0' }
-`, 10000)
-    if (out) {
-      const val = parseFloat(out.trim())
-      if (!isNaN(val)) return val
-    }
-  } catch { /* fall through */ }
-  return 0
+  const samples = await readCounters(['\\GPU Engine(*)\\Utilization Percentage'], 1, 10000)
+  return sumCounterMatching(samples, /engtype_3D/i)
 }
 
 /**
- * Get VRAM usage for AMD/Intel via DirectX DXGI counters.
- * Returns { used: MB, total: MB } or null.
+ * VRAM usage for AMD/Intel via DXGI adapter-memory counters.
  */
 async function getAmdIntelVram(): Promise<{ used: number; total: number } | null> {
-  try {
-    const out = await tryRunPowerShell(`
-$samples = Get-Counter '\\GPU Adapter Memory(*local)\\Local Usage' -ErrorAction SilentlyContinue
-if ($samples -and $samples.CounterSamples) {
-  $usedBytes = ($samples.CounterSamples | Measure-Object CookedValue -Sum).Sum
-  [math]::Round($usedBytes / 1MB, 0)
-} else { '' }
-`, 8000)
-    if (out && out.trim()) {
-      const usedMB = parseInt(out.trim())
-      if (!isNaN(usedMB) && usedMB > 0) return { used: usedMB, total: 0 }
-    }
-  } catch { /* fall through */ }
-  return null
+  const samples = await readCounters(['\\GPU Adapter Memory(*)\\Local Usage'], 1, 8000)
+  if (!samples) return null
+  let usedBytes = 0
+  for (const s of samples) {
+    if (/local/i.test(s.counter)) usedBytes += s.value
+  }
+  const usedMB = Math.round(usedBytes / 1024 / 1024)
+  if (usedMB <= 0) return null
+  return { used: usedMB, total: 0 }
 }
 
 /**
- * Get GPU hardware encoder utilization via PDH counter (works for NVIDIA/AMD/Intel).
+ * GPU hardware encoder utilization via PDH counter (NVIDIA/AMD/Intel).
  * phys_0 = primary GPU.
  */
 async function getEncoderUtilizationViaCounters(): Promise<number> {
-  try {
-    const out = await tryRunPowerShell(`
-$samples = Get-Counter '\\GPU Engine(*phys_0*engtype_VideoEncode)\\Utilization Percentage' -EA SilentlyContinue
-if ($samples -and $samples.CounterSamples) {
-  $total = ($samples.CounterSamples | Where-Object { $_.CookedValue -gt 0 } | Measure-Object CookedValue -Sum).Sum
-  [math]::Round([math]::Min([double]($total ?? 0), 100.0), 1)
-} else { '0' }
-`, 8000)
-    const val = parseFloat(out?.trim() ?? '0')
-    return isNaN(val) ? 0 : val
-  } catch {
-    return 0
-  }
+  const samples = await readCounters(['\\GPU Engine(*)\\Utilization Percentage'], 1, 8000)
+  return sumCounterMatching(samples, /phys_0.*engtype_VideoEncode/i)
 }
 
 /**
- * Get PCIe link speed and width for the primary non-NVIDIA GPU via PnpDeviceProperty.
- * DEVPKEY speed values: 1=PCIe1 (2.5GT/s), 2=PCIe2 (5GT/s), 3=PCIe3 (8GT/s),
- *                       4=PCIe4 (16GT/s), 5=PCIe5 (32GT/s)
+ * PCIe link speed and width for a discrete GPU. Some adapters publish
+ * LinkSpeed and LinkWidth values under their PCI Device Parameters key,
+ * but most don't. We return zeros when the values aren't present rather
+ * than guessing; the GPU rule treats zero as "unknown".
  */
-async function getGpuPcieInfo(vendorHexId: string): Promise<{ gen: number; width: number }> {
-  try {
-    const out = await tryRunPowerShell(`
-$dev = Get-PnpDevice -Class Display -EA SilentlyContinue | Where-Object { $_.InstanceId -match '${vendorHexId}' -and $_.Status -eq 'OK' } | Select-Object -First 1
-if (-not $dev) { Write-Output '0,0'; return }
-$speedProp = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName '{FD4E41A6-E80A-4564-81DC-B533ACFBE4AE} 51' -EA SilentlyContinue
-$widthProp = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName '{FD4E41A6-E80A-4564-81DC-B533ACFBE4AE} 52' -EA SilentlyContinue
-$speed = if ($speedProp -and $speedProp.Data) { [int]$speedProp.Data } else { 0 }
-$width = if ($widthProp -and $widthProp.Data) { [int]$widthProp.Data } else { 0 }
-Write-Output "$speed,$width"
-`, 8000)
-    const parts = (out?.trim() ?? '0,0').split(',')
-    const speedCode = parseInt(parts[0]) || 0
-    const width = parseInt(parts[1]) || 0
-    // Map speed code to PCIe generation number
-    const genMap: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 }
-    return { gen: genMap[speedCode] ?? 0, width }
-  } catch {
-    return { gen: 0, width: 0 }
+async function getGpuPcieInfo(matchingDeviceId: string): Promise<{ gen: number; width: number }> {
+  if (!matchingDeviceId) return { gen: 0, width: 0 }
+
+  // matchingDeviceId looks like PCI\VEN_10DE&DEV_xxxx&SUBSYS_yyyy.
+  // Walk Enum\PCI\<ven&dev>\<instance> and look for Device Parameters.
+  const trimmed = matchingDeviceId.replace(/^PCI\\/i, '').toUpperCase()
+  const venDev = trimmed.split('&').slice(0, 2).join('&')
+  const enumBase = `SYSTEM\\CurrentControlSet\\Enum\\PCI\\${venDev}`
+  const instances = enumerateRegistrySubkeys('HKLM', enumBase)
+
+  for (const inst of instances) {
+    const params = `HKLM\\${enumBase}\\${inst}\\Device Parameters`
+    const speed = await readValue(params, 'LinkSpeed').catch(() => null)
+    const width = await readValue(params, 'LinkWidth').catch(() => null)
+    if (speed && width && speed.type === 'REG_DWORD' && width.type === 'REG_DWORD') {
+      return { gen: speed.data, width: width.data }
+    }
   }
+  return { gen: 0, width: 0 }
 }
 
 /**
- * Try to detect AMD Smart Access Memory state.
- * Checks AMD driver registry for large BAR optimization flag.
- * Returns false if not detectable (we'll recommend it via rule).
+ * AMD Smart Access Memory state via AMD's display-class driver subkeys.
+ * Returns false when not detectable; the SAM rule treats false as
+ * "recommend enabling".
  */
 async function checkAmdSam(): Promise<boolean> {
-  try {
-    const out = await tryRunPowerShell(`
-$basePath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
-$subkeys = Get-ChildItem $basePath -EA SilentlyContinue | Where-Object { $_.PSChildName -match '^\\d{4}$' }
-foreach ($key in $subkeys) {
-  $provider = (Get-ItemProperty $key.PSPath -Name 'ProviderName' -EA SilentlyContinue).ProviderName
-  if ($provider -match 'AMD|Advanced Micro') {
-    $val = (Get-ItemProperty $key.PSPath -Name 'KMD_EnableInternalLargeBAROptimization' -EA SilentlyContinue).KMD_EnableInternalLargeBAROptimization
-    if ($null -ne $val) { Write-Output $val; return }
-    # Alternative key used in some AMD driver versions
-    $val2 = (Get-ItemProperty $key.PSPath -Name 'EnableResizableBar' -EA SilentlyContinue).EnableResizableBar
-    if ($null -ne $val2) { Write-Output $val2; return }
+  const subkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    'SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
+  )
+  for (const sk of subkeys) {
+    if (!/^\d{4}$/.test(sk)) continue
+    const path = `HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\${sk}`
+    const provider = await readValue(path, 'ProviderName').catch(() => null)
+    if (
+      !provider ||
+      (provider.type !== 'REG_SZ' && provider.type !== 'REG_EXPAND_SZ') ||
+      !/AMD|Advanced Micro/i.test(provider.data)
+    ) {
+      continue
+    }
+    const primary = await readValue(path, 'KMD_EnableInternalLargeBAROptimization').catch(() => null)
+    if (primary && primary.type === 'REG_DWORD') return primary.data === 1
+    const fallback = await readValue(path, 'EnableResizableBar').catch(() => null)
+    if (fallback && fallback.type === 'REG_DWORD') return fallback.data === 1
   }
-}
-Write-Output 'unknown'
-`, 5000)
-    const result = out?.trim()
-    if (result === '1') return true
-    if (result === '0') return false
-    return false // unknown — default to false, rule will recommend enabling
-  } catch {
-    return false
-  }
+  return false
 }
 
 // ── Registry / system checks ──────────────────────────────────
@@ -462,16 +439,14 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
           vramTotal = vramInfo.total || 0
         }
 
-        // PCIe info: only relevant for discrete (non-integrated) GPUs
+        // PCIe info: only relevant for discrete (non-integrated) GPUs.
+        // Most adapters do not publish LinkSpeed/LinkWidth and we report zero.
         let pcieGen = 0
         let pcieLinkWidth = 0
-        if (!isIntegrated && idx === 0) {
-          const vendorHex = vendor === 'amd' ? 'VEN_1002' : vendor === 'intel' ? 'VEN_8086' : ''
-          if (vendorHex) {
-            const pcie = await getGpuPcieInfo(vendorHex)
-            pcieGen = pcie.gen
-            pcieLinkWidth = pcie.width
-          }
+        if (!isIntegrated && idx === 0 && (vendor === 'amd' || vendor === 'intel')) {
+          const pcie = await getGpuPcieInfo(a.matchingDeviceId)
+          pcieGen = pcie.gen
+          pcieLinkWidth = pcie.width
         }
 
         // Resolve per-vendor clock speeds
