@@ -1,7 +1,7 @@
 // VR Optimization Suite — Power Plan Scan Module
 // Detects active Windows power plan using powercfg.
 
-import { tryRunCmd } from '../../utils/powershell'
+import { runExe } from '../../utils/exec'
 import type { ScanModuleResult } from '../types'
 
 // Map well-known GUIDs to friendly names
@@ -24,7 +24,7 @@ export async function scanPowerPlan(): Promise<ScanModuleResult<PowerPlanData>> 
   try {
     console.log('[scan:power-plan] Querying active power plan...')
 
-    const output = await tryRunCmd('powercfg /getactivescheme', 10000)
+    const output = await runExe('powercfg', ['/getactivescheme'], 10000)
     if (!output) {
       return { success: false, error: 'powercfg returned no output', partial: true }
     }

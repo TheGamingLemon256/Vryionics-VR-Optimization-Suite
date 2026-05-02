@@ -1,102 +1,164 @@
 // VR Optimization Suite — Internet Speed Test Module
-// Uses PowerShell + .NET HttpClient to download from Cloudflare's speed endpoint.
-// No third-party tools. Skip gracefully on timeout or no internet.
-//
-// Context: Internet speed matters for:
-//  1. Standalone headsets downloading game updates
-//  2. Cloud gaming via VR (GeForce NOW, Xbox Cloud)
-//  3. Streaming VR content (YouTube VR, SteamVR theatre)
-// For local PCVR wireless streaming (AirLink/VD), network.ts covers local Wi-Fi quality.
+// Uses Node's https module to download from Cloudflare's speed endpoint.
+// Internet speed matters for standalone-headset game updates, cloud VR
+// (GeForce NOW / Xbox Cloud), and streaming VR content. For local PCVR
+// wireless quality, network.ts already covers Wi-Fi metrics.
 
-import { tryRunPowerShell } from '../../utils/powershell'
+import https from 'node:https'
+import { URL } from 'node:url'
 import type { ScanModuleResult, SpeedTestData } from '../types'
 
-// Cloudflare Speed Test public endpoint (no API key needed)
-const CF_DOWN_URL = 'https://speed.cloudflare.com/__down?bytes=5000000'   // 5MB
+const CF_DOWN_URL = 'https://speed.cloudflare.com/__down?bytes=5000000'
 const CF_PING_URL = 'https://speed.cloudflare.com/__down?bytes=0'
+const CF_UP_URL = 'https://speed.cloudflare.com/__up'
 
-/** Measure single round-trip latency to an HTTPS endpoint via PowerShell. Returns ms. */
-async function measureHttpLatency(url: string): Promise<number | null> {
-  const out = await tryRunPowerShell(`
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-try {
-  $req = [System.Net.WebRequest]::Create('${url}')
-  $req.Method = 'HEAD'
-  $req.Timeout = 4000
-  $resp = $req.GetResponse()
-  $resp.Close()
-  $sw.Stop()
-  [math]::Round($sw.Elapsed.TotalMilliseconds, 1)
-} catch { $sw.Stop(); '-1' }
-`, 8000)
-  if (!out) return null
-  const ms = parseFloat(out.trim())
-  return ms > 0 ? ms : null
+function timeRequest(url: string, timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const start = process.hrtime.bigint()
+    const u = new URL(url)
+    const req = https.request(
+      {
+        method: 'HEAD',
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.resume()
+        res.on('end', () => {
+          if (settled) return
+          settled = true
+          const ms = Number(process.hrtime.bigint() - start) / 1_000_000
+          resolve(Math.round(ms * 10) / 10)
+        })
+      }
+    )
+    req.on('error', () => {
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.end()
+  })
 }
 
-/** Download a file and return throughput in Mbps. */
-async function measureDownload(url: string, timeoutMs: number): Promise<{ mbps: number; bytes: number } | null> {
-  const out = await tryRunPowerShell(`
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-try {
-  $wc = New-Object System.Net.WebClient
-  $bytes = $wc.DownloadData('${url}')
-  $sw.Stop()
-  $secs = $sw.Elapsed.TotalSeconds
-  if ($secs -gt 0) {
-    $mbps = [math]::Round(($bytes.Length * 8) / ($secs * 1000000), 2)
-    "$($bytes.Length),$mbps"
-  } else { '0,0' }
-} catch { $sw.Stop(); '0,0' }
-`, timeoutMs)
-  if (!out || !out.trim() || out.trim() === '0,0') return null
-  const parts = out.trim().split(',')
-  if (parts.length < 2) return null
-  const bytes = parseInt(parts[0])
-  const mbps = parseFloat(parts[1])
-  if (isNaN(bytes) || isNaN(mbps) || mbps <= 0) return null
-  return { mbps, bytes }
+function downloadAndMeasure(url: string, timeoutMs: number): Promise<{ mbps: number; bytes: number } | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const start = process.hrtime.bigint()
+    const u = new URL(url)
+    const req = https.request(
+      {
+        method: 'GET',
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let total = 0
+        res.on('data', (chunk: Buffer) => {
+          total += chunk.length
+        })
+        res.on('end', () => {
+          if (settled) return
+          settled = true
+          const secs = Number(process.hrtime.bigint() - start) / 1_000_000_000
+          if (secs <= 0 || total === 0) return resolve(null)
+          const mbps = Math.round(((total * 8) / (secs * 1_000_000)) * 100) / 100
+          resolve({ mbps, bytes: total })
+        })
+        res.on('error', () => {
+          if (settled) return
+          settled = true
+          resolve(null)
+        })
+      }
+    )
+    req.on('error', () => {
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.end()
+  })
 }
 
-/** Upload a small payload and return throughput in Mbps. */
-async function measureUpload(timeoutMs: number): Promise<number | null> {
-  const out = await tryRunPowerShell(`
-$payload = [byte[]]::new(1000000)  # 1 MB
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-try {
-  $wc = New-Object System.Net.WebClient
-  $wc.Headers.Add('Content-Type', 'application/octet-stream')
-  $resp = $wc.UploadData('https://speed.cloudflare.com/__up', 'POST', $payload)
-  $sw.Stop()
-  $secs = $sw.Elapsed.TotalSeconds
-  if ($secs -gt 0) {
-    [math]::Round(($payload.Length * 8) / ($secs * 1000000), 2)
-  } else { '0' }
-} catch { $sw.Stop(); '0' }
-`, timeoutMs)
-  if (!out) return null
-  const mbps = parseFloat(out.trim())
-  return mbps > 0 ? mbps : null
+function uploadAndMeasure(url: string, payloadSize: number, timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const payload = Buffer.alloc(payloadSize)
+    const start = process.hrtime.bigint()
+    const u = new URL(url)
+    const req = https.request(
+      {
+        method: 'POST',
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        timeout: timeoutMs,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': payload.length,
+        },
+      },
+      (res) => {
+        res.resume()
+        res.on('end', () => {
+          if (settled) return
+          settled = true
+          const secs = Number(process.hrtime.bigint() - start) / 1_000_000_000
+          if (secs <= 0) return resolve(null)
+          const mbps = Math.round(((payload.length * 8) / (secs * 1_000_000)) * 100) / 100
+          resolve(mbps > 0 ? mbps : null)
+        })
+      }
+    )
+    req.on('error', () => {
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      if (settled) return
+      settled = true
+      resolve(null)
+    })
+    req.write(payload)
+    req.end()
+  })
 }
 
 export async function scanSpeedTest(): Promise<ScanModuleResult<SpeedTestData>> {
   console.log('[scan:speedtest] Starting internet speed test (Cloudflare)...')
 
   try {
-    // 1. Latency — quick HEAD request, measure round-trip
-    const pingMs = await measureHttpLatency(CF_PING_URL)
+    const pingMs = await timeRequest(CF_PING_URL, 4000)
     console.log(`[scan:speedtest] Ping: ${pingMs ?? 'N/A'} ms`)
 
-    // 2. Download
-    const dl = await measureDownload(CF_DOWN_URL, 20000)
+    const dl = await downloadAndMeasure(CF_DOWN_URL, 20000)
     console.log(`[scan:speedtest] Download: ${dl?.mbps ?? 'N/A'} Mbps`)
 
-    // 3. Jitter — measure latency 4 more times and compute variance
     let jitterMs: number | null = null
     if (pingMs !== null) {
       const samples: number[] = [pingMs]
       for (let i = 0; i < 3; i++) {
-        const t = await measureHttpLatency(CF_PING_URL)
+        const t = await timeRequest(CF_PING_URL, 4000)
         if (t !== null) samples.push(t)
       }
       if (samples.length >= 2) {
@@ -106,8 +168,7 @@ export async function scanSpeedTest(): Promise<ScanModuleResult<SpeedTestData>> 
       }
     }
 
-    // 4. Upload — optional, lower priority, shorter timeout
-    const uploadMbps = await measureUpload(12000)
+    const uploadMbps = await uploadAndMeasure(CF_UP_URL, 1_000_000, 12000)
     console.log(`[scan:speedtest] Upload: ${uploadMbps ?? 'N/A'} Mbps`)
 
     const data: SpeedTestData = {
@@ -117,7 +178,7 @@ export async function scanSpeedTest(): Promise<ScanModuleResult<SpeedTestData>> 
       jitterMs,
       testServer: 'speed.cloudflare.com',
       skipped: false,
-      note: 'Measured to Cloudflare CDN. Relevant for content download and cloud VR. For wireless PCVR quality, check the Wi-Fi metrics instead.'
+      note: 'Measured to Cloudflare CDN. Relevant for content download and cloud VR. For wireless PCVR quality, check the Wi-Fi metrics instead.',
     }
 
     return { success: true, data }
@@ -133,8 +194,8 @@ export async function scanSpeedTest(): Promise<ScanModuleResult<SpeedTestData>> 
         jitterMs: null,
         testServer: null,
         skipped: true,
-        note: 'Test could not complete — no internet access or timed out.'
-      }
+        note: 'Test could not complete: no internet access or timed out.',
+      },
     }
   }
 }

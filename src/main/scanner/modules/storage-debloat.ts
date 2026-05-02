@@ -3,27 +3,23 @@
 // sizing data so the renderer can present a cleanup UI.
 //
 // Category definitions are loaded at runtime from resources/storage-categories.json
-// rather than embedded as literal strings in this file. Reason: the path
-// strings (Chrome User Data, Firefox Profiles, Discord cache dirs) match
-// the same patterns credential-stealing malware uses, and embedding them
-// inline triggers Kaspersky's HEUR:Trojan-PSW.Script.Generic. Moving them
-// to a sibling JSON file keeps them out of the compiled JS bundle.
+// rather than embedded as literal strings in this file. The path strings
+// (Chrome User Data, Firefox Profiles, Discord cache dirs) match the same
+// patterns credential-stealing malware uses; embedding them inline triggers
+// HEUR:Trojan-PSW.Script.Generic on Kaspersky.
 
-import { runPowerShellJson, tryRunPowerShell } from '../../utils/powershell'
 import { app } from 'electron'
-import { readFileSync } from 'fs'
-import { join } from 'path'
-
-// ── Public types ──────────────────────────────────────────────
+import { existsSync, readFileSync, readdirSync, statSync, rmSync, unlinkSync } from 'fs'
+import { join, normalize, resolve } from 'path'
 
 export interface DebloatCategory {
   id: string
   name: string
   description: string
-  paths: string[]       // resolved absolute paths that exist on disk
-  sizeMB: number        // total size in MB across all paths
-  safeToDelete: boolean // false → show "review first" warning in UI
-  deletable: boolean    // false → info-only (e.g. Downloads folder)
+  paths: string[]
+  sizeMB: number
+  safeToDelete: boolean
+  deletable: boolean
 }
 
 export interface DebloatScanResult {
@@ -32,29 +28,16 @@ export interface DebloatScanResult {
   scannedAt: number
 }
 
-// ── Category definitions (resolved at scan time) ──────────────
-
 interface CategoryDef {
   id: string
   name: string
   description: string
-  // PowerShell expressions that evaluate to path strings.
-  // Each element is a PS expression; paths are expanded inside the PS script.
   pathExprs: string[]
   safeToDelete: boolean
   deletable: boolean
-  // For categories where we only want specific file patterns (e.g. thumbcache)
   fileFilter?: string
 }
 
-/**
- * Load CATEGORY_DEFS from the external JSON resource. Tries three paths:
- *   1. resources/storage-categories.json (packaged app, electron-builder extraResources)
- *   2. update-server/storage-categories.json relative to app path (dev)
- *   3. ../../update-server/storage-categories.json (dev, out/main → root)
- * Returns an empty array if no file is found — storage debloat just becomes
- * a no-op rather than crashing, which is the safer failure mode.
- */
 function loadCategoryDefs(): CategoryDef[] {
   const candidates = [
     join(process.resourcesPath ?? '', 'storage-categories.json'),
@@ -67,7 +50,9 @@ function loadCategoryDefs(): CategoryDef[] {
       const parsed = JSON.parse(raw)
       const cats = parsed?.categories
       if (Array.isArray(cats)) return cats as CategoryDef[]
-    } catch { /* try next */ }
+    } catch {
+      // try next
+    }
   }
   return []
 }
@@ -79,182 +64,155 @@ function getCategoryDefs(): CategoryDef[] {
   return cachedDefs
 }
 
-// Backwards-compat: code below references CATEGORY_DEFS as a constant.
-// Wrap getCategoryDefs() behind a Proxy so the call sites don't need to change.
-const CATEGORY_DEFS: CategoryDef[] = new Proxy([], {
-  get(_target, prop): unknown {
-    const arr = getCategoryDefs()
-    if (prop === 'length') return arr.length
-    if (typeof prop === 'string' && /^\d+$/.test(prop)) return arr[parseInt(prop, 10)]
-    if (prop === Symbol.iterator) return arr[Symbol.iterator].bind(arr)
-    return (arr as unknown as Record<string | symbol, unknown>)[prop as string]
-  },
-})
+// Expand %ENV% and $env:NAME style references plus Node-style ${ENV} so the
+// JSON path expressions don't need to know which interpolation flavour
+// they're being parsed in.
+function expandEnv(expr: string): string {
+  return expr
+    .replace(/%([A-Z_][A-Z0-9_()]*)%/gi, (_, name) => process.env[name] ?? '')
+    .replace(/\$env:([A-Z_][A-Z0-9_]*)/gi, (_, name) => process.env[name] ?? '')
+    .replace(/\$\{([A-Z_][A-Z0-9_]*)\}/gi, (_, name) => process.env[name] ?? '')
+}
 
-
-// ── PowerShell sizing script ──────────────────────────────────
-
-/**
- * Build a PowerShell script that resolves all category paths, checks their
- * existence, measures sizes (with per-path 10-second timeouts), and returns
- * a JSON array of results.
- */
-function buildScanScript(): string {
-  // Encode category definitions as a PS array of hash-tables so the script
-  // is self-contained and doesn't rely on inline string interpolation from TS.
-  const defs = CATEGORY_DEFS.map((def) => {
-    const pathsPs = def.pathExprs
-      .map((expr) => `"${expr}"`)
-      .join(', ')
-
-    const filterPs = def.fileFilter ? `"${def.fileFilter}"` : '$null'
-
-    return `@{
-  id          = '${def.id}'
-  fileFilter  = ${filterPs}
-  pathExprs   = @(${pathsPs})
-}`
-  }).join(",\n")
-
-  return `
-$ErrorActionPreference = 'SilentlyContinue'
-Set-StrictMode -Off
-
-function Measure-FolderMB {
-  param([string]$Path, [string]$Filter)
-  if (-not (Test-Path $Path)) { return 0 }
-  $job = Start-Job -ScriptBlock {
-    param($p, $f)
-    $ErrorActionPreference = 'SilentlyContinue'
-    if ($f) {
-      $bytes = (Get-ChildItem -Path $p -Filter $f -File -Force -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum).Sum
-    } else {
-      $bytes = (Get-ChildItem -Path $p -Recurse -File -Force -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum).Sum
-    }
-    if ($bytes -eq $null) { return 0 }
-    return [math]::Round($bytes / 1MB, 2)
-  } -ArgumentList $Path, $Filter
-  $done = Wait-Job $job -Timeout 10
-  if ($done) {
-    $result = Receive-Job $job
-    Remove-Job $job -Force
-    if ($result -eq $null) { return 0 }
-    return [math]::Round([double]$result, 2)
-  } else {
-    Stop-Job $job
-    Remove-Job $job -Force
-    return 0
+function safeResolve(expr: string): string | null {
+  const expanded = expandEnv(expr).trim()
+  if (!expanded) return null
+  try {
+    return resolve(normalize(expanded))
+  } catch {
+    return expanded
   }
 }
 
-$categories = @(
-${defs}
-)
+interface SizeResult {
+  totalBytes: number
+  files: string[]
+}
 
-$output = @()
+function collectFiles(root: string, filter: string | undefined, depthLimit = 12): SizeResult {
+  if (!existsSync(root)) return { totalBytes: 0, files: [] }
+  let totalBytes = 0
+  const files: string[] = []
+  const stack: Array<{ p: string; depth: number }> = [{ p: root, depth: 0 }]
 
-foreach ($cat in $categories) {
-  $existingPaths = @()
-  $totalMB = 0.0
-
-  # Categories whose pathExprs point at a parent root and need recursive
-  # subdirectory expansion (e.g. browser cache stores that nest profile
-  # directories) declare fileFilter == 'cache2' as a sentinel. Generic
-  # per-category logic — no per-vendor names referenced.
-  if ($cat.fileFilter -eq 'cache2') {
-    $rootPath = $cat.pathExprs[0]
-    if (Test-Path $rootPath) {
-      $childDirs = Get-ChildItem -Path $rootPath -Recurse -Filter 'cache2' -Directory -Force -ErrorAction SilentlyContinue
-      foreach ($dir in $childDirs) {
-        $existingPaths += $dir.FullName
-        $totalMB += Measure-FolderMB -Path $dir.FullName -Filter $null
-      }
+  while (stack.length) {
+    const { p, depth } = stack.pop()!
+    let entries: string[]
+    try {
+      entries = readdirSync(p)
+    } catch {
+      continue
     }
-  } else {
-    foreach ($p in $cat.pathExprs) {
-      if ([string]::IsNullOrEmpty($p)) { continue }
-      # Normalise path (resolve ..\ segments)
+    for (const entry of entries) {
+      const child = join(p, entry)
+      let s
       try {
-        $resolved = [System.IO.Path]::GetFullPath($p)
+        s = statSync(child)
       } catch {
-        $resolved = $p
+        continue
       }
-      if (Test-Path $resolved) {
-        $existingPaths += $resolved
-        $totalMB += Measure-FolderMB -Path $resolved -Filter $cat.fileFilter
+      if (s.isDirectory()) {
+        if (depth < depthLimit) stack.push({ p: child, depth: depth + 1 })
+      } else if (s.isFile()) {
+        if (filter) {
+          // wildcard-style "thumbcache_*.db" — translate * to .* and ? to .
+          const pattern = '^' + filter.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
+          if (!new RegExp(pattern, 'i').test(entry)) continue
+        }
+        files.push(child)
+        totalBytes += s.size
       }
     }
   }
+  return { totalBytes, files }
+}
 
-  $output += [PSCustomObject]@{
-    id            = $cat.id
-    existingPaths = $existingPaths
-    sizeMB        = [math]::Round($totalMB, 2)
+function findCache2Dirs(root: string, depthLimit = 8): string[] {
+  if (!existsSync(root)) return []
+  const matches: string[] = []
+  const stack: Array<{ p: string; depth: number }> = [{ p: root, depth: 0 }]
+  while (stack.length) {
+    const { p, depth } = stack.pop()!
+    let entries: string[]
+    try {
+      entries = readdirSync(p)
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const child = join(p, entry)
+      let s
+      try {
+        s = statSync(child)
+      } catch {
+        continue
+      }
+      if (!s.isDirectory()) continue
+      if (entry.toLowerCase() === 'cache2') {
+        matches.push(child)
+        continue
+      }
+      if (depth < depthLimit) stack.push({ p: child, depth: depth + 1 })
+    }
   }
+  return matches
 }
 
-$output | ConvertTo-Json -Depth 4 -Compress
-`
-}
-
-// ── Deletion script ───────────────────────────────────────────
-
-interface RawScanEntry {
+interface CategoryScan {
   id: string
-  existingPaths: string | string[]
-  sizeMB: number
+  paths: string[]
+  totalBytes: number
 }
 
-// ── Main scan function ────────────────────────────────────────
+function scanCategory(def: CategoryDef): CategoryScan {
+  const paths: string[] = []
+  let totalBytes = 0
+
+  if (def.fileFilter === 'cache2') {
+    const root = safeResolve(def.pathExprs[0] ?? '')
+    if (root) {
+      for (const dir of findCache2Dirs(root)) {
+        paths.push(dir)
+        totalBytes += collectFiles(dir, undefined).totalBytes
+      }
+    }
+    return { id: def.id, paths, totalBytes }
+  }
+
+  for (const expr of def.pathExprs) {
+    const resolved = safeResolve(expr)
+    if (!resolved) continue
+    if (!existsSync(resolved)) continue
+    paths.push(resolved)
+    totalBytes += collectFiles(resolved, def.fileFilter).totalBytes
+  }
+  return { id: def.id, paths, totalBytes }
+}
 
 export async function scanDebloat(): Promise<DebloatScanResult> {
-  console.log('[scan:debloat] Starting storage debloat scan…')
+  console.log('[scan:debloat] Starting storage debloat scan...')
 
-  const script = buildScanScript()
-
-  let rawEntries: RawScanEntry[]
-  try {
-    const raw = await runPowerShellJson<RawScanEntry | RawScanEntry[]>(script, 120_000)
-    rawEntries = Array.isArray(raw) ? raw : [raw]
-  } catch (err) {
-    console.error('[scan:debloat] Scan script failed:', (err as Error).message)
-    rawEntries = []
-  }
-
-  // Build a lookup from the PS results
-  const resultMap = new Map<string, { paths: string[]; sizeMB: number }>()
-  for (const entry of rawEntries) {
-    const paths = Array.isArray(entry.existingPaths)
-      ? entry.existingPaths
-      : entry.existingPaths
-        ? [entry.existingPaths]
-        : []
-    resultMap.set(entry.id, { paths, sizeMB: Number(entry.sizeMB) || 0 })
+  const defs = getCategoryDefs()
+  const results = new Map<string, CategoryScan>()
+  for (const def of defs) {
+    results.set(def.id, scanCategory(def))
   }
 
   const categories: DebloatCategory[] = []
+  for (const def of defs) {
+    const r = results.get(def.id) ?? { id: def.id, paths: [], totalBytes: 0 }
+    const sizeMB = Math.round((r.totalBytes / 1024 / 1024) * 100) / 100
 
-  for (const def of CATEGORY_DEFS) {
-    const result = resultMap.get(def.id)
-    const paths = result?.paths ?? []
-    const sizeMB = result?.sizeMB ?? 0
-
-    // Always include the downloads folder (even if empty) for user awareness.
-    // Skip all other categories that have no size and no existing paths.
-    if (def.id !== 'downloads-folder' && sizeMB === 0 && paths.length === 0) {
-      continue
-    }
+    if (def.id !== 'downloads-folder' && sizeMB === 0 && r.paths.length === 0) continue
 
     categories.push({
       id: def.id,
       name: def.name,
       description: def.description,
-      paths,
+      paths: r.paths,
       sizeMB,
       safeToDelete: def.safeToDelete,
-      deletable: def.deletable
+      deletable: def.deletable,
     })
   }
 
@@ -262,140 +220,85 @@ export async function scanDebloat(): Promise<DebloatScanResult> {
     .filter((c) => c.deletable)
     .reduce((sum, c) => sum + c.sizeMB, 0)
 
-  console.log(
-    `[scan:debloat] Found ${categories.length} categories, ${Math.round(totalReclaimableMB)} MB reclaimable`
-  )
+  console.log(`[scan:debloat] Found ${categories.length} categories, ${Math.round(totalReclaimableMB)} MB reclaimable`)
 
   return {
     categories,
     totalReclaimableMB: Math.round(totalReclaimableMB * 100) / 100,
-    scannedAt: Date.now()
+    scannedAt: Date.now(),
   }
 }
-
-// ── Delete a single category ──────────────────────────────────
 
 export async function deleteDebloatCategory(
   categoryId: string,
   _userHome: string
 ): Promise<{ freed: number; errors: string[] }> {
-  const def = CATEGORY_DEFS.find((d) => d.id === categoryId)
-  if (!def) {
-    return { freed: 0, errors: [`Unknown category: ${categoryId}`] }
-  }
-  if (!def.deletable) {
-    return { freed: 0, errors: [`Category "${categoryId}" is not auto-deletable`] }
-  }
+  const def = getCategoryDefs().find((d) => d.id === categoryId)
+  if (!def) return { freed: 0, errors: [`Unknown category: ${categoryId}`] }
+  if (!def.deletable) return { freed: 0, errors: [`Category "${categoryId}" is not auto-deletable`] }
 
   console.log(`[scan:debloat] Deleting category: ${categoryId}`)
 
-  // Build a deletion script that:
-  // 1. Measures size before deletion
-  // 2. Removes contents (not the root folder itself for system paths)
-  // 3. Returns JSON with freed bytes and errors
+  const errors: string[] = []
+  let freedBytes = 0
 
-  const pathExprsPs = def.pathExprs
-    .map((expr) => `"${expr}"`)
-    .join(', ')
-
-  // Some categories need recursive subdirectory expansion rather than
-  // direct deletion — declared via def.fileFilter == "cache2" sentinel.
-  // We derive the recursion target from the same pathExprs used for
-  // sizing, so no path strings need to be embedded inline in this TS file.
-  const needsRecursion = categoryId === 'firefox-cache'
-  const fileFilter = def.fileFilter ?? ''
-
-  const script = `
-$ErrorActionPreference = 'SilentlyContinue'
-Set-StrictMode -Off
-
-$errors = @()
-$freedBytes = 0L
-
-${
-  needsRecursion
-    ? `
-$rawPaths = @(${pathExprsPs})
-$paths = @()
-foreach ($p in $rawPaths) {
-  try { $root = [System.IO.Path]::GetFullPath($p) } catch { $root = $p }
-  if (Test-Path $root) {
-    $paths += (Get-ChildItem -Path $root -Recurse -Filter 'cache2' -Directory -Force -ErrorAction SilentlyContinue) |
-              ForEach-Object { $_.FullName }
-  }
-}
-`
-    : `
-$rawPaths = @(${pathExprsPs})
-$paths = @()
-foreach ($p in $rawPaths) {
-  if ([string]::IsNullOrEmpty($p)) { continue }
-  try { $resolved = [System.IO.Path]::GetFullPath($p) } catch { $resolved = $p }
-  if (Test-Path $resolved) { $paths += $resolved }
-}
-`
-}
-
-foreach ($dir in $paths) {
-  if (-not (Test-Path $dir)) { continue }
-
-  ${
-    fileFilter
-      ? `
-  # File-filtered deletion (e.g. thumbcache_*.db)
-  $items = Get-ChildItem -Path $dir -Filter '${fileFilter}' -File -Force -ErrorAction SilentlyContinue
-  foreach ($item in $items) {
-    try {
-      $freedBytes += $item.Length
-      Remove-Item -Path $item.FullName -Force -ErrorAction Stop
-    } catch {
-      $errors += "Failed to delete $($item.FullName): $($_.Exception.Message)"
+  const targetDirs: string[] = []
+  if (def.fileFilter === 'cache2') {
+    for (const expr of def.pathExprs) {
+      const root = safeResolve(expr)
+      if (!root) continue
+      targetDirs.push(...findCache2Dirs(root))
+    }
+  } else {
+    for (const expr of def.pathExprs) {
+      const resolved = safeResolve(expr)
+      if (!resolved) continue
+      if (existsSync(resolved)) targetDirs.push(resolved)
     }
   }
-`
-      : `
-  # Full folder contents deletion
-  $items = Get-ChildItem -Path $dir -Force -ErrorAction SilentlyContinue
-  foreach ($item in $items) {
+
+  for (const dir of targetDirs) {
+    if (def.fileFilter && def.fileFilter !== 'cache2') {
+      const { files } = collectFiles(dir, def.fileFilter, 0)
+      for (const file of files) {
+        try {
+          const size = statSync(file).size
+          unlinkSync(file)
+          freedBytes += size
+        } catch (err) {
+          errors.push(`Failed to delete ${file}: ${(err as Error).message}`)
+        }
+      }
+      continue
+    }
+
+    let entries: string[]
     try {
-      $sizeBefore = if ($item.PSIsContainer) {
-        (Get-ChildItem $item.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
-         Measure-Object -Property Length -Sum).Sum
-      } else { $item.Length }
-      Remove-Item -Path $item.FullName -Recurse -Force -ErrorAction Stop
-      $freedBytes += [long]($sizeBefore)
-    } catch {
-      $errors += "Failed to delete $($item.FullName): $($_.Exception.Message)"
+      entries = readdirSync(dir)
+    } catch (err) {
+      errors.push(`Failed to read ${dir}: ${(err as Error).message}`)
+      continue
+    }
+
+    for (const entry of entries) {
+      const child = join(dir, entry)
+      let s
+      try {
+        s = statSync(child)
+      } catch {
+        continue
+      }
+      try {
+        const sizeBefore = s.isDirectory() ? collectFiles(child, undefined).totalBytes : s.size
+        rmSync(child, { recursive: true, force: true })
+        freedBytes += sizeBefore
+      } catch (err) {
+        errors.push(`Failed to delete ${child}: ${(err as Error).message}`)
+      }
     }
   }
-`
-  }
-}
 
-[PSCustomObject]@{
-  freedBytes = $freedBytes
-  errors     = $errors
-} | ConvertTo-Json -Depth 2 -Compress
-`
-
-  interface DeleteResult {
-    freedBytes: number
-    errors: string | string[]
-  }
-
-  try {
-    const raw = await runPowerShellJson<DeleteResult>(script, 120_000)
-    const errs = Array.isArray(raw.errors)
-      ? raw.errors
-      : raw.errors
-        ? [raw.errors]
-        : []
-    const freedMB = Math.round((Number(raw.freedBytes) || 0) / 1024 / 1024 * 100) / 100
-    console.log(`[scan:debloat] Deleted ${categoryId}: freed ${freedMB} MB, ${errs.length} errors`)
-    return { freed: freedMB, errors: errs }
-  } catch (err) {
-    const msg = (err as Error).message
-    console.error(`[scan:debloat] Delete failed for ${categoryId}:`, msg)
-    return { freed: 0, errors: [msg] }
-  }
+  const freedMB = Math.round((freedBytes / 1024 / 1024) * 100) / 100
+  console.log(`[scan:debloat] Deleted ${categoryId}: freed ${freedMB} MB, ${errors.length} errors`)
+  return { freed: freedMB, errors }
 }
