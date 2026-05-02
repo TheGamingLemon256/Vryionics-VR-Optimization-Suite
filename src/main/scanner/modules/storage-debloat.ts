@@ -115,7 +115,7 @@ function collectFiles(root: string, filter: string | undefined, depthLimit = 12)
         if (depth < depthLimit) stack.push({ p: child, depth: depth + 1 })
       } else if (s.isFile()) {
         if (filter) {
-          // wildcard-style "thumbcache_*.db" — translate * to .* and ? to .
+          // wildcard-style "thumbcache_*.db": translate * to .* and ? to .
           const pattern = '^' + filter.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
           if (!new RegExp(pattern, 'i').test(entry)) continue
         }

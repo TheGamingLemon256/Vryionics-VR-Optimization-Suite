@@ -72,7 +72,7 @@ export async function scanEventLog(): Promise<ScanModuleResult<EventLogData>> {
       gpuTdrEvents = Math.max(gpuTdrEvents, matching)
     }
 
-    // WHEA-Logger Operational log — any event in the last week is a hardware
+    // WHEA-Logger Operational log: any event in the last week is a hardware
     // error worth reporting.
     const wheaXpath = `*[System[TimeCreated[timediff(@SystemTime) <= ${SEVEN_DAYS_MS}]]]`
     const wheaOut = await queryEvents('Microsoft-Windows-WHEA-Logger/Operational', wheaXpath, 50, 15000)

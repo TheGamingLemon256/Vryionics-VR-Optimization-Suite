@@ -100,7 +100,7 @@ const NETWORK_CLASS_GUID = '{4d36e972-e325-11ce-bfc1-08002be10318}'
  * class. Bit 0x18 disables "Allow the computer to turn off this device to
  * save power" (the toggle Device Manager exposes); 0x00 re-enables it.
  *
- * The same write that Set-NetAdapterPowerManagement performs internally —
+ * The same write that Set-NetAdapterPowerManagement performs internally;
  * this is the documented Microsoft-supported registry path.
  */
 async function setWifiAdapterPnpCapabilities(value: number): Promise<void> {

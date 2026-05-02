@@ -7,7 +7,7 @@ import { readValue } from '../../utils/registry-read'
 import { enumerateRegistrySubkeys } from '../../utils/registry'
 import type { ScanModuleResult, NetworkData, NetworkAdapter, WifiInfo } from '../types'
 
-// Network class GUID — adapter friendly name, description, and physical
+// Network class GUID. Adapter friendly name, description, and physical
 // media type all live under HKLM\SYSTEM\CurrentControlSet\Control\Class\{this}.
 const NETWORK_CLASS = '{4d36e972-e325-11ce-bfc1-08002be10318}'
 

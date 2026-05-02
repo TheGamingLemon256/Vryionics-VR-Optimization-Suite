@@ -82,7 +82,7 @@ async function fetchCpuRam(): Promise<{ cpu: MetricsSnapshot['cpu']; ram: Metric
   const usedGB = Math.round((usedBytes / 1024 ** 3) * 10) / 10
   const usagePercent = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0
 
-  // CPU load via typeperf instead of os.loadavg() — loadavg() is the
+  // CPU load via typeperf instead of os.loadavg(). loadavg() is the
   // 1/5/15-minute Unix average, not a useful proxy for "right now" on Windows.
   const cpuRaw = await readSingleCounter('\\Processor(_Total)\\% Processor Time', 3000)
   const cpu = cpuRaw === null ? 0 : Math.round(cpuRaw)
