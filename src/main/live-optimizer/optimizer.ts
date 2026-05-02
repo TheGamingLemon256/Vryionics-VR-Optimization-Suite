@@ -909,6 +909,14 @@ export async function restore(): Promise<void> {
   emitStatus()
 }
 
+// Idle short-circuit: while in 'monitoring' with no VR seen recently, only do
+// the heavy Get-Process call every N ticks instead of every tick. Once VR is
+// detected we drop back to per-tick polling so countdown / activation react
+// promptly. The threshold is intentionally small (5s * 6 = 30s between polls
+// when idle) to keep the user-visible "VR detected" latency under a minute.
+const IDLE_POLL_DIVISOR = 6
+let idleTickCounter = 0
+
 export function startMonitoring(config: LiveOptimizerConfig, onStatus: (s: LiveOptimizerStatus) => void): void {
   currentConfig = config
   statusCallback = onStatus
@@ -918,9 +926,19 @@ export function startMonitoring(config: LiveOptimizerConfig, onStatus: (s: LiveO
   currentStatus = { ...currentStatus, phase: 'monitoring', error: null }
   addLog('info', '👁 Live Optimizer started — monitoring for VR sessions')
   emitStatus()
+  idleTickCounter = 0
 
   monitorInterval = setInterval(async () => {
     try {
+      // While idle (monitoring with no VR seen), throttle the heavy poll.
+      // Any non-monitoring phase always polls so countdown / restore react.
+      if (currentStatus.phase === 'monitoring') {
+        idleTickCounter = (idleTickCounter + 1) % IDLE_POLL_DIVISOR
+        if (idleTickCounter !== 1) return
+      } else {
+        idleTickCounter = 0
+      }
+
       const processes = await getRunningProcesses()
       const { active, names } = isVrSessionActive(processes)
 
