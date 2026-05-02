@@ -2,7 +2,7 @@
 // Collects RAM capacity and performance counters.
 
 import os from 'node:os'
-import { tryRunPowerShell } from '../../utils/powershell'
+import { readCounters } from '../../utils/typeperf'
 import type { ScanModuleResult, RamData } from '../types'
 
 export interface DimmDescriptor {
@@ -39,29 +39,18 @@ interface PoolCounters {
 }
 
 async function getPoolCounters(): Promise<PoolCounters | null> {
-  // Get-Counter is a pure PDH path with no CIM dependency, so it survives
-  // the WMI removal. Both counters need admin to be reliable; on user
-  // sessions they may simply return zero rather than fail outright.
-  try {
-    const out = await tryRunPowerShell(`
-$counters = Get-Counter '\\Memory\\Pool Nonpaged Bytes','\\Memory\\Modified Page List Bytes' -ErrorAction SilentlyContinue
-if ($counters) {
-  Write-Output "nonpaged:$([int64]$counters.CounterSamples[0].CookedValue)"
-  Write-Output "modified:$([int64]$counters.CounterSamples[1].CookedValue)"
-}
-`, 8000)
-    if (!out) return null
+  // Both counters need admin to be reliable; on user sessions they may
+  // return zero rather than fail outright.
+  const samples = await readCounters(
+    ['\\Memory\\Pool Nonpaged Bytes', '\\Memory\\Modified Page List Bytes'],
+    1,
+    8000
+  )
+  if (!samples || samples.length < 2) return null
 
-    const np = out.match(/^nonpaged:(\d+)/m)
-    const mp = out.match(/^modified:(\d+)/m)
-    if (!np || !mp) return null
-
-    return {
-      nonpagedPoolBytes: parseInt(np[1], 10),
-      modifiedPageListBytes: parseInt(mp[1], 10),
-    }
-  } catch {
-    return null
+  return {
+    nonpagedPoolBytes: Math.round(samples[0].value),
+    modifiedPageListBytes: Math.round(samples[1].value),
   }
 }
 
