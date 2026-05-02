@@ -19,10 +19,12 @@
 
 import { app, BrowserWindow } from 'electron'
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
-import { spawn } from 'child_process'
 import { log } from './logger'
 import { getNvidiaGpuMetrics, getAmdGpuMetrics, getIntelGpuTemperature } from './utils/gpu-metrics'
+import { enumerateProcesses } from './utils/process'
+import { readSingleCounter } from './utils/typeperf'
 import { notify } from './notifier'
 
 export interface SessionSample {
@@ -99,55 +101,23 @@ export function reconcileCrashedRecords(): void {
   } catch { /* ignore */ }
 }
 
-/** Returns the names of currently-running VR processes. */
-function pollVrProcesses(): Promise<string[]> {
-  const namesArg = VR_PROCESS_NAMES.map((n) => `'${n.replace(/'/g, "''")}'`).join(',')
-  const script = `Get-Process -Name ${namesArg} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name -Unique`
-  return new Promise((resolve) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true },
-    )
-    let stdout = ''
-    child.stdout.setEncoding('utf-8')
-    child.stdout.on('data', (c: string) => { stdout += c })
-    const timer = setTimeout(() => { try { child.kill() } catch {} resolve([]) }, 5_000)
-    child.on('error', () => { clearTimeout(timer); resolve([]) })
-    child.on('close', () => {
-      clearTimeout(timer)
-      resolve(stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))
-    })
-  })
+async function pollVrProcesses(): Promise<string[]> {
+  const procs = await enumerateProcesses().catch(() => [])
+  const wanted = new Set(VR_PROCESS_NAMES.map((n) => n.toLowerCase()))
+  const seen = new Set<string>()
+  for (const p of procs) {
+    const name = p.name.toLowerCase()
+    if (wanted.has(name)) seen.add(name)
+  }
+  return [...seen]
 }
 
-/** Quick CPU + RAM sample via PowerShell. Async — non-blocking. */
-function pollCpuRam(): Promise<{ cpu: number; ramUsedGB: number }> {
-  const script = `
-    $cpu = (Get-Counter '\\Processor(_Total)\\% Processor Time').CounterSamples[0].CookedValue
-    $os = Get-CimInstance Win32_OperatingSystem
-    $usedKB = $os.TotalVisibleMemorySize - $os.FreePhysicalMemory
-    Write-Output "cpu:$cpu"
-    Write-Output "ram:$usedKB"
-  `
-  return new Promise((resolve) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true },
-    )
-    let stdout = ''
-    child.stdout.setEncoding('utf-8')
-    child.stdout.on('data', (c: string) => { stdout += c })
-    const timer = setTimeout(() => { try { child.kill() } catch {} resolve({ cpu: 0, ramUsedGB: 0 }) }, 3_000)
-    child.on('error', () => { clearTimeout(timer); resolve({ cpu: 0, ramUsedGB: 0 }) })
-    child.on('close', () => {
-      clearTimeout(timer)
-      const cpu = Math.round(parseFloat(stdout.match(/cpu:([\d.]+)/)?.[1] ?? '0'))
-      const ramKB = parseFloat(stdout.match(/ram:(\d+)/)?.[1] ?? '0')
-      resolve({ cpu, ramUsedGB: ramKB / 1024 / 1024 })
-    })
-  })
+async function pollCpuRam(): Promise<{ cpu: number; ramUsedGB: number }> {
+  const cpuRaw = await readSingleCounter('\\Processor(_Total)\\% Processor Time', 3000)
+  const cpu = cpuRaw === null ? 0 : Math.round(cpuRaw)
+  const usedBytes = Math.max(0, os.totalmem() - os.freemem())
+  const ramUsedGB = Math.round((usedBytes / 1024 ** 3) * 10) / 10
+  return { cpu, ramUsedGB }
 }
 
 async function pollGpu(): Promise<{ tempC: number | null; powerW: number | null; util: number | null }> {

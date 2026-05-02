@@ -11,8 +11,11 @@
 // paused, leaving the desktop unusable until reboot.
 
 import Store from 'electron-store'
-import { spawn } from 'child_process'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { log } from '../logger'
+
+const execFileAsync = promisify(execFile)
 
 interface PendingService {
   name: string
@@ -51,18 +54,21 @@ export function clearAll(): void {
   write([])
 }
 
-/** Async start of one service via PowerShell. */
-function startService(name: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', `Start-Service -Name '${name.replace(/'/g, "''")}' -ErrorAction SilentlyContinue; if ($?) { exit 0 } else { exit 1 }`],
-      { windowsHide: true },
-    )
-    const t = setTimeout(() => { try { child.kill() } catch {} resolve(false) }, 15_000)
-    child.on('error', () => { clearTimeout(t); resolve(false) })
-    child.on('close', (code) => { clearTimeout(t); resolve(code === 0) })
-  })
+/**
+ * Start a Windows service via sc.exe. sc returns exit 0 only when the SCM
+ * accepts the start command, which is good enough for our recovery purpose:
+ * if the service is already running sc returns 1056 and we treat that as
+ * success (it's already in the desired state).
+ */
+async function startService(name: string): Promise<boolean> {
+  try {
+    await execFileAsync('sc', ['start', name], { timeout: 15_000 })
+    return true
+  } catch (err) {
+    const msg = (err as Error & { code?: number }).message
+    if (/1056/.test(msg)) return true
+    return false
+  }
 }
 
 /**
