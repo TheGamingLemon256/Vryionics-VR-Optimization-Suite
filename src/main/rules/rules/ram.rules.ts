@@ -16,7 +16,7 @@ export const ramRules: Rule[] = [
         severity: data.ram.totalGB < 8 ? 'critical' : 'warning',
         category: 'ram',
         explanation: {
-          simple: `Your PC has ${data.ram.totalGB}GB of RAM, but VR needs at least 16GB. With less RAM, Windows has to use your hard drive as "fake RAM," which is much slower and causes severe VR stuttering. Consider upgrading.`,
+          simple: `Your PC has ${data.ram.totalGB}GB of RAM, but VR needs at least 16GB. With less RAM, Windows has to swap data out to the page file on your drive, which is much slower than RAM and causes severe VR stuttering. Consider upgrading.`,
           advanced: `System RAM: ${data.ram.totalGB}GB. Minimum for stable VR: 16GB. VRChat alone can consume 4-8GB; add SteamVR (~1GB), vrcompositor, OBS, and OS overhead and you're easily at 12-14GB. Below 16GB, Windows pagefile usage increases significantly, causing unpredictable 100-500ms+ stutter spikes when swapping. Commit charge: ${data.ram.commitChargePercent.toFixed(1)}%.`
         }
       }
