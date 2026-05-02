@@ -1,12 +1,76 @@
 // VR Optimization Suite — GPU Scan Module
-// Collects GPU info for NVIDIA (nvidia-smi) and AMD/Intel (WMI + perf counters).
+// Collects GPU info for NVIDIA (nvidia-smi) and AMD/Intel (registry + perf counters).
 
-import { queryGpuInfo } from '../../utils/wmi'
-import { readRegistryDword } from '../../utils/registry'
+import { readKey } from '../../utils/registry-read'
+import { readVramBytes } from '../../utils/vram'
+import { readRegistryDword, enumerateRegistrySubkeys } from '../../utils/registry'
 import { isNvidiaAvailable, nvidiaSmiQuery, nvidiaSmiRaw, resetNvidiaSmiCache } from '../../utils/nvidia-smi'
 import { tryRunPowerShell } from '../../utils/powershell'
 import { getAmdClockMhz, getAmdGpuMetrics, getIntelClockMhz, getIntelGpuTemperature, getNvidiaGpuMetrics } from '../../utils/gpu-metrics'
 import type { ScanModuleResult, GpuData, GpuDevice } from '../types'
+
+// HKLM display-class GUID. The Class\{...}\NNNN subkeys are populated by the
+// kernel from each adapter's INF and hold the canonical driver metadata that
+// WMI's Win32_VideoController used to surface.
+const DISPLAY_CLASS = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
+
+interface AdapterInfo {
+  index: number
+  name: string
+  driverVersion: string
+  driverDate: string | null
+  matchingDeviceId: string
+  vramBytes: number
+}
+
+function parseDriverDate(raw: string): string | null {
+  // Driver INFs store dates as "M-D-YYYY" or "MM-DD-YYYY". Normalize to ISO.
+  const m = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/)
+  if (!m) return null
+  const mm = m[1].padStart(2, '0')
+  const dd = m[2].padStart(2, '0')
+  return `${m[3]}-${mm}-${dd}`
+}
+
+async function readAdapterInfo(subkey: string): Promise<AdapterInfo | null> {
+  if (!/^\d{4}$/.test(subkey)) return null
+  const idx = parseInt(subkey, 10)
+  const key = await readKey(`${DISPLAY_CLASS}\\${subkey}`).catch(() => null)
+  if (!key) return null
+
+  const desc = key.values['DriverDesc']
+  if (!desc || desc.type !== 'REG_SZ' || !desc.data) return null
+
+  const version = key.values['DriverVersion']
+  const date = key.values['DriverDate']
+  const matching = key.values['MatchingDeviceId']
+  const vram = await readVramBytes(idx).catch(() => null)
+
+  return {
+    index: idx,
+    name: desc.data,
+    driverVersion: version && version.type === 'REG_SZ' ? version.data : '',
+    driverDate: date && date.type === 'REG_SZ' ? parseDriverDate(date.data) : null,
+    matchingDeviceId: matching && matching.type === 'REG_SZ' ? matching.data : '',
+    vramBytes: vram ?? 0,
+  }
+}
+
+async function enumerateDisplayAdapters(): Promise<AdapterInfo[]> {
+  const subkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    'SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
+  )
+  const adapters: AdapterInfo[] = []
+  for (const sub of subkeys) {
+    const info = await readAdapterInfo(sub)
+    // Filter out non-adapter entries (Properties, Configuration, etc.) — only
+    // the four-digit instance keys carry DriverDesc.
+    if (info) adapters.push(info)
+  }
+  adapters.sort((a, b) => a.index - b.index)
+  return adapters
+}
 
 function detectVendor(name: string, pnpId: string): 'nvidia' | 'amd' | 'intel' | 'unknown' {
   const n = name.toLowerCase()
@@ -65,16 +129,6 @@ function detectGpuGeneration(name: string, vendor: string): string | null {
     return null
   }
   return null
-}
-
-/**
- * Parse WMI DriverDate string (format: "20240115000000.000000+000") to 'YYYY-MM-DD'.
- */
-function parseWmiDriverDate(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const m = raw.match(/^(\d{4})(\d{2})(\d{2})/)
-  if (!m) return null
-  return `${m[1]}-${m[2]}-${m[3]}`
 }
 
 // ── NVIDIA via nvidia-smi ─────────────────────────────────────
@@ -181,34 +235,6 @@ if ($samples -and $samples.CounterSamples) {
 }
 
 /**
- * Get real VRAM total (MB) from display adapter driver registry key.
- * WMI AdapterRAM is capped at 4096 MB (UINT32 overflow). This registry key
- * stores the actual 64-bit value written by the driver during init.
- * Works for NVIDIA, AMD, and Intel Arc.
- */
-async function getVramTotalFromRegistry(): Promise<number> {
-  try {
-    const out = await tryRunPowerShell(`
-$basePath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
-$subkeys = Get-ChildItem $basePath -EA SilentlyContinue | Where-Object { $_.PSChildName -match '^\\d{4}$' }
-foreach ($key in $subkeys) {
-  $memBin = (Get-ItemProperty $key.PSPath -Name 'HardwareInformation.MemorySize' -EA SilentlyContinue).'HardwareInformation.MemorySize'
-  if ($memBin -and $memBin.Length -ge 4) {
-    $padded = [byte[]]($memBin + [byte[]](0,0,0,0,0,0,0,0)) | Select-Object -First 8
-    $bytes = [BitConverter]::ToInt64($padded, 0)
-    if ($bytes -gt 0) { [math]::Round($bytes / 1MB, 0); return }
-  }
-}
-Write-Output '0'
-`, 6000)
-    const mb = parseInt(out?.trim() ?? '0')
-    return isNaN(mb) ? 0 : mb
-  } catch {
-    return 0
-  }
-}
-
-/**
  * Get GPU hardware encoder utilization via PDH counter (works for NVIDIA/AMD/Intel).
  * phys_0 = primary GPU.
  */
@@ -302,9 +328,9 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
 
     console.log('[scan:gpu] Detecting GPU vendor...')
 
-    const wmiGpus = await queryGpuInfo()
-    if (wmiGpus.length === 0) {
-      return { success: false, error: 'No GPU detected via WMI', partial: true }
+    const adapters = await enumerateDisplayAdapters()
+    if (adapters.length === 0) {
+      return { success: false, error: 'No display adapters found in registry', partial: true }
     }
 
     const hagsEnabled = checkHagsEnabled()
@@ -371,14 +397,12 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
             ? clockMhz < boostClockEstimate * 0.9
             : temperature > 83 && clockMhz > 0 && clockMhz < 500 // extremely low = definitely throttled
 
-        // Driver date: WMI Win32_VideoController.DriverDate is available from
-        // queryGpuInfo(). Match by name substring since nvidia-smi and WMI may
-        // differ slightly in capitalization.
-        const wmiMatch = wmiGpus.find(g =>
-          g.Name?.toLowerCase().includes((nd.name ?? '').toLowerCase().split(' ').slice(0, 2).join(' ')) ||
-          detectVendor(g.Name ?? '', g.PNPDeviceID ?? '') === 'nvidia'
-        )
-        const driverDate = parseWmiDriverDate(wmiMatch?.DriverDate ?? null)
+        // Match the nvidia-smi device against a registry adapter so we can
+        // pull driver date from the same source as AMD/Intel. nvidia-smi
+        // names rarely match DriverDesc verbatim, so prefer any adapter
+        // whose MatchingDeviceId carries NVIDIA's PCI vendor (10DE).
+        const adapterMatch = adapters.find(a => /VEN_10DE/i.test(a.matchingDeviceId))
+        const driverDate = adapterMatch?.driverDate ?? null
 
         devices.push({
           index: nd.index ?? 0,
@@ -407,48 +431,36 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
         })
       }
     } else {
-      // AMD/Intel — WMI + PDH counters + registry for enhanced data
-      console.log('[scan:gpu] Non-NVIDIA GPU, using WMI + perf counters + registry...')
+      console.log('[scan:gpu] Non-NVIDIA GPU, using registry + perf counters...')
 
       const util = await getGpuUtilizationViaCounters()
       const encoderUtil = await getEncoderUtilizationViaCounters()
       const vramInfo = await getAmdIntelVram()
-      const registryVramMB = await getVramTotalFromRegistry()
 
-      // Check AMD SAM once for all AMD devices
-      const hasAmd = wmiGpus.some(g => detectVendor(g.Name, g.PNPDeviceID) === 'amd')
+      const hasAmd = adapters.some(a => detectVendor(a.name, a.matchingDeviceId) === 'amd')
       const amdSam = hasAmd ? await checkAmdSam() : false
-
-      // Get real AMD temperature and power draw via ADL2
       const amdMetrics = hasAmd ? await getAmdGpuMetrics() : null
-
-      // Get AMD current clock speeds via ADL2
       const amdClocks = hasAmd ? await getAmdClockMhz() : null
 
-      // Get Intel GPU temperature via ACPI thermal zones
-      const hasIntel = wmiGpus.some(g => detectVendor(g.Name, g.PNPDeviceID) === 'intel')
+      const hasIntel = adapters.some(a => detectVendor(a.name, a.matchingDeviceId) === 'intel')
       const intelTemp = hasIntel ? await getIntelGpuTemperature() : 0
-
-      // Get Intel GPU current clock via registry
       const intelClockMhz = hasIntel ? await getIntelClockMhz() : 0
 
-      for (let idx = 0; idx < wmiGpus.length; idx++) {
-        const g = wmiGpus[idx]
-        const vendor = detectVendor(g.Name, g.PNPDeviceID)
-        const isIntegrated = detectIsIntegrated(g.Name)
-        const gpuGeneration = detectGpuGeneration(g.Name, vendor)
-        const driverDate = parseWmiDriverDate(g.DriverDate)
+      for (let idx = 0; idx < adapters.length; idx++) {
+        const a = adapters[idx]
+        const vendor = detectVendor(a.name, a.matchingDeviceId)
+        const isIntegrated = detectIsIntegrated(a.name)
+        const gpuGeneration = detectGpuGeneration(a.name, vendor)
+        const driverDate = a.driverDate
 
-        // VRAM total: registry > counter > WMI (in accuracy order)
-        const wmiVramMB = Math.round((g.AdapterRAM || 0) / 1024 / 1024)
-        let vramTotal = wmiVramMB
-        if (registryVramMB > 0 && idx === 0) {
-          vramTotal = registryVramMB
-        } else if ((wmiVramMB === 0 || wmiVramMB === 4096) && vramInfo) {
-          vramTotal = vramInfo.total || wmiVramMB
+        // The driver-stored qwMemorySize is the authoritative VRAM total
+        // (WMI's AdapterRAM truncated above 4 GiB anyway). PDH counters fill
+        // in the gap when an adapter doesn't expose qwMemorySize.
+        const registryVramMB = Math.round(a.vramBytes / 1024 / 1024)
+        let vramTotal = registryVramMB
+        if (vramTotal === 0 && vramInfo) {
+          vramTotal = vramInfo.total || 0
         }
-        // For integrated GPUs, VRAM is shared — WMI reports the reserved portion
-        // which may be small (128-512MB). That's expected.
 
         // PCIe info: only relevant for discrete (non-integrated) GPUs
         let pcieGen = 0
@@ -490,7 +502,7 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
 
         devices.push({
           index: idx,
-          name: g.Name.trim(),
+          name: a.name.trim(),
           vendor,
           vramTotal,
           vramUsed: vramInfo?.used ?? 0,
@@ -502,7 +514,7 @@ export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
           decoderUtilization: 0,
           pcieGen,
           pcieLinkWidth,
-          driverVersion: g.DriverVersion?.trim() ?? '',
+          driverVersion: a.driverVersion.trim(),
           rebarEnabled: false,  // NVIDIA-only field
           hagsEnabled,
           // New fields:
