@@ -14,7 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 
 type FreshnessState = 'current' | 'warning' | 'outdated' | 'not-yet-supported' | 'unknown'
 type InstallMode = 'auto' | 'guided'
-type DriverCategory = 'gpu' | 'chipset' | 'usb' | 'audio' | 'ethernet' | 'wifi' | 'bluetooth' | 'storage' | 'unknown'
+type DriverCategory = 'gpu' | 'chipset' | 'usb' | 'audio' | 'ethernet' | 'wifi' | 'bluetooth' | 'unknown'
 
 interface InstallProgress {
   phase: 'restore-point' | 'downloading' | 'verifying' | 'installing' | 'complete' | 'error'
@@ -52,7 +52,6 @@ const CATEGORY_LABEL: Record<DriverCategory, string> = {
   usb:       'USB Controllers',
   audio:     'Audio',
   chipset:   'Chipset',
-  storage:   'Storage Controller',
   ethernet:  'Ethernet',
   wifi:      'Wi-Fi',
   bluetooth: 'Bluetooth',
@@ -60,7 +59,7 @@ const CATEGORY_LABEL: Record<DriverCategory, string> = {
 }
 
 const CATEGORY_ORDER: DriverCategory[] = [
-  'gpu', 'chipset', 'usb', 'audio', 'storage', 'ethernet', 'wifi', 'bluetooth', 'unknown',
+  'gpu', 'chipset', 'usb', 'audio', 'ethernet', 'wifi', 'bluetooth', 'unknown',
 ]
 
 export default function DriversPage(): React.ReactElement {

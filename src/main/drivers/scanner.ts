@@ -83,7 +83,6 @@ function categorize(row: RawRow): DriverCategory | null {
     if (/ethernet|gigabit|realtek\s*pcie\s*gbe|i2\d{2}|i3\d{2}/i.test(row.Name)) return 'ethernet'
     return 'ethernet'
   }
-  if (cls === 'hdc') return 'storage'
   if (cls === 'system' && /chipset|sm\s*bus|lpc|pci\s*express\s*root|platform/i.test(row.Name)) return 'chipset'
   if (cls === 'bluetooth') return 'bluetooth'
   return null
