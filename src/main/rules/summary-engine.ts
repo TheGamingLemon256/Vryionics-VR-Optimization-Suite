@@ -74,30 +74,6 @@ function step(text: string, type: ActionStep['type'] = 'do'): ActionStep {
 // PLAN BUILDERS — one function per root cause
 // ═══════════════════════════════════════════════════
 
-function buildPowerPlanPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  const plan = data.osConfig.powerPlan.toLowerCase()
-  if (plan.includes('high') || plan.includes('ultimate')) return null
-  return {
-    id: 'action-power-plan',
-    priority: 2,
-    category: 'OS Config',
-    title: 'Switch to High Performance Power Plan',
-    summary: 'Your PC is in power-saving mode — this throttles your CPU and causes VR stutter.',
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Eliminates CPU clock-throttle stutters. One of the easiest wins available.',
-    fixId: 'fix-power-plan',
-    steps: [
-      step('Press Win + R, type: control powercfg.cpl, press Enter', 'open'),
-      step('Select "High performance" or "Ultimate Performance" (if available)'),
-      step('If "Ultimate Performance" isn\'t listed: open PowerShell as admin and run: powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61', 'setting'),
-      step('No reboot needed — takes effect immediately')
-    ],
-    relatedRuleIds: ['combo-balanced-power-low-cpu', 'os-power-plan-suboptimal']
-  }
-}
-
 function buildWifi24GhzPlan(data: ScanData): ActionPlan | null {
   if (!data.network?.wifi) return null
   if (data.network.wifi.band !== '2.4GHz') return null
@@ -198,43 +174,6 @@ function buildWifiPowerSavingPlan(data: ScanData): ActionPlan | null {
       step('Click OK. Also: right-click the desktop → Display settings → Power & battery → Power mode: Best performance')
     ],
     relatedRuleIds: ['wifi-power-saving-on']
-  }
-}
-
-function buildGpuHagsPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.hagsEnabled) return null
-  // Mirror the rule: skip only genuinely pre-DX12 or unknown GPUs
-  const isVeryOld =
-    gpu.vendor === 'unknown' ||
-    /GT [1-7][0-9]{2}\b|GTX [2-6][0-9]{2}\b|GTS|HD [2-5][0-9]{3}\b|HD Graphics [1-4][0-9]{3}\b/i.test(gpu.name)
-  if (isVeryOld) return null
-
-  const vendorNote =
-    gpu.vendor === 'nvidia' ? 'NVIDIA GTX 10xx and later are supported.' :
-    gpu.vendor === 'amd'    ? 'AMD RX 400 series and later are supported.' :
-    gpu.vendor === 'intel'  ? 'Intel Arc and Iris Xe are supported; older Intel integrated support varies by driver.' :
-                              'Check your driver release notes for WDDM 2.7+ support.'
-
-  return {
-    id: 'action-hags',
-    priority: 7,
-    category: 'GPU',
-    title: `Enable Hardware Accelerated GPU Scheduling (HAGS) — ${gpu.name}`,
-    summary: `HAGS lets ${gpu.name} manage its own memory scheduling instead of routing it through the CPU driver, reducing frame time variance in VR.`,
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Reduces frame time variance by 0.5–2ms; improves VR frame pacing consistency.',
-    fixId: 'fix-hags-enable',
-    steps: [
-      step(`Detected GPU: ${gpu.name} — ${vendorNote}`, 'info'),
-      step('Open Settings → System → Display → Graphics → "Change default graphics settings"', 'open'),
-      step('Toggle "Hardware-accelerated GPU scheduling" to On'),
-      step('Reboot your PC for the change to take effect', 'reboot'),
-      step('This can be applied automatically via the "Auto-Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['gpu-hags-disabled']
   }
 }
 
@@ -865,30 +804,6 @@ function buildNaglePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildHyperVPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.hyperVRunning) return null
-  return {
-    id: 'action-hyper-v',
-    priority: 4,
-    category: 'OS Config',
-    title: 'Disable Hyper-V to Restore Native Windows Scheduling',
-    summary: 'Hyper-V makes Windows itself run as a virtual machine, adding interrupt latency that disrupts VR compositor frame timing even when no VMs are running.',
-    impact: 'high',
-    effort: 'minutes',
-    expectedGain: 'Removes hypervisor interrupt overhead (~1ms+), restoring native Windows timer precision for VR compositors.',
-    fixId: 'fix-hyper-v-disable',
-    steps: [
-      step('Press Win + R → type: optionalfeatures → press Enter', 'open'),
-      step('Uncheck: "Hyper-V", "Virtual Machine Platform", and "Windows Hypervisor Platform"'),
-      step('Click OK and let Windows apply the changes'),
-      step('Reboot is required — Windows will rebuild its boot image without the hypervisor', 'reboot'),
-      step('Note: disabling Hyper-V will prevent WSL2, Docker Desktop (Hyper-V backend), and Android emulators from running. WSL1 will still work.', 'info'),
-      step('To re-enable later: run the same optionalfeatures tool and re-check the boxes', 'info')
-    ],
-    relatedRuleIds: ['hyper-v-overhead', 'virtualization-active']
-  }
-}
-
 function buildGpuTdrPlan(data: ScanData): ActionPlan | null {
   if (!data.eventLog) return null
   if (data.eventLog.gpuTdrEvents < 2) return null
@@ -1032,54 +947,6 @@ function buildVRChatCullingPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildGpuInterruptPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.gpuInterruptPrioritySet) return null
-  if (data.osConfig.gpuPnpDeviceId === null) return null
-  return {
-    id: 'action-gpu-interrupt-priority',
-    priority: 9,
-    category: 'GPU',
-    title: 'Optimize GPU Interrupt Priority for Lower Frame Latency',
-    summary: 'GPU interrupts are processed at normal priority. Enabling MSI mode and High interrupt priority ensures GPU frame-completion signals are handled immediately, reducing frame latency by 1-2ms.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces GPU interrupt processing latency by 1-2ms, improving frame pacing consistency.',
-    fixId: 'fix-gpu-interrupt-priority',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('The fix sets MSISupported = 1 and DevicePriority = 3 (High) in the GPU\'s interrupt management registry keys', 'info'),
-      step(`Detected GPU PNP ID: ${data.osConfig.gpuPnpDeviceId}`, 'info'),
-      step('Registry path: HKLM\\SYSTEM\\CurrentControlSet\\Enum\\{GPU_PNP_ID}\\Device Parameters\\Interrupt Management\\', 'setting'),
-      step('A reboot is required for interrupt mode changes to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['gpu-interrupt-priority-normal']
-  }
-}
-
-function buildWuRebootPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.wuAutoRebootEnabled) return null
-  return {
-    id: 'action-wu-reboot',
-    priority: 7,
-    category: 'OS Config',
-    title: 'Prevent Windows Update from Restarting During VR Sessions',
-    summary: 'Windows Update can force-restart your PC even while you\'re in an active VR session. Enabling NoAutoRebootWithLoggedOnUsers prevents forced reboots while you\'re logged in.',
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Eliminates unexpected mid-session reboots from Windows Update, protecting VR session continuity.',
-    fixId: 'fix-disable-wu-reboot',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoRebootWithLoggedOnUsers = 1', 'setting'),
-      step('Also sets AUOptions = 2 (notify before download) to prevent background update downloads during VR', 'setting'),
-      step('No reboot required — Windows respects this policy immediately'),
-      step('Windows will still install updates on the next manual restart — updates are not blocked, just not forced', 'info')
-    ],
-    relatedRuleIds: ['wu-auto-reboot-risk']
-  }
-}
-
 function buildFullscreenOptsPlan(data: ScanData): ActionPlan | null {
   if (!data.vrRuntime) return null
   if (!data.vrRuntime.steamvrInstalled && !data.vrRuntime.oculusInstalled) return null
@@ -1103,30 +970,6 @@ function buildFullscreenOptsPlan(data: ScanData): ActionPlan | null {
       step('Also apply to: vrcompositor.exe, VRChat.exe, OVRServer_x64.exe', 'info')
     ],
     relatedRuleIds: []
-  }
-}
-
-function buildEcoQosPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.win11EcoQosRisk) return null
-  const plan = data.osConfig.powerPlan.toLowerCase()
-  if (plan.includes('high') || plan.includes('ultimate')) return null
-  return {
-    id: 'action-eco-qos',
-    priority: 3,
-    category: 'OS Config',
-    title: 'Switch Power Plan to Prevent Win 11 VR Process Throttling',
-    summary: `Windows 11's EcoQoS can silently throttle vrserver and vrcompositor on your "${data.osConfig.powerPlan}" plan — High Performance prevents this.`,
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Prevents OS from silently throttling VR runtime processes to efficiency cores mid-session.',
-    fixId: 'fix-power-plan',
-    steps: [
-      step('Press Win + R → powercfg.cpl → Enter', 'open'),
-      step('Select "High Performance" (or "Ultimate Performance" if available)'),
-      step('This disables EcoQoS globally — VR runtime processes will not be throttled', 'info'),
-      step('This can be applied automatically via the "Apply Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['win11-eco-qos-risk', 'os-power-plan-suboptimal']
   }
 }
 
@@ -1204,32 +1047,6 @@ function buildUsbSuspendWiredPlan(data: ScanData): ActionPlan | null {
       step('This can be applied automatically via the "Apply Fix" button below', 'info')
     ],
     relatedRuleIds: ['combo-usb-suspend-wired-headset', 'usb-selective-suspend-active']
-  }
-}
-
-function buildHyperVGpuPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig || !data.gpu) return null
-  if (!data.osConfig.hyperVRunning) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.utilization <= 70) return null
-  return {
-    id: 'action-combo-hyper-v-gpu',
-    priority: 4,
-    category: 'OS Config',
-    title: 'Disable Hyper-V — Interrupt Overhead Is Compounding GPU Frame Timing',
-    summary: `Hyper-V is adding virtualized interrupt overhead at ${gpu.utilization.toFixed(0)}% GPU load — causing irregular frame timing even when average frame rate looks fine.`,
-    impact: 'high',
-    effort: 'minutes',
-    expectedGain: 'Removes hypervisor GPU interrupt virtualization, restoring precise VR compositor frame scheduling.',
-    fixId: 'fix-hyper-v-disable',
-    steps: [
-      step('Press Win + R → type: optionalfeatures → press Enter', 'open'),
-      step('Uncheck: "Hyper-V", "Virtual Machine Platform", and "Windows Hypervisor Platform"'),
-      step('Click OK — Windows will rebuild its boot configuration'),
-      step('Reboot is required for the hypervisor to be removed', 'reboot'),
-      step('Note: WSL2 and Docker (Hyper-V backend) will stop working. WSL1 still works.', 'info')
-    ],
-    relatedRuleIds: ['combo-hyper-v-gpu-pressure', 'hyper-v-overhead']
   }
 }
 
@@ -1602,9 +1419,6 @@ export function buildActionPlan(
   // ── High-impact OS and config fixes ──────────────────────────
   add(buildLaptopBatteryPlan(scanData))
   add(buildGpuTdrPlan(scanData))
-  add(buildPowerPlanPlan(scanData))
-  add(buildEcoQosPlan(scanData))
-  add(buildHyperVPlan(scanData))
   add(buildCloseBackgroundAppsPlan(scanData))
   add(buildPeripheralSoftwarePlan(scanData))
   add(buildSteamVrSettingsPlan(scanData))
@@ -1624,8 +1438,6 @@ export function buildActionPlan(
   // data showed no change). Modern Windows no longer parks cores under VR
   // workloads in practice.
   add(buildNaglePlan(scanData))
-  add(buildGpuInterruptPlan(scanData))
-  add(buildWuRebootPlan(scanData))
   add(buildTimerResolutionPlan(scanData))
   add(buildGpuTdrPlan(scanData))
   add(buildLaptopBatteryPlan(scanData))
@@ -1640,7 +1452,6 @@ export function buildActionPlan(
   // use flip model regardless, so the flag made no observable difference.
 
   // ── Low-impact optimizations ──────────────────────────────────
-  add(buildGpuHagsPlan(scanData))
   add(buildReBarPlan(scanData))
   add(buildAmdSamPlan(scanData))
   add(buildIntegratedGpuPlan(scanData))
@@ -1653,7 +1464,6 @@ export function buildActionPlan(
   add(buildGpuThermalCascadePlan(scanData))
   // buildCoreParkingSpikePlan removed — same reason as buildCoreParkingPlan
   add(buildUsbSuspendWiredPlan(scanData))
-  add(buildHyperVGpuPlan(scanData))
   add(buildLowVramSsPlan(scanData))
   add(buildWifi2GhzEncoderPlan(scanData))
   add(buildStartupBloatVrPlan(scanData))

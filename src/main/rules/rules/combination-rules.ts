@@ -476,9 +476,8 @@ export const combinationRules: Rule[] = [
         category: 'os-config',
         explanation: {
           simple: `You're on the "${data.osConfig.powerPlan}" power plan while running VR. This tells Windows to save power by keeping your CPU slower. Your CPU is working at ${data.cpu.avgUsage.toFixed(0)}% but may be running at half its potential clock speed. Switch to "High Performance" or "Ultimate Performance" power plan.`,
-          advanced: `Power plan: "${data.osConfig.powerPlan}" (should be "High Performance" or "Ultimate Performance"). Balanced power plan caps CPU P-states, increasing boost-clock response time from ~1ms (High Perf) to ~15-30ms. For VR rendering, this means the CPU can't respond instantly to sudden frame work spikes — the most common cause of unexpected stutter in "otherwise healthy" VR setups. CPU avg ${data.cpu.avgUsage.toFixed(0)}% may under-represent peak frame demands.`,
-          fixId: 'fix-power-plan'
-        } as any
+          advanced: `Power plan: "${data.osConfig.powerPlan}" (should be "High Performance" or "Ultimate Performance"). Balanced power plan caps CPU P-states, increasing boost-clock response time from ~1ms (High Perf) to ~15-30ms. For VR rendering, this means the CPU can't respond instantly to sudden frame work spikes — the most common cause of unexpected stutter in "otherwise healthy" VR setups. CPU avg ${data.cpu.avgUsage.toFixed(0)}% may under-represent peak frame demands.`
+        }
       }
     }
   },
@@ -822,8 +821,7 @@ export const combinationRules: Rule[] = [
         explanation: {
           simple: `Hyper-V is running while your GPU is under heavy load (${gpu.utilization.toFixed(0)}%). Hyper-V's virtualization layer adds interrupt overhead that disrupts VR compositor frame timing — the effect is worse when the GPU is already stressed.`,
           advanced: `Hyper-V active | GPU util: ${gpu.utilization.toFixed(1)}%. Hyper-V places Windows itself in a VM (root partition), adding microsecond-level interrupt virtualization overhead to every GPU interrupt. Under high GPU load (>70%), GPU interrupts arrive more frequently — multiplying the Hyper-V overhead. This manifests as irregular frame timing (high frame time variance) even when the average frame rate appears acceptable in SteamVR's performance graph. Disabling Hyper-V restores native interrupt processing.`
-        },
-        fixId: 'fix-hyper-v-disable'
+        }
       }
     }
   },

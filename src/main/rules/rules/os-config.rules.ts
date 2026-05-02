@@ -325,8 +325,7 @@ export const osConfigRules: Rule[] = [
         explanation: {
           simple: `Windows 11's EcoQoS system can silently move processes to efficiency cores to save power. On your current "${data.osConfig.powerPlan}" power plan, VR runtime processes (vrserver, vrcompositor) may be throttled without warning — switch to High Performance to prevent this.`,
           advanced: `Windows 11 22H2+ introduced stricter EcoQoS (Quality of Service) enforcement in non-High-Performance power plans. The OS uses "Efficient QoS" hints to throttle background processes via PROCESS_POWER_THROTTLING_EXECUTION_SPEED. While VR runtimes attempt to opt out, this interacts with the scheduler in ways that can degrade frame timing. High Performance power plan disables EcoQoS globally. Current plan: "${data.osConfig.powerPlan}".`
-        },
-        fixId: 'fix-power-plan'
+        }
       }
     }
   },
