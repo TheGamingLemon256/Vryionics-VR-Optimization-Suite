@@ -4,7 +4,7 @@
 import os from 'node:os'
 import { readKey, readValue } from '../../utils/registry-read'
 import { readRegistryDword, enumerateRegistrySubkeys, registryKeyExists } from '../../utils/registry'
-import { runPowerShellJson, tryRunPowerShell } from '../../utils/powershell'
+import { readCounters, readSingleCounter } from '../../utils/typeperf'
 import { findCpuEntry } from '../../data/cpu-database'
 import type { ScanModuleResult, CpuData } from '../types'
 
@@ -35,30 +35,27 @@ async function readCpuIdentity(): Promise<CpuIdentity | null> {
 }
 
 async function getCoreUsage(): Promise<number[]> {
-  const script = `
-$counters = Get-Counter '\\Processor(*)\\% Processor Time' -SampleInterval 1 -MaxSamples 2 -ErrorAction SilentlyContinue
-$samples = $counters.CounterSamples | Where-Object { $_.InstanceName -ne '_total' } |
-  Sort-Object { [int]($_.InstanceName -replace '[^0-9]', '') } |
-  Select-Object InstanceName, CookedValue
-$samples | ConvertTo-Json -Compress
-`
-  try {
-    const raw = await runPowerShellJson<Array<{ InstanceName: string; CookedValue: number }>>(script, 30000)
-    const items = Array.isArray(raw) ? raw : [raw]
-    return items.map((i) => Math.round(i.CookedValue * 10) / 10)
-  } catch {
-    return []
+  const samples = await readCounters(['\\Processor(*)\\% Processor Time'], 1, 15000)
+  if (!samples) return []
+
+  const perCore: Array<{ idx: number; value: number }> = []
+  for (const s of samples) {
+    const m = s.counter.match(/Processor\(([^)]+)\)/i)
+    if (!m) continue
+    const inst = m[1]
+    if (inst.toLowerCase() === '_total') continue
+    const idx = parseInt(inst.replace(/[^0-9]/g, ''), 10)
+    if (Number.isFinite(idx)) {
+      perCore.push({ idx, value: s.value })
+    }
   }
+  perCore.sort((a, b) => a.idx - b.idx)
+  return perCore.map((c) => Math.round(c.value * 10) / 10)
 }
 
 async function getContextSwitches(): Promise<number> {
-  try {
-    const script = `(Get-Counter '\\System\\Context Switches/sec' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue`
-    const raw = await tryRunPowerShell(script, 15000)
-    return raw ? Math.round(parseFloat(raw)) : 0
-  } catch {
-    return 0
-  }
+  const v = await readSingleCounter('\\System\\Context Switches/sec', 8000)
+  return v === null ? 0 : Math.round(v)
 }
 
 function detectVCache(model: string): boolean {
@@ -76,15 +73,10 @@ async function getVCacheEntries(): Promise<Record<string, { endsWith: string; ty
 
   for (const appName of appNames) {
     const appPath = `${basePath}\\${appName}`
-    const script = `
-$vals = Get-ItemProperty -Path "HKLM:\\${appPath}" -ErrorAction SilentlyContinue
-if ($vals) { @{ endsWith = $vals.EndsWith; type = $vals.Type } | ConvertTo-Json -Compress }
-`
-    try {
-      const result = await runPowerShellJson<{ endsWith: string; type: number }>(script)
-      if (result) entries[appName] = result
-    } catch {
-      // skip
+    const endsWithVal = await readValue(`HKLM\\${appPath}`, 'EndsWith')
+    const typeDword = readRegistryDword('HKLM', appPath, 'Type')
+    if (endsWithVal && (endsWithVal.type === 'REG_SZ' || endsWithVal.type === 'REG_EXPAND_SZ') && typeDword !== null) {
+      entries[appName] = { endsWith: endsWithVal.data, type: typeDword }
     }
   }
 
@@ -92,44 +84,39 @@ if ($vals) { @{ endsWith = $vals.EndsWith; type = $vals.Type } | ConvertTo-Json 
 }
 
 async function getBoostAndThrottleInfo(baseClockMhz: number): Promise<{ boostClockMhz: number | null; thermalThrottled: boolean }> {
-  // Live boost / throttle still rides on Get-Counter — there is no registry
-  // equivalent for runtime perf state.
-  try {
-    const out = await tryRunPowerShell(`
-$perfPct = (Get-Counter '\\Processor Information(_Total)\\% Processor Performance' -EA SilentlyContinue).CounterSamples.CookedValue
-if ($perfPct) { Write-Output "perfpct:$([math]::Round($perfPct))" }
-$freq = (Get-Counter '\\Processor Information(_Total)\\Processor Frequency' -EA SilentlyContinue).CounterSamples.CookedValue
-if ($freq) { Write-Output "freq:$([math]::Round($freq))" }
-`, 10000)
+  // Live boost / throttle is read from PDH counters via typeperf. The
+  // registry has no runtime equivalent for current perf state.
+  const samples = await readCounters(
+    [
+      '\\Processor Information(_Total)\\% Processor Performance',
+      '\\Processor Information(_Total)\\Processor Frequency',
+    ],
+    1,
+    8000
+  )
+  if (!samples || samples.length < 2) return { boostClockMhz: null, thermalThrottled: false }
 
-    if (!out) return { boostClockMhz: null, thermalThrottled: false }
+  const perfPct = Math.round(samples[0].value)
+  const currentClock = Math.round(samples[1].value)
 
-    const perfPctMatch = out.match(/^perfpct:(\d+)/m)
-    const freqMatch = out.match(/^freq:(\d+)/m)
-    const perfPct = perfPctMatch ? parseInt(perfPctMatch[1]) : null
-    const currentClock = freqMatch ? parseInt(freqMatch[1]) : null
-
-    let boostClockMhz: number | null = null
-    if (perfPct !== null && baseClockMhz > 0) {
-      boostClockMhz = Math.round(baseClockMhz * perfPct / 100)
-    } else if (currentClock !== null) {
-      boostClockMhz = currentClock
-    } else if (baseClockMhz > 0) {
-      boostClockMhz = baseClockMhz
-    }
-
-    let thermalThrottled = false
-    if (currentClock !== null && baseClockMhz > 0 && currentClock < baseClockMhz * 0.75) {
-      thermalThrottled = true
-    }
-    if (perfPct !== null && perfPct < 70) {
-      thermalThrottled = true
-    }
-
-    return { boostClockMhz, thermalThrottled }
-  } catch {
-    return { boostClockMhz: null, thermalThrottled: false }
+  let boostClockMhz: number | null = null
+  if (baseClockMhz > 0 && perfPct > 0) {
+    boostClockMhz = Math.round(baseClockMhz * perfPct / 100)
+  } else if (currentClock > 0) {
+    boostClockMhz = currentClock
+  } else if (baseClockMhz > 0) {
+    boostClockMhz = baseClockMhz
   }
+
+  let thermalThrottled = false
+  if (currentClock > 0 && baseClockMhz > 0 && currentClock < baseClockMhz * 0.75) {
+    thermalThrottled = true
+  }
+  if (perfPct > 0 && perfPct < 70) {
+    thermalThrottled = true
+  }
+
+  return { boostClockMhz, thermalThrottled }
 }
 
 export async function scanCpu(): Promise<ScanModuleResult<CpuData>> {
