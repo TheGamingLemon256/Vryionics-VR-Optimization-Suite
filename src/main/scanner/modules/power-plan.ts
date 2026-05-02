@@ -1,5 +1,4 @@
-// VR Optimization Suite — Power Plan Scan Module
-// Detects active Windows power plan using powercfg.
+// Active Windows power plan via powercfg.
 
 import { runExe } from '../../utils/exec'
 import type { ScanModuleResult } from '../types'

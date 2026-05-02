@@ -269,7 +269,6 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanData> {
     }
   }
 
-  // ── Determine scan condition from running processes ──────────
   // If any VR session processes were found running, treat this as an under-load scan.
   // This means the captured CPU/GPU/RAM numbers reflect actual in-VR behaviour,
   // which changes how findings and recommendations are interpreted.

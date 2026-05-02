@@ -1,9 +1,7 @@
-// VR Optimization Suite — Live Hardware Metrics Widget
-// Polls GPU temp/power, CPU%, and RAM via metrics:poll every 3 seconds.
+// Polls GPU temp/power, CPU%, RAM via metrics:poll every 3s.
 
 import React, { useEffect, useRef, useState } from 'react'
 
-// ── Types ─────────────────────────────────────────────────────
 
 export interface MetricsSnapshot {
   cpu: { usagePercent: number }
@@ -12,7 +10,6 @@ export interface MetricsSnapshot {
   timestamp: number
 }
 
-// ── Helpers ───────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 3_000
 const FRESH_THRESHOLD_MS = 5_000
@@ -27,7 +24,6 @@ function usageColor(pct: number): string {
   return 'text-vr-healthy'
 }
 
-// ── Loading skeleton ──────────────────────────────────────────
 
 function SkeletonPill(): React.ReactElement {
   return (
@@ -35,7 +31,6 @@ function SkeletonPill(): React.ReactElement {
   )
 }
 
-// ── Individual metric segments ────────────────────────────────
 
 function MetricSegment({
   label,
@@ -60,7 +55,6 @@ function MetricSegment({
   )
 }
 
-// ── Live badge ────────────────────────────────────────────────
 
 function LiveBadge({ fresh, stale }: { fresh: boolean; stale: boolean }): React.ReactElement {
   if (stale) {
@@ -80,7 +74,6 @@ function LiveBadge({ fresh, stale }: { fresh: boolean; stale: boolean }): React.
   )
 }
 
-// ── Main widget ───────────────────────────────────────────────
 
 interface LiveMetricsWidgetProps {
   /** When true the interval is stopped and cleared. */
@@ -137,7 +130,6 @@ export default function LiveMetricsWidget({ active }: LiveMetricsWidgetProps): R
 
   return (
     <div className="flex items-center justify-between flex-wrap gap-x-4 gap-y-1.5">
-      {/* ── Metric segments ─── */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* CPU */}
         <MetricSegment
@@ -187,7 +179,6 @@ export default function LiveMetricsWidget({ active }: LiveMetricsWidgetProps): R
         )}
       </div>
 
-      {/* ── Live / Stale badge ─── */}
       {!loading && (
         <LiveBadge fresh={isFresh} stale={isStale} />
       )}

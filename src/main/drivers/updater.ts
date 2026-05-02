@@ -311,7 +311,6 @@ function normalize(v: string): string {
   return v.trim().replace(/\s+/g, '')
 }
 
-// ── Singleton export ──────────────────────────────────────────
 
 export const driverUpdater = new DriverUpdater()
 

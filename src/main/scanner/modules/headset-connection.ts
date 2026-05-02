@@ -22,7 +22,6 @@ import type {
   VrConflictEntry,
 } from '../types'
 
-// ── Known VR Process Signatures ───────────────────────────────
 
 // Maps process name → what it means (in priority order)
 const VR_PROCESS_MAP: Record<string, { method: HeadsetConnectionMethod; label: string }> = {
@@ -94,7 +93,6 @@ const VR_PROCESS_MAP: Record<string, { method: HeadsetConnectionMethod; label: s
   'iVRyServer':   { method: 'alvr', label: 'iVRy Server (iPhone as VR HMD)' },
 }
 
-// ── VR Companion Apps (overlays, dashboards, tools) ───────────
 // These are NOT connection methods, but ARE relevant context — they reveal
 // what the user has running alongside VR. Detected separately so rules can
 // reason about them independently.
@@ -135,7 +133,6 @@ const VR_COMPANION_SIGNATURES: Array<{ process: string; label: string; category:
   { process: 'OyasumiVR',          label: 'Oyasumi VR',                   category: 'utility' },
 ]
 
-// ── Known overlay-conflict processes (CRASH RISK) ─────────────
 // These hook into the DirectX presentation path — SteamVR also controls that
 // path and reacts badly. Proactively warning the user beats triaging an
 // Error 306 / 0xc0000409 crash after the fact.
@@ -191,7 +188,6 @@ const CONFLICT_SIGNATURES: Array<{ process: string; label: string; severity: 'wa
   },
 ]
 
-// ── USB Device VR Signatures ──────────────────────────────────
 
 const VR_USB_SIGNATURES = [
   // Meta Quest (appears as Android composite device)
@@ -212,7 +208,6 @@ const VR_USB_SIGNATURES = [
   { pattern: /Bigscreen Beyond/i, device: 'Bigscreen Beyond' },
 ]
 
-// ── USB Controller Quality Check ──────────────────────────────
 
 const USB_CONTROLLER_QUALITY: Record<string, { gen: string; good: boolean }> = {
   'ASMedia': { gen: '3.1/3.2', good: true },
@@ -223,7 +218,6 @@ const USB_CONTROLLER_QUALITY: Record<string, { gen: string; good: boolean }> = {
   'Fresco Logic': { gen: '3.0', good: true },
 }
 
-// ── Helpers ───────────────────────────────────────────────────
 
 /**
  * Match a running-process name list against a set of canonical signatures.
@@ -386,7 +380,6 @@ function inferMetaConnectionMode(usbDevices: UsbDeviceHit[]): 'airlink' | 'usb-l
   return questUsb ? 'usb-link' : 'airlink'
 }
 
-// ── Main Export ───────────────────────────────────────────────
 
 export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetConnectionData>> {
   console.log('[scan:headset] Detecting VR headset connection...')
@@ -407,7 +400,6 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
     console.log(`[scan:headset] VR processes: ${vrProcesses.join(', ') || 'none'}`)
     console.log(`[scan:headset] USB VR devices: ${usbDevices.map((d) => d.name).join(', ') || 'none'}`)
 
-    // ── Determine connection method ───────────────────────────
     let method: HeadsetConnectionMethod = 'none'
     let runtimeActive: string | null = null
     let detectedDeviceName: string | null = null
@@ -445,7 +437,6 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       method = 'unknown-wired'
     }
 
-    // ── Detect device name from USB ───────────────────────────
     if (!detectedDeviceName && usbDevices.length > 0) {
       for (const sig of VR_USB_SIGNATURES) {
         const match = usbDevices.find((d) => sig.pattern.test(d.name))
@@ -456,7 +447,6 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       }
     }
 
-    // ── Streaming bitrate detection ───────────────────────────
     let streamingBitrateMbps: number | null = null
     let encoderInUse: string | null = null
 

@@ -1,5 +1,3 @@
-// VR Optimization Suite — Audio Diagnostic Rules
-
 import type { Rule } from '../types'
 
 export const audioRules: Rule[] = [

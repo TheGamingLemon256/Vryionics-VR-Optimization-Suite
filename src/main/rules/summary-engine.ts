@@ -13,7 +13,6 @@ import type { Finding, ActionPlan, ActionStep } from './types'
 import type { ScanData } from '../scanner/types'
 import { dedupeProcesses } from './process-dedupe'
 
-// ── Impact weight for sorting ─────────────────────────────────
 const IMPACT_ORDER = { critical: 0, high: 1, medium: 2, low: 3 }
 const EFFORT_ORDER = { instant: 0, minutes: 1, hours: 2, research: 3 }
 
@@ -21,7 +20,6 @@ function planScore(p: ActionPlan): number {
   return IMPACT_ORDER[p.impact] * 10 + EFFORT_ORDER[p.effort]
 }
 
-// ── Complaint-based plan boosting ─────────────────────────────
 //
 // Returns a matcher function that answers "is this plan relevant to the
 // user's declared main complaint?". Used by buildActionPlan to bias sort
@@ -64,15 +62,12 @@ function getComplaintBoostMap(
   }
 }
 
-// ── Builder Helpers ───────────────────────────────────────────
 
 function step(text: string, type: ActionStep['type'] = 'do'): ActionStep {
   return { text, type }
 }
 
-// ═══════════════════════════════════════════════════
 // PLAN BUILDERS — one function per root cause
-// ═══════════════════════════════════════════════════
 
 function buildWifi24GhzPlan(data: ScanData): ActionPlan | null {
   if (!data.network?.wifi) return null
@@ -1308,9 +1303,7 @@ function buildNvmePowerStatePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-// ═══════════════════════════════════════════════════
 // MAIN EXPORT
-// ═══════════════════════════════════════════════════
 
 export function buildActionPlan(
   findings: Finding[],
@@ -1328,7 +1321,6 @@ export function buildActionPlan(
     }
   }
 
-  // ── Critical / blocking issues first ─────────────────────────
   add(buildHeadsetConnectivityPlan(scanData))
   add(buildDisplayRefreshRatePlan(scanData))
   add(buildDisplayHdrPlan(scanData))
@@ -1341,7 +1333,6 @@ export function buildActionPlan(
   add(buildVRChatDynamicBonePlan(scanData))
   add(buildVRChatNoConfigPlan(scanData))
 
-  // ── High-impact OS and config fixes ──────────────────────────
   add(buildLaptopBatteryPlan(scanData))
   add(buildGpuTdrPlan(scanData))
   add(buildCloseBackgroundAppsPlan(scanData))
@@ -1350,7 +1341,6 @@ export function buildActionPlan(
   add(buildSteamVrAsyncPlan(scanData))
   add(buildGpuUndervoltPlan(scanData))
 
-  // ── Medium-impact tuning ──────────────────────────────────────
   add(buildWifiSignalPlan(scanData))
   add(buildWifi6ePlan(scanData))
   add(buildXmpPlan(scanData))
@@ -1373,7 +1363,6 @@ export function buildActionPlan(
   // affects legacy fullscreen mode (pre-DXGI flip model); modern VR runtimes
   // use flip model regardless, so the flag made no observable difference.
 
-  // ── Low-impact optimizations ──────────────────────────────────
   add(buildReBarPlan(scanData))
   add(buildAmdSamPlan(scanData))
   add(buildIntegratedGpuPlan(scanData))
@@ -1382,7 +1371,6 @@ export function buildActionPlan(
   add(buildArcAv1Plan(scanData))
   add(buildInternetSpeedPlan(scanData))
 
-  // ── Combination rule plans ────────────────────────────────────
   add(buildGpuThermalCascadePlan(scanData))
   // buildCoreParkingSpikePlan removed — same reason as buildCoreParkingPlan
   add(buildUsbSuspendWiredPlan(scanData))
@@ -1392,7 +1380,6 @@ export function buildActionPlan(
   add(buildAudioSpatialPlan(scanData))
   add(buildUsbControllerPlan(scanData))
 
-  // ── Inject any additional plans from unhandled critical findings ──
   const handledRuleIds = new Set(plans.flatMap((p) => p.relatedRuleIds))
   const unhandledCritical = findings.filter(
     (f) => f.result.severity === 'critical' && !handledRuleIds.has(f.result.ruleId)
@@ -1422,7 +1409,6 @@ export function buildActionPlan(
     }
   }
 
-  // ── Filter by user's connection archetype ─────────────────────
   // Plans that declare `appliesToArchetypes` are only relevant for certain
   // connection types (e.g. Wi-Fi 6E upgrades → wifi-wireless only). Before
   // this filter existed, every tethered user was seeing Wi-Fi-only plans
@@ -1440,7 +1426,6 @@ export function buildActionPlan(
     console.log(`[summary:buildActionPlan] Filtered ${hiddenCount} plan${hiddenCount !== 1 ? 's' : ''} not applicable to ${archetype} connection`)
   }
 
-  // ── Complaint-aware prioritization ────────────────────────────
   // Boost plans whose category or keywords match the user's declared main
   // complaint. This is a soft bias — plans still sort by impact × effort —
   // but within each impact band, complaint-matching plans surface first.
@@ -1449,7 +1434,6 @@ export function buildActionPlan(
     console.log(`[summary:buildActionPlan] Boosting plans matching complaint "${scanData.userSetup?.mainComplaint}"`)
   }
 
-  // ── Sort by impact × effort × complaint-match ────────────────
   filtered.sort((a, b) => {
     const baseA = planScore(a)
     const baseB = planScore(b)

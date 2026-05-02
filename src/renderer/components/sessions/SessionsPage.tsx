@@ -172,7 +172,6 @@ function fmtDuration(sec: number): string {
   return `${h}h ${m - h * 60}m`
 }
 
-// ── Detail / chart ───────────────────────────────────────────
 
 function SessionDetail({ record, onDelete }: { record: SessionRecord; onDelete: () => void }): React.ReactElement {
   const stats = useMemo(() => {

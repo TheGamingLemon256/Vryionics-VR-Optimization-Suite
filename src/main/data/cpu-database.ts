@@ -2,7 +2,6 @@
 // Baked-in AMD CPU database for VR-specific diagnostics.
 // No LLM required at runtime — all knowledge is static and curated.
 
-// ── Core Types ───────────────────────────────────────────────────────────────
 
 export interface VCacheCCD {
   /** 0-indexed CCD number */
@@ -53,7 +52,6 @@ export interface CpuDbEntry {
   /** Number of Core Complex Dies (AMD only). 0 for Intel. */
   ccdCount: number
 
-  // ── RAM guidance ─────────────────────────────────────────────
   ramType: 'DDR4' | 'DDR5' | 'DDR4/DDR5'  // Alder Lake supports both
   /** JEDEC-rated maximum officially supported speed (MHz) */
   maxOfficialRamMHz: number
@@ -62,7 +60,6 @@ export interface CpuDbEntry {
   /** Human-readable explanation of why this speed is optimal */
   optimalRamNote: string
 
-  // ── 3D V-Cache specifics (AMD only) ──────────────────────────
   hasVCache: boolean
   /** Per-CCD breakdown — only present on V-Cache CPUs */
   vcacheCCDs?: VCacheCCD[]
@@ -81,11 +78,9 @@ export interface CpuDbEntry {
    */
   vcacheAffinityMask?: string
 
-  // ── Intel hybrid (P/E-core) specifics ────────────────────────
   /** Only set for Alder Lake+ hybrid chips (12th gen and later, Core Ultra). */
   hybrid?: HybridTopology
 
-  // ── VR performance profile ────────────────────────────────────
   /**
    * - 'single-thread-dominant': raw IPC/clock wins (e.g. 7700X, 14900K stock)
    * - 'cache-dominant': 3D V-Cache provides the biggest VR gains (e.g. 7950X3D)
@@ -107,7 +102,6 @@ export interface CpuDbEntry {
   vrTier: 'top' | 'high' | 'mid' | 'budget'
 }
 
-// ── Mixed RAM Guidance ────────────────────────────────────────────────────────
 
 export interface MixedRamGuidance {
   situation: string
@@ -160,12 +154,9 @@ export const MIXED_RAM_GUIDANCE: MixedRamGuidance[] = [
   },
 ]
 
-// ── CPU Database ──────────────────────────────────────────────────────────────
 
 export const CPU_DATABASE: CpuDbEntry[] = [
-  // ════════════════════════════════════════════════════════════════
   // AM4 — Zen 2 (Ryzen 3000 series)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['3600xt', '3600 xt'],
@@ -351,9 +342,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'mid',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // AM4 — Zen 3 (Ryzen 5000 series)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['5600x3d', '5600 x3d'],
@@ -576,9 +565,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'high',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // AM5 — Zen 4 (Ryzen 7000 series, non-X3D)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['7600x', '7600 x'],
@@ -723,9 +710,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'high',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // AM5 — Zen 4 + 3D V-Cache (Ryzen 7000X3D series)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['7800x3d', '7800 x3d'],
@@ -849,9 +834,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'top',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // AM5 — Zen 5 (Ryzen 9000 series, non-X3D)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['9600x', '9600 x'],
@@ -937,9 +920,7 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'high',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // AM5 — Zen 5 + 3D V-Cache (Ryzen 9000X3D series)
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['9800x3d', '9800 x3d'],
@@ -978,6 +959,8 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'top',
   },
   {
+    // TODO: verify the dual-CCD V-cache layout against a real 9950X3D when one
+    // shows up in the wild — copying assumptions from the 7950X3D for now.
     modelPatterns: ['9950x3d', '9950 x3d'],
     socket: 'AM5',
     vendor: 'AMD',
@@ -1021,11 +1004,9 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'top',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // LGA1200 — Intel 10th/11th gen (Comet Lake / Rocket Lake)
   // Not hybrid — all P-cores. Limited VR-specific tuning value vs
   // modern hybrid chips, but still common in the install base.
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['i5-10400', 'i5 10400'],
@@ -1196,12 +1177,10 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'high',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // LGA1700 — Intel 12th/13th/14th gen (Alder Lake / Raptor Lake / Refresh)
   // First Intel hybrid architecture. Proper P/E core awareness matters
   // for VR — background apps on E-cores is fine, but VR processes MUST
   // run on P-cores or performance collapses.
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['i5-12400f', 'i5 12400f', 'i5-12400', 'i5 12400'],
@@ -1527,12 +1506,10 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'top',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // LGA1851 — Intel Core Ultra (Series 2 — Arrow Lake, late 2024)
   // No hyperthreading on P-cores (design change). Large Thread Director
   // rework for VR+productivity. Early BIOS had VR-impactful bugs fixed
   // in early 2025 releases.
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['core ultra 5 245k', 'ultra 5 245k', '245k'],
@@ -1626,13 +1603,11 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'top',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // LAPTOP — Intel H / HX / Core Ultra H (gaming + thin-and-light)
   // Laptop CPUs share silicon with desktops but ship with much tighter
   // thermal/power limits. VR rules account for sustained-load throttling
   // and hybrid GPU routing. For VR, HX-class and dedicated dGPU are
   // effectively required; H-class is marginal; LP-series is unsuitable.
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['i7-13700h', 'i7 13700h', 'i7-13620h', 'i7 13620h'],
@@ -1818,13 +1793,11 @@ export const CPU_DATABASE: CpuDbEntry[] = [
     vrTier: 'mid',
   },
 
-  // ════════════════════════════════════════════════════════════════
   // LAPTOP — AMD HS / HX / HX3D (gaming + enthusiast)
   // Dragon Range (HX) = desktop Zen 4 silicon in a laptop.
   // Phoenix (HS) = monolithic APU with integrated Radeon graphics.
   // Fire Range (HX3D) = 2024/25 mobile V-Cache variants — rare, excellent.
   // Strix Point (AI 9 HX 370) = Zen 5 + Zen 5c asymmetric mobile.
-  // ════════════════════════════════════════════════════════════════
 
   {
     modelPatterns: ['ryzen 7 7840hs', 'r7 7840hs', 'ryzen 7 7840h', 'r7 7840h'],
@@ -1943,7 +1916,6 @@ export const CPU_DATABASE: CpuDbEntry[] = [
   },
 ]
 
-// ── Lookup Helpers ────────────────────────────────────────────────────────────
 
 /**
  * Find a database entry for the given CPU model string.

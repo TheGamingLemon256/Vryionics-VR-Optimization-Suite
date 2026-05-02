@@ -51,9 +51,9 @@ export function formatDedupedNames(
 ): string {
   const head = deduped.slice(0, limit)
   const tail = deduped.length - head.length
-  const parts = head.map((d) => (d.count > 1 ? `${d.name} ×${d.count}` : d.name))
-  if (tail > 0) parts.push(`+${tail} more`)
-  return parts.join(', ')
+  const xs = head.map((d) => (d.count > 1 ? `${d.name} ×${d.count}` : d.name))
+  if (tail > 0) xs.push(`+${tail} more`)
+  return xs.join(', ')
 }
 
 /** One-step shortcut: input = raw process list, output = display string. */

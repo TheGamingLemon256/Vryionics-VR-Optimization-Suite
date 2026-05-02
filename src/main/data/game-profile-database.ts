@@ -38,7 +38,6 @@ export interface VrGameProfile {
   notes: string[]
 }
 
-// ── Social VR ───────────────────────────────────────────────
 
 const socialVr: VrGameProfile[] = [
   {
@@ -125,7 +124,6 @@ const socialVr: VrGameProfile[] = [
   },
 ]
 
-// ── Simulation ──────────────────────────────────────────────
 
 const simulation: VrGameProfile[] = [
   {
@@ -244,7 +242,6 @@ const simulation: VrGameProfile[] = [
   },
 ]
 
-// ── Fitness / Rhythm ────────────────────────────────────────
 
 const fitness: VrGameProfile[] = [
   {
@@ -309,7 +306,6 @@ const fitness: VrGameProfile[] = [
   },
 ]
 
-// ── Action / Adventure ──────────────────────────────────────
 
 const actionGames: VrGameProfile[] = [
   {
@@ -405,7 +401,6 @@ const actionGames: VrGameProfile[] = [
   },
 ]
 
-// ── Productivity ────────────────────────────────────────────
 
 const productivity: VrGameProfile[] = [
   {
@@ -445,7 +440,6 @@ const productivity: VrGameProfile[] = [
   },
 ]
 
-// ── Combined Export ─────────────────────────────────────────
 
 export const GAME_PROFILE_DATABASE: VrGameProfile[] = [
   ...socialVr,

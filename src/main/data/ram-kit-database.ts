@@ -12,7 +12,6 @@
 //   • Four-stick configurations — most consumer boards can't run four
 //     DDR5 sticks at rated speed (see MIXED_RAM_GUIDANCE in cpu-database)
 
-// ── Types ────────────────────────────────────────────────────
 
 export type RamVendor =
   | 'G.Skill'
@@ -58,7 +57,6 @@ export interface RamKitEntry {
   quirks: string[]
 }
 
-// ── DDR5 Kits (AM5 / LGA1700 / LGA1851) ─────────────────────
 
 const ddr5Kits: RamKitEntry[] = [
   {
@@ -192,7 +190,6 @@ const ddr5Kits: RamKitEntry[] = [
   },
 ]
 
-// ── DDR4 Kits (AM4 / LGA1151/1200) ──────────────────────────
 
 const ddr4Kits: RamKitEntry[] = [
   {
@@ -258,7 +255,6 @@ const ddr4Kits: RamKitEntry[] = [
   },
 ]
 
-// ── Combined Export ──────────────────────────────────────────
 
 export const RAM_KIT_DATABASE: RamKitEntry[] = [
   ...ddr5Kits,

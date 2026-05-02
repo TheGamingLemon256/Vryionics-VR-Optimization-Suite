@@ -1,5 +1,4 @@
-// VR Optimization Suite — Display Scanner Module
-// Detects monitor refresh rate, HDR status, and adaptive sync (G-Sync/FreeSync).
+// Refresh rate, HDR, G-Sync/FreeSync.
 
 import { screen } from 'electron'
 import { readValue } from '../../utils/registry-read'

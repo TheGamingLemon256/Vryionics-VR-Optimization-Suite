@@ -1,5 +1,4 @@
-// VR Optimization Suite — USB Scanner Module
-// Detects USB host controller quality and VR device USB generations.
+// USB host controller quality and VR device USB generations.
 
 import { readKey } from '../../utils/registry-read'
 import { enumerateRegistrySubkeys } from '../../utils/registry'

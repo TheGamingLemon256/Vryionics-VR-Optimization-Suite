@@ -169,7 +169,6 @@ export const networkRules: Rule[] = [
     }
   },
 
-  // ── Wi-Fi chipset quality for wireless VR ─────────────────────
   // Only fires when the user's connection archetype is wifi-wireless.
   // Rates the active Wi-Fi adapter by its chipset and nudges Realtek /
   // Broadcom users toward Intel / Qualcomm for better sustained throughput.

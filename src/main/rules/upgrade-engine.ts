@@ -12,7 +12,6 @@ import {
 import type { ComponentTier, UpgradeProduct, UpgradeSuggestion } from '../data/upgrade-tiers'
 import type { ScanData } from '../scanner/types'
 
-// ── Public Types ──────────────────────────────────────────────
 
 export interface UpgradeRecommendation {
   id: string
@@ -26,7 +25,6 @@ export interface UpgradeRecommendation {
   estimatedPerformanceGain: string // e.g. "~30-50% more GPU headroom"
 }
 
-// ── Internal Helpers ──────────────────────────────────────────
 
 /** Returns the best-matching tier level for a display name, or null if unrecognised. */
 function detectTierLevel(name: string, tiers: ComponentTier[]): number | null {
@@ -77,7 +75,6 @@ function sortProductsByTier(products: UpgradeProduct[]): UpgradeProduct[] {
   return [...products].sort((a, b) => order[a.tier] - order[b.tier])
 }
 
-// ── GPU Detection & Recommendation ───────────────────────────
 
 function analyzeGpu(scanData: ScanData): UpgradeRecommendation | null {
   const gpuData = scanData.gpu
@@ -221,7 +218,6 @@ function analyzeGpu(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── CPU Detection & Recommendation ───────────────────────────
 
 function analyzeCpu(scanData: ScanData): UpgradeRecommendation | null {
   const cpu = scanData.cpu
@@ -322,7 +318,6 @@ function analyzeCpu(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── RAM Detection & Recommendation ───────────────────────────
 
 function detectRamTierLevel(scanData: ScanData): number | null {
   const ram = scanData.ram
@@ -439,7 +434,6 @@ function analyzeRam(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── Storage Detection & Recommendation ───────────────────────
 // Storage tiers: 1 = HDD, 2 = SATA SSD, 3 = NVMe (no further sub-tiers without PCIe gen data)
 
 function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
@@ -472,7 +466,6 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     `size=${vrDrive.totalGB}GB free=${vrDrive.freeGB.toFixed(0)}GB (${freePercent.toFixed(0)}%)`
   )
 
-  // ── Low free space check — applies regardless of drive type ──
   if (freePercent < 10 && vrDrive.freeGB < 20) {
     console.log(`[upgrade:storage] → Low free space warning: ${vrDrive.freeGB.toFixed(0)}GB / ${freePercent.toFixed(0)}% remaining`)
     return {
@@ -556,12 +549,10 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 3: NVMe — already optimal, no recommendation ──
   console.log('[upgrade:storage] NVMe detected with adequate free space — no storage upgrade needed')
   return null
 }
 
-// ── Network Detection & Recommendation ───────────────────────
 
 function analyzeNetwork(scanData: ScanData): UpgradeRecommendation | null {
   const network = scanData.network
@@ -672,7 +663,6 @@ function analyzeNetwork(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── Main Engine Function ──────────────────────────────────────
 
 const URGENCY_ORDER: Record<UpgradeRecommendation['urgency'], number> = {
   now: 0,

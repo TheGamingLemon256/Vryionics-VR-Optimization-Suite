@@ -6,7 +6,6 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { HeadsetProfile, HeadsetProfileSummary, ConnectionArchetype } from './types'
 
-// ── Static JSON Imports (bundled at compile time) ─────────────
 // Vite/Rollup inlines these — no path resolution issues in dev, build, or packaged app.
 
 // Original 10
@@ -112,11 +111,9 @@ const BUNDLED_PROFILES: unknown[] = [
   genericUnlisted
 ]
 
-// ── Profile Cache ─────────────────────────────────────────────
 
 let profileCache: HeadsetProfile[] | null = null
 
-// ── Validation ────────────────────────────────────────────────
 
 function validateProfile(data: unknown, source: string): string | null {
   if (!data || typeof data !== 'object') {
@@ -169,7 +166,6 @@ function validateProfile(data: unknown, source: string): string | null {
   return null
 }
 
-// ── Dev-mode filesystem scan ──────────────────────────────────
 
 /**
  * In development, also scan the source profiles directory so new JSON files
@@ -217,7 +213,6 @@ function loadDevProfiles(bundledIds: Set<string>): HeadsetProfile[] {
   return extra
 }
 
-// ── Public API ────────────────────────────────────────────────
 
 export function loadAllProfiles(forceReload = false): HeadsetProfile[] {
   if (profileCache && !forceReload) return profileCache

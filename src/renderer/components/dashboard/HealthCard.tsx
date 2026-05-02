@@ -4,7 +4,6 @@ import { useFixStore } from '../../stores/fix-store'
 import { Modal } from '../shared/Modal'
 import type { HealthCardData, HealthStatus } from '../../../main/rules/types'
 
-// ── Status Colors ────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<HealthStatus, { dot: string; border: string; glow: string; label: string }> = {
   healthy: {
@@ -139,7 +138,6 @@ export function HealthCard({ card, animDelay = 0 }: HealthCardProps): React.Reac
       className={`glass-panel-sm border ${config.border} shadow-lg ${config.glow} transition-all duration-200 hover-lift panel-animate ${delayClass} cursor-pointer`}
       onClick={() => setExpanded((e) => !e)}
     >
-      {/* ── Collapsed Header ─────────────────────── */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -171,7 +169,6 @@ export function HealthCard({ card, animDelay = 0 }: HealthCardProps): React.Reac
         )}
       </div>
 
-      {/* ── Expanded Content ──────────────────────── */}
       {expanded && (
         <div
           className="border-t border-white/5 p-4 space-y-4"
@@ -203,7 +200,6 @@ export function HealthCard({ card, animDelay = 0 }: HealthCardProps): React.Reac
   )
 }
 
-// ── Simple Mode Expansion ─────────────────────────────────────
 
 function SimpleExpansion({ card, onFixClick, appliedFixes }: {
   card: HealthCardData
@@ -253,7 +249,6 @@ function SimpleExpansion({ card, onFixClick, appliedFixes }: {
   )
 }
 
-// ── Raw Metrics Table ─────────────────────────────────────────
 
 function RawMetricsTable({ rows, showHeader }: {
   rows: Array<{ label: string; value: string }>
@@ -276,7 +271,6 @@ function RawMetricsTable({ rows, showHeader }: {
   )
 }
 
-// ── Advanced Mode Expansion ───────────────────────────────────
 
 function AdvancedExpansion({ card, onFixClick, appliedFixes }: {
   card: HealthCardData

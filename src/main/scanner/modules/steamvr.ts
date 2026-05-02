@@ -1,5 +1,4 @@
-// VR Optimization Suite — SteamVR Settings Scan Module
-// Finds and parses steamvr.vrsettings to extract render resolution, reprojection, etc.
+// Parses steamvr.vrsettings — render resolution, reprojection, etc.
 
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'

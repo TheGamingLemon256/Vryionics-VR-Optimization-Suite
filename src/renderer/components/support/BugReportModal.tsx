@@ -104,7 +104,6 @@ export function BugReportModal({ open, onClose }: BugReportModalProps): React.Re
     }
   }
 
-  // ── Footer buttons (change per phase) ───────────────────────
   const footer = useMemo<React.ReactNode>(() => {
     if (phase === 'success') {
       return (
@@ -224,7 +223,6 @@ export function BugReportModal({ open, onClose }: BugReportModalProps): React.Re
   )
 }
 
-// ── Attachment checkbox row ───────────────────────────────────
 
 function AttachCheckbox({
   label,

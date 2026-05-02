@@ -7,7 +7,6 @@ import { useQuestionnaireStore } from '../../stores/questionnaire-store'
 import { useAppStore } from '../../stores/app-store'
 import { QUESTION_TREE, getAnswerLabel, type Question, type QuestionOption } from '../../../main/data/questionnaire-tree'
 
-// ── Section colour palette ────────────────────────────────────────────────────
 
 const SECTION_STYLES: Record<string, { bg: string; text: string; border: string; icon: string }> = {
   Hardware:   { bg: 'bg-blue-500/15',   text: 'text-blue-300',   border: 'border-blue-500/30',   icon: '🥽' },
@@ -20,10 +19,8 @@ function getSectionStyle(section: string) {
   return SECTION_STYLES[section] ?? { bg: 'bg-white/5', text: 'text-gray-300', border: 'border-white/10', icon: '❓' }
 }
 
-// ── Auto-advance delay (ms) after an option card is clicked ───────────────────
 const AUTO_ADVANCE_DELAY = 400
 
-// ── Main export ───────────────────────────────────────────────────────────────
 
 export default function SystemQuestionnaire(): React.ReactElement {
   const {
@@ -99,7 +96,6 @@ export default function SystemQuestionnaire(): React.ReactElement {
   )
 }
 
-// ── Welcome screen ────────────────────────────────────────────────────────────
 
 function WelcomeScreen({
   onStart,
@@ -165,7 +161,6 @@ function WelcomeScreen({
   )
 }
 
-// ── Question screen ───────────────────────────────────────────────────────────
 
 function QuestionScreen({
   question,
@@ -271,7 +266,6 @@ function QuestionScreen({
   )
 }
 
-// ── Option card ───────────────────────────────────────────────────────────────
 
 function OptionCard({
   option,
@@ -321,7 +315,6 @@ function OptionCard({
   )
 }
 
-// ── Completion screen ─────────────────────────────────────────────────────────
 
 function CompletionScreen({
   answers,
@@ -395,7 +388,6 @@ function CompletionScreen({
   )
 }
 
-// ── Answer summary builder ────────────────────────────────────────────────────
 
 interface SummaryRow {
   questionId: string

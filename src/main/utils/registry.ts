@@ -1,6 +1,3 @@
-// VR Optimization Suite — Windows Registry Utilities
-// See CODING-RULES-DICTIONARY.md Section 9: Windows Registry Access
-
 import { execFileSync } from 'child_process'
 
 export type RegistryHive = 'HKLM' | 'HKCU' | 'HKCR' | 'HKU' | 'HKCC'

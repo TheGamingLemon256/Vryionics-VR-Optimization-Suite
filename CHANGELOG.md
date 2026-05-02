@@ -4,6 +4,94 @@ All notable changes to Vryionics VR Optimization Suite. Each release is also pub
 
 This file tracks the user-facing changes; for the full commit history see the repo.
 
+## v0.2.9
+
+This is the safe-by-default release. Detection stays comprehensive;
+the auto-fix surface narrowed to a small set of app-scoped reversible
+changes. Aggressive Windows tweaks are removed entirely.
+
+### Removed
+- The Defender-exclusions fix.
+- The SystemResponsiveness=0 / MMCSS fix (myth fix; modern Windows
+  normalizes the value). Reported by @yeusep3 via @xNanochip's
+  optimization writeup.
+- The standby-list purge timer (net-negative outside long VR
+  sessions). Removed per the public audit.
+- The Steam compositor priority change (priority-inversion
+  antipattern).
+- The DODownloadMode HTTP-only setting (marginal gain, security
+  implication).
+- The "upgrade your storage controller driver" rule. Reported by
+  @BlakeVRCC.
+- MMCSS network throttling and game-priority fixes (also HKLM-write,
+  also admin-required, no longer fits the safe-by-default surface).
+- Nagle disable, Wi-Fi power-saving, and Windows timer-resolution
+  auto-fixes (same reason as MMCSS).
+
+### Demoted to detection-only
+Hyper-V/VBS, Windows Update deferral, MSI mode, ASPM, HAGS, Windows
+Power Plan, Nagle TCP delay, Wi-Fi power saving. The scan still
+detects these and explains the trade-off. There is no Apply button;
+if you want to change them, research the specific change yourself.
+
+### Bug fixes
+- GTX 1060 detection now distinguishes 3 GB and 6 GB variants.
+  Reported by @BlakeVRCC.
+- "Fake RAM" UI label renamed to "page file" / "virtual memory."
+  Reported by @BlakeVRCC.
+- Single-channel detection rewritten against DIMM population data.
+  Reported by @BlakeVRCC.
+- Idle CPU 100% spike fixed (was caused by the live optimizer cold-
+  starting a fresh PowerShell process every poll cycle). Reported by
+  @aldrichhecc and @BlakeVRCC.
+
+### Architecture
+- Admin requirement dropped. Installer and app run as the standard
+  user. Removes the local-privilege-escalation surface from the
+  public audit.
+- WMI dropped. Hardware identification moved to direct registry
+  reads. Works on Win10 and all Win11 builds, including those without
+  wmic.exe.
+- PowerShell removed entirely from the codebase.
+- execSync template-literal calls converted to execFile with
+  parameterized arg arrays. Closes command-injection vectors named in
+  the public audit.
+
+### Live Optimizer
+- Rewritten on Node stdlib (os.setPriority, ps-list). No
+  NtSuspendProcess. No PowerShell.
+- Off by default. Opt-in via a pre-enable disclosure modal.
+- Hardcoded never-touch list (System processes, anti-cheat services,
+  headset runtime, anything in System32/SysWOW64, the VOS process
+  itself).
+- Allowlist file editable by users; entries that match the never-
+  touch list are silently filtered at runtime.
+- 25-process concurrency cap.
+- State file with crash recovery (lowered processes only).
+- HIGH priority falls back to ABOVE_NORMAL on permission failure.
+
+### Steam launch option
+- /affinity now computed per-CPU from the topology database, not
+  hardcoded as FFFF. Single-CCD X3D parts (5800X3D, 7800X3D, 9800X3D)
+  get /affinity FF; dual-CCD X3D parts (7900X3D, 7950X3D, 9950X3D)
+  get /high only because the V-cache CCD index varies by BIOS and
+  shipping the wrong mask silently de-optimizes. Real runtime CCD
+  detection lands in v0.3.
+- Refuses to apply while Steam is running.
+
+### Auto-updater
+Stays disabled until code-signing is in place. Updates are manual
+download from GitHub Releases with SHA-256 verification.
+
+### Reviewed by
+- @VixenVRC
+
+### Reported by (in addition to those credited above)
+- @ChadHendrixs (called for an AI-assistance disclaimer; added).
+- @insomnyawolf (PhysBones / Dynamic Bones terminology; landed earlier).
+- @yeusep3 / @xNanochip (broader posture critique).
+- The author of the public audit whitepaper.
+
 ## v0.2.8
 - **Security:** removed the bundled Discord webhook URL. Bug reports now open pre-filled GitHub Issues in the user's browser instead of POSTing to a Discord webhook. The previous approach (a webhook URL shipped inside the installer) was reported as an abuse vector via responsible disclosure on 2026-04-28 — anyone who unpacked the installer could spam the support channel. The v0.2.4–v0.2.7 webhook URL has been deleted and is non-functional. No replacement webhook is shipped; bug reports route through GitHub Issues using each user's own GitHub account.
 - A copy of every report bundle is saved locally to `%APPDATA%\vryionics-vr-optimization-suite\bug-reports\` so you can attach it to your issue manually if the bundle exceeds the URL length limit.

@@ -1,6 +1,3 @@
-// VR Optimization Suite — Upgrades IPC Handler
-// Wraps the upgrade-engine so the renderer can request recommendations.
-
 import { ipcMain } from 'electron'
 import type { ScanData } from '../scanner/types'
 

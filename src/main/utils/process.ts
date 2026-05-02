@@ -1,10 +1,8 @@
-// VR Optimization Suite — Process Enumeration Utilities
-// See CODING-RULES-DICTIONARY.md Section 13: Process Management
+// Process enumeration. See CODING-RULES-DICTIONARY.md §13.
 
 import psList from 'ps-list'
 import type { ProcessInfo } from '../scanner/types'
 
-// ── VR Process Classification ────────────────────────────────
 
 /** Processes critical to VR runtime operation */
 export const VR_CRITICAL_PROCESSES = new Set([
@@ -129,7 +127,6 @@ export const VR_SOFTWARE_ECOSYSTEM = {
   ])
 }
 
-// ── Process Enumeration ──────────────────────────────────────
 
 /**
  * Get all running processes with basic info.

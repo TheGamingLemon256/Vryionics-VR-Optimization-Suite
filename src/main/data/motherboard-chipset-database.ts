@@ -8,7 +8,6 @@
 // Detected via Win32_BaseBoard.Product (motherboard model) and parsed
 // to extract the chipset name. Rules surface per-chipset guidance.
 
-// ── Types ────────────────────────────────────────────────────
 
 export type ChipsetVendor = 'AMD' | 'Intel'
 export type ChipsetTier = 'flagship' | 'enthusiast' | 'mainstream' | 'budget' | 'entry'
@@ -50,7 +49,6 @@ export interface MotherboardChipsetEntry {
   quirks: string[]
 }
 
-// ── AMD AM4 chipsets ────────────────────────────────────────
 
 const am4Chipsets: MotherboardChipsetEntry[] = [
   {
@@ -127,7 +125,6 @@ const am4Chipsets: MotherboardChipsetEntry[] = [
   },
 ]
 
-// ── AMD AM5 chipsets ────────────────────────────────────────
 
 const am5Chipsets: MotherboardChipsetEntry[] = [
   {
@@ -251,7 +248,6 @@ const am5Chipsets: MotherboardChipsetEntry[] = [
   },
 ]
 
-// ── Intel LGA1200 chipsets ──────────────────────────────────
 
 const lga1200Chipsets: MotherboardChipsetEntry[] = [
   {
@@ -301,7 +297,6 @@ const lga1200Chipsets: MotherboardChipsetEntry[] = [
   },
 ]
 
-// ── Intel LGA1700 chipsets ──────────────────────────────────
 
 const lga1700Chipsets: MotherboardChipsetEntry[] = [
   {
@@ -377,7 +372,6 @@ const lga1700Chipsets: MotherboardChipsetEntry[] = [
   },
 ]
 
-// ── Intel LGA1851 chipsets (Arrow Lake) ─────────────────────
 
 const lga1851Chipsets: MotherboardChipsetEntry[] = [
   {
@@ -429,7 +423,6 @@ const lga1851Chipsets: MotherboardChipsetEntry[] = [
   },
 ]
 
-// ── Combined Export ──────────────────────────────────────────
 
 export const MOTHERBOARD_CHIPSET_DATABASE: MotherboardChipsetEntry[] = [
   ...am4Chipsets,

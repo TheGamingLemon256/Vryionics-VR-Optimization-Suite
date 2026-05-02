@@ -1,5 +1,4 @@
-// VR Optimization Suite — Full Report View
-// Shows all findings from the last scan, grouped by category, with severity sorting
+// Full report — findings grouped by category, severity-sorted.
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useScanStore } from '../../stores/scan-store'
@@ -8,7 +7,6 @@ import { ExportMenu } from './ExportMenu'
 import type { Finding } from '../../../main/rules/types'
 import type { ScanData } from '../../../main/scanner/types'
 
-// ── Severity config ───────────────────────────────────────────
 
 const SEVERITY_CONFIG = {
   critical: { icon: '🔴', color: 'text-vr-critical', bg: 'bg-vr-critical/8', border: 'border-vr-critical/20', order: 0 },
@@ -17,7 +15,6 @@ const SEVERITY_CONFIG = {
   ok:       { icon: '✅',  color: 'text-vr-healthy',  bg: 'bg-vr-healthy/5', border: 'border-vr-healthy/15',  order: 3 }
 }
 
-// ── Category display names ────────────────────────────────────
 
 const CATEGORY_LABELS: Record<string, string> = {
   cpu: 'CPU',
@@ -30,7 +27,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   'os-config': 'OS Config'
 }
 
-// ── Main Component ────────────────────────────────────────────
 
 export default function ReportView(): React.ReactElement {
   const { findings, lastScanData, healthCards, isScanning, startScan } = useScanStore()
@@ -285,7 +281,6 @@ export default function ReportView(): React.ReactElement {
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────
 
 function SummaryCard({ label, count, color, bg, border, active, onClick }: {
   label: string
@@ -309,7 +304,6 @@ function SummaryCard({ label, count, color, bg, border, active, onClick }: {
   )
 }
 
-// ── Raw Scan Dump ─────────────────────────────────────────────
 
 function formatRawDump(s: ScanData): string {
   const lines: string[] = []
@@ -324,7 +318,6 @@ function formatRawDump(s: ScanData): string {
   if (s.scanCondition) lines.push(`  Condition : ${s.scanCondition === 'under-load' ? 'Under Load (VR session active)' : 'Idle (no VR processes)'}`)
   lines.push('')
 
-  // ── CPU
   if (s.cpu) {
     const c = s.cpu
     lines.push(bold('cpu'))
@@ -343,7 +336,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── GPU
   if (s.gpu && s.gpu.devices.length > 0) {
     lines.push(bold('gpu'))
     lines.push(sep)
@@ -364,7 +356,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── RAM
   if (s.ram) {
     const r = s.ram
     lines.push(bold('memory (ram)'))
@@ -381,7 +372,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── Storage
   if (s.storage && s.storage.drives.length > 0) {
     lines.push(bold('storage'))
     lines.push(sep)
@@ -398,7 +388,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── Network
   if (s.network) {
     const n = s.network
     lines.push(bold('network'))
@@ -423,7 +412,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── VR Runtime
   if (s.vrRuntime) {
     const v = s.vrRuntime
     lines.push(bold('vr runtime'))
@@ -439,7 +427,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── OS Config
   if (s.osConfig) {
     const o = s.osConfig
     lines.push(bold('os configuration'))
@@ -461,7 +448,6 @@ function formatRawDump(s: ScanData): string {
     lines.push('')
   }
 
-  // ── Processes
   if (s.processes) {
     const p = s.processes
     lines.push(bold('processes'))

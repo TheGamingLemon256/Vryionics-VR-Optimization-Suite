@@ -1,5 +1,4 @@
-// VR Optimization Suite — Scan Module Registry
-// All Phase 1a scan modules registered here in execution order.
+// Scan modules registered in execution order.
 
 export { scanCpu } from './cpu'
 export { scanGpu } from './gpu'

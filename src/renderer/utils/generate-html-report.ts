@@ -6,7 +6,6 @@ import type { ScanData } from '../../main/scanner/types'
 import type { Finding, ActionPlan } from '../../main/rules/types'
 import type { FixHistoryEntry } from '../stores/fix-store'
 
-// ── Helpers ───────────────────────────────────────────────────
 
 function esc(str: unknown): string {
   if (str == null) return ''
@@ -69,7 +68,6 @@ function effortLabel(effort: string): string {
     : 'Research needed'
 }
 
-// ── CSS ───────────────────────────────────────────────────────
 
 const CSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -116,7 +114,6 @@ const CSS = `
     padding: 32px 20px 64px;
   }
 
-  /* ── Header ── */
   .header {
     margin-bottom: 32px;
   }
@@ -186,7 +183,6 @@ const CSS = `
     border-color: var(--border);
   }
 
-  /* ── Summary counts ── */
   .summary-counts {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -206,7 +202,6 @@ const CSS = `
   .count-card.warning  .count-number { color: var(--amber); }
   .count-card.info     .count-number { color: var(--blue); }
 
-  /* ── Section ── */
   .section { margin-bottom: 28px; }
   .section-title {
     font-size: 11px;
@@ -219,7 +214,6 @@ const CSS = `
     border-bottom: 1px solid var(--border);
   }
 
-  /* ── Specs table ── */
   .specs-table {
     width: 100%;
     border-collapse: collapse;
@@ -257,7 +251,6 @@ const CSS = `
     word-break: break-word;
   }
 
-  /* ── Findings ── */
   .findings-group { margin-bottom: 16px; }
   .findings-group-label {
     font-size: 11px;
@@ -319,7 +312,6 @@ const CSS = `
     letter-spacing: 0.04em;
   }
 
-  /* ── Badges ── */
   .badge {
     display: inline-block;
     font-size: 10px;
@@ -336,7 +328,6 @@ const CSS = `
   .badge-gray   { background: var(--gray-bg);  color: var(--text-muted); border: 1px solid var(--gray-border); }
   .badge-purple { background: rgba(124,58,237,0.15); color: var(--accent-light); border: 1px solid rgba(124,58,237,0.30); }
 
-  /* ── Action Plan ── */
   .action-card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -397,7 +388,6 @@ const CSS = `
     flex-shrink: 0;
   }
 
-  /* ── Fix History ── */
   .fix-table {
     width: 100%;
     border-collapse: collapse;
@@ -427,7 +417,6 @@ const CSS = `
   .fix-table tr:last-child td { border-bottom: none; }
   .fix-name { color: var(--text); font-weight: 500; }
 
-  /* ── Footer ── */
   .footer {
     margin-top: 48px;
     padding-top: 20px;
@@ -441,10 +430,8 @@ const CSS = `
   .footer-brand { font-size: 11px; font-weight: 700; color: var(--accent-light); letter-spacing: 0.08em; text-transform: uppercase; }
   .footer-note { font-size: 11px; color: var(--text-dim); }
 
-  /* ── No-data notice ── */
   .no-data { color: var(--text-dim); font-size: 12px; font-style: italic; padding: 10px 0; }
 
-  /* ── Print overrides ── */
   @media print {
     body { background: #fff; color: #111; }
     :root {
@@ -465,7 +452,6 @@ const CSS = `
   }
 `
 
-// ── Section builders ──────────────────────────────────────────
 
 function buildHeaderHtml(scanData: ScanData | null, findings: Finding[]): string {
   const scanTime = scanData ? new Date(scanData.timestamp).toLocaleString() : new Date().toLocaleString()
@@ -750,7 +736,6 @@ function buildFixHistoryHtml(fixHistory: FixHistoryEntry[]): string {
   </div>`
 }
 
-// ── Main export ───────────────────────────────────────────────
 
 export interface HtmlReportOptions {
   scanData: ScanData | null
@@ -766,7 +751,6 @@ export interface HtmlReportOptions {
   redact?: boolean
 }
 
-// ── Redaction helpers ─────────────────────────────────────────
 
 const REDACTED = '[redacted]'
 

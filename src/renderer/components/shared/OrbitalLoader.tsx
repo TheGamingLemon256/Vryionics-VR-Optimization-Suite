@@ -1,10 +1,8 @@
-// VR Optimization Suite — Shared Orbital Loader
-// Reusable animated orbital emblem used wherever the app is working / has no data yet.
-// Keyframes live in globals.css (vrs-spin-cw, vrs-orbit-*, etc.) so they're defined once.
+// Animated orbital emblem — used wherever the app is working / empty.
+// Keyframes live in globals.css (vrs-spin-cw, vrs-orbit-*, etc.).
 
 import React from 'react'
 
-// ── Types ─────────────────────────────────────────────────────
 
 interface OrbitalLoaderProps {
   /** Show the full scanning display (orbital + percent + label + progress bar).
@@ -16,10 +14,8 @@ interface OrbitalLoaderProps {
   moduleLabel?: string
 }
 
-// ── Orbit dot colours (index → opacity multiplier) ────────────
 const DOT_OPACITIES = [1, 0.9, 0.8] as const
 
-// ── Main export ───────────────────────────────────────────────
 
 export function OrbitalLoader({
   size = 'full',
@@ -31,13 +27,11 @@ export function OrbitalLoader({
     : <FullOrbital percent={percent} moduleLabel={moduleLabel} />
 }
 
-// ── Full orbital (220 px, used in Dashboard scanning display) ─
 
 function FullOrbital({ percent, moduleLabel }: { percent: number; moduleLabel: string }): React.ReactElement {
   return (
     <div className="flex flex-col items-center justify-center gap-10 py-14 select-none">
 
-      {/* ── Emblem ── */}
       <div className="relative flex items-center justify-center" style={{ width: 220, height: 220 }}>
 
         {/* Ambient glow */}
@@ -118,7 +112,6 @@ function FullOrbital({ percent, moduleLabel }: { percent: number; moduleLabel: s
         </div>
       </div>
 
-      {/* ── Text block ── */}
       <div className="flex flex-col items-center gap-3 w-full max-w-xs">
 
         {/* Module label — key change triggers fade animation restart */}
@@ -159,7 +152,6 @@ function FullOrbital({ percent, moduleLabel }: { percent: number; moduleLabel: s
   )
 }
 
-// ── Mini orbital (90 px, used inline in other pages) ──────────
 
 function MiniOrbital(): React.ReactElement {
   return (
@@ -238,7 +230,6 @@ function MiniOrbital(): React.ReactElement {
   )
 }
 
-// ── Shared VR headset icon SVG ────────────────────────────────
 
 function VrHeadsetIcon({ size }: { size: number }): React.ReactElement {
   // Scale the viewBox geometry to the requested pixel size

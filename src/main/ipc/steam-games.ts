@@ -1,4 +1,3 @@
-// VR Optimization Suite — Steam Games IPC Handlers
 import { ipcMain } from 'electron'
 import { scanSteamGames } from '../scanner/modules/steam-games'
 

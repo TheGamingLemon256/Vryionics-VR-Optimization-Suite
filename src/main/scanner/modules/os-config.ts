@@ -1,5 +1,4 @@
-// VR Optimization Suite — OS Config Scan Module
-// Collects Windows version, Game Mode, Defender exclusions, virtualization drivers.
+// Windows version, Game Mode, Defender exclusions, virtualization drivers.
 
 import { readRegistryDword, readRegistry, registryKeyExists, enumerateRegistrySubkeys } from '../../utils/registry'
 import { readKey, readValue } from '../../utils/registry-read'

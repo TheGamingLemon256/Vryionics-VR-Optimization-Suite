@@ -2,7 +2,6 @@
 // Pure data: branching question tree for the interactive setup interview.
 // No React — imported by both the store (renderer) and any future main-process logic.
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AnswerValue = string
 
@@ -31,11 +30,9 @@ export interface QuestionTree {
   questions: Record<string, Question>
 }
 
-// ── Question Definitions ──────────────────────────────────────────────────────
 
 const questions: Record<string, Question> = {
 
-  // ── SECTION: Hardware ─────────────────────────────────────────────────────
 
   'q-headset-type': {
     id: 'q-headset-type',
@@ -56,7 +53,6 @@ const questions: Record<string, Question> = {
     ],
   },
 
-  // ── SECTION: Connection ───────────────────────────────────────────────────
 
   'q-connection-type': {
     id: 'q-connection-type',
@@ -150,7 +146,6 @@ const questions: Record<string, Question> = {
     ],
   },
 
-  // ── SECTION: Issues ───────────────────────────────────────────────────────
 
   'q-wifi-issues': {
     id: 'q-wifi-issues',
@@ -318,7 +313,6 @@ const questions: Record<string, Question> = {
     ],
   },
 
-  // ── SECTION: Goals ────────────────────────────────────────────────────────
 
   'q-goals': {
     id: 'q-goals',
@@ -367,14 +361,12 @@ const questions: Record<string, Question> = {
 
 }
 
-// ── Tree Export ───────────────────────────────────────────────────────────────
 
 export const QUESTION_TREE: QuestionTree = {
   startQuestionId: 'q-headset-type',
   questions,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function getQuestionById(id: string): Question | undefined {
   return QUESTION_TREE.questions[id]

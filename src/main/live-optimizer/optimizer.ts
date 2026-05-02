@@ -152,10 +152,16 @@ async function activate(triggerProc: PsProc, procs: PsProc[]): Promise<void> {
         result = 'above-normal'
         session.notes.push('HIGH priority denied; fell back to ABOVE_NORMAL')
       } catch (err: unknown) {
+        // TODO: should we cap activate() retries on permission failures?
         session.notes.push(`could not raise ${triggerProc.name} priority: ${(err as Error).message}`)
       }
     }
     session.raised.push({ pid: triggerProc.pid, name: triggerProc.name, result })
+
+    // tried boosting only the renderer thread but Windows TID enumeration
+    // is more trouble than it's worth without a native helper.
+    // const renderTid = await findRendererThread(triggerProc.pid)
+    // if (renderTid) os.setPriority(renderTid, os.constants.priority.PRIORITY_HIGHEST)
   }
 
   await state.write(stateEntries)

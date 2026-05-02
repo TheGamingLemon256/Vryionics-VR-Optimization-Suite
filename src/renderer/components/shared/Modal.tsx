@@ -1,6 +1,3 @@
-// VR Optimization Suite — Modal
-// Glass-styled overlay with backdrop blur, Escape-to-close, slide-in animation.
-
 import React, { useEffect, useCallback } from 'react'
 
 interface ModalProps {

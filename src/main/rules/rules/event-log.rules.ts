@@ -1,5 +1,3 @@
-// VR Optimization Suite — Event Log Diagnostic Rules
-
 import type { Rule } from '../types'
 
 export const eventLogRules: Rule[] = [

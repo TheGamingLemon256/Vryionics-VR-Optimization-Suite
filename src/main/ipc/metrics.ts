@@ -1,5 +1,4 @@
-// VR Optimization Suite — Hardware Metrics IPC Handler
-// Exposes metrics:poll to the renderer for live GPU temp/power, CPU%, and RAM usage.
+// metrics:poll — live GPU temp/power, CPU%, RAM.
 
 import os from 'node:os'
 import { ipcMain } from 'electron'

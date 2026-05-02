@@ -11,9 +11,7 @@ import { findWifiChipset } from '../../data/wifi-chipset-database'
 import { findRamKitCandidates } from '../../data/ram-kit-database'
 import { findMotherboardChipset } from '../../data/motherboard-chipset-database'
 
-// ══════════════════════════════════════════════════════════
 // Wi-Fi CHIPSET RULES
-// ══════════════════════════════════════════════════════════
 
 /**
  * Emit chipset-specific guidance when the user's Wi-Fi adapter is
@@ -91,9 +89,7 @@ const wifiChipsetGuidance: Rule = {
   },
 }
 
-// ══════════════════════════════════════════════════════════
 // RAM KIT RULES
-// ══════════════════════════════════════════════════════════
 
 /**
  * Identify the user's RAM kit from Manufacturer + speed + type, then
@@ -168,9 +164,7 @@ const ramKitIdentification: Rule = {
   },
 }
 
-// ══════════════════════════════════════════════════════════
 // MOTHERBOARD CHIPSET RULES
-// ══════════════════════════════════════════════════════════
 
 /**
  * Surface per-chipset VR guidance. Fires whenever the user's motherboard
@@ -282,9 +276,7 @@ const budgetChipsetLimitation: Rule = {
   },
 }
 
-// ══════════════════════════════════════════════════════════
 // EXPORT
-// ══════════════════════════════════════════════════════════
 
 export const hardwareDatabaseRules: Rule[] = [
   wifiChipsetGuidance,

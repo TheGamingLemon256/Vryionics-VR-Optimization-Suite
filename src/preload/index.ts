@@ -1,11 +1,9 @@
-// VR Optimization Suite — Preload Bridge
-// Exposes typed window.api to the renderer via contextBridge.
+// Preload — exposes typed window.api via contextBridge.
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ScanData, ScanProgress } from '../main/scanner/types'
 
 const api = {
-  // ── Scan ──────────────────────────────────────────────────
   scan: {
     runFull: (options?: { headsetProfileId?: string; connectionArchetype?: string }) =>
       ipcRenderer.invoke('scan:runFull', options) as Promise<ScanData>,
@@ -21,7 +19,6 @@ const api = {
     }
   },
 
-  // ── Rules ─────────────────────────────────────────────────
   rules: {
     evaluate: (scanData: ScanData, headsetBrand?: string) =>
       ipcRenderer.invoke('rules:evaluate', scanData, headsetBrand),
@@ -29,13 +26,11 @@ const api = {
       ipcRenderer.invoke('rules:getAll')
   },
 
-  // ── Summary ───────────────────────────────────────────────
   summary: {
     generate: (findings: unknown[], scanData: ScanData) =>
       ipcRenderer.invoke('summary:generate', findings, scanData)
   },
 
-  // ── Storage / Debloat ─────────────────────────────────────
   storage: {
     scanDebloat: () =>
       ipcRenderer.invoke('storage:scanDebloat'),
@@ -45,13 +40,11 @@ const api = {
       ipcRenderer.invoke('storage:deleteCategories', categoryIds)
   },
 
-  // ── Upgrades ─────────────────────────────────────────────
   upgrades: {
     generate: (scanData: ScanData) =>
       ipcRenderer.invoke('upgrades:generate', scanData)
   },
 
-  // ── Fix Engine ────────────────────────────────────────────
   fix: {
     preview: (fixId: string) =>
       ipcRenderer.invoke('fix:preview', fixId),
@@ -67,13 +60,11 @@ const api = {
       ipcRenderer.invoke('fix:previewAll', fixIds) as Promise<unknown[]>,
   },
 
-  // ── System ────────────────────────────────────────────────
   system: {
     isAdmin: () =>
       ipcRenderer.invoke('system:isAdmin') as Promise<boolean>
   },
 
-  // ── Setup Wizard ──────────────────────────────────────────
   setup: {
     getHeadsetProfiles: () =>
       ipcRenderer.invoke('setup:getHeadsetProfiles'),
@@ -85,7 +76,6 @@ const api = {
       ipcRenderer.invoke('setup:getSetup')
   },
 
-  // ── Config ────────────────────────────────────────────────
   config: {
     get: (key: string) =>
       ipcRenderer.invoke('config:get', key),
@@ -93,7 +83,6 @@ const api = {
       ipcRenderer.invoke('config:set', key, value)
   },
 
-  // ── App ───────────────────────────────────────────────────
   app: {
     getVersion: () =>
       ipcRenderer.invoke('app:getVersion') as Promise<string>,
@@ -105,7 +94,6 @@ const api = {
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
 
-  // ── Overlay window (always-on-top VR metrics widget) ─────
   overlay: {
     open:    () => ipcRenderer.invoke('overlay:open'),
     close:   () => ipcRenderer.invoke('overlay:close'),
@@ -131,7 +119,6 @@ const api = {
     }
   },
 
-  // ── Reports ───────────────────────────────────────────────
   reports: {
     save: (report: unknown) => ipcRenderer.invoke('reports:save', report),
     getAll: () => ipcRenderer.invoke('reports:getAll'),
@@ -140,17 +127,14 @@ const api = {
     clear: () => ipcRenderer.invoke('reports:clear')
   },
 
-  // ── Steam Games ───────────────────────────────────────────────
   steamGames: {
     scan: () => ipcRenderer.invoke('steamgames:scan')
   },
 
-  // ── Metrics ───────────────────────────────────────────────
   metrics: {
     poll: () => ipcRenderer.invoke('metrics:poll') as Promise<import('../main/ipc/metrics').MetricsSnapshot>
   },
 
-  // ── Support / Bug Reports ─────────────────────────────────
   support: {
     sendBugReport: (payload: {
       message: string
@@ -168,14 +152,12 @@ const api = {
       }>
   },
 
-  // ── Background Scheduler ──────────────────────────────────
   scheduler: {
     getConfig: () => ipcRenderer.invoke('scheduler:getConfig') as Promise<{ enabled: boolean; intervalDays: number }>,
     setConfig: (cfg: { enabled?: boolean; intervalDays?: number }) =>
       ipcRenderer.invoke('scheduler:setConfig', cfg) as Promise<{ enabled: boolean; intervalDays: number }>,
   },
 
-  // ── Tuning Profile Export / Import ────────────────────────
   profile: {
     export: (setup: { headsetId?: string; connectionArchetype?: string; pcType?: string; primaryUseCase?: string } | null, description: string) =>
       ipcRenderer.invoke('profile:export', setup, description) as Promise<string | null>,
@@ -191,7 +173,6 @@ const api = {
       ipcRenderer.invoke('profile:applyImported', fixIds) as Promise<Array<{ fixId: string; success: boolean; error?: string }>>,
   },
 
-  // ── VR Session Recordings ─────────────────────────────────
   sessions: {
     list:    () => ipcRenderer.invoke('sessions:list'),
     get:     (id: string) => ipcRenderer.invoke('sessions:get', id),
@@ -204,7 +185,6 @@ const api = {
     },
   },
 
-  // ── Driver Updater ────────────────────────────────────────
   drivers: {
     getState: () => ipcRenderer.invoke('drivers:getState'),
     refreshAll: () => ipcRenderer.invoke('drivers:refreshAll'),
@@ -217,7 +197,6 @@ const api = {
     },
   },
 
-  // ── Logging (renderer → main unified log) ─────────────────
   logging: {
     write: (level: 'debug' | 'info' | 'warn' | 'error', namespace: string, message: string): void => {
       try { ipcRenderer.invoke('log:write', level, namespace, message) } catch { /* never throw from logger */ }
@@ -226,7 +205,6 @@ const api = {
     getDirectory: () => ipcRenderer.invoke('log:directory') as Promise<string | null>,
   },
 
-  // ── Auto-Updater ──────────────────────────────────────────
   updater: {
     checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<{
       available: boolean
@@ -253,7 +231,6 @@ const api = {
     }
   },
 
-  // ── Event Bus (main → renderer) ───────────────────────────
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const handler = (_: unknown, ...args: unknown[]) => callback(...args)
     ipcRenderer.on(channel, handler)

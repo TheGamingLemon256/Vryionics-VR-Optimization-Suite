@@ -3,7 +3,6 @@
 import type { Rule, RuleResult } from '../types'
 import type { ScanData, VrCrashSignature, VrCrashEvent } from '../../scanner/types'
 
-// ── Crash-signature guidance table ────────────────────────────
 // For each known signature, we provide:
 //   - a short human-readable label (used in summary text)
 //   - severity (error codes that usually indicate a real software bug are 'warning',
@@ -178,7 +177,6 @@ export const vrRuntimeRules: Rule[] = [
     }
   },
 
-  // ── Recent SteamVR crash / fatal-error analysis ──────────────
   {
     id: 'vr-recent-crashes',
     category: 'vr-runtime',

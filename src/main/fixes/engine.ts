@@ -41,7 +41,6 @@ async function powercfgExe(args: string[], timeoutMs = 8000): Promise<string | n
   }
 }
 
-// ── Persistent storage for backups + history ──────────────────
 
 const fixStore = new Store<{
   backups: Record<string, Record<string, string>>
@@ -75,7 +74,6 @@ function markUndone(fixId: string): void {
   }
 }
 
-// ── Registry helpers ──────────────────────────────────────────
 
 async function regWriteDword(hive: 'HKLM' | 'HKCU', path: string, name: string, value: number): Promise<void> {
   // execFile passes argv elements verbatim, so paths with spaces don't need
@@ -92,7 +90,6 @@ async function regDeleteValue(hive: 'HKLM' | 'HKCU', path: string, name: string)
   await regExe(['delete', `${hive}\\${path}`, '/v', name, '/f'])
 }
 
-// ── Fix 6: Enable Game Mode ───────────────────────────────────
 
 const fixEnableGameMode: Fix = {
   id: 'fix-game-mode-disabled',
@@ -143,7 +140,6 @@ const fixEnableGameMode: Fix = {
   }
 }
 
-// ── Fix 8: VRChat V-Cache Affinity via Steam Launch Option ───────────────
 // The amd3dvcacheSvc registry approach depends on AMD's scheduler service
 // timing, which is not guaranteed. Writing the launch option directly into
 // Steam's localconfig.vdf is reliable: it is applied at process spawn before
@@ -405,7 +401,6 @@ const fixVCacheAffinity: Fix = {
   }
 }
 
-// ── Fix 10: Reset SteamVR Supersampling ──────────────────────
 function getSteamVRSettingsPath(): string {
   return join(process.env.LOCALAPPDATA ?? '', 'openvr', 'steamvr.vrsettings')
 }
@@ -487,7 +482,6 @@ const fixSteamVRSupersampling: Fix = {
   }
 }
 
-// ── Fix 11: Enable SteamVR Motion Smoothing ──────────────────
 const fixSteamVRMotionSmoothing: Fix = {
   id: 'fix-steamvr-motion-smoothing',
   name: 'Enable SteamVR Motion Smoothing',
@@ -551,7 +545,6 @@ const fixSteamVRMotionSmoothing: Fix = {
   }
 }
 
-// ── Fix 12: Optimize VRChat Cache Size ───────────────────────
 function getVRChatConfigPath(): string {
   return join(homedir(), 'AppData', 'LocalLow', 'VRChat', 'VRChat', 'config.json')
 }
@@ -629,7 +622,6 @@ const fixVRChatCacheSize: Fix = {
   }
 }
 
-// ── Fix 13: Disable Xbox Game Bar & DVR ──────────────────────
 
 const fixDisableXboxDvr: Fix = {
   id: 'fix-disable-xbox-dvr',
@@ -702,7 +694,6 @@ const fixDisableXboxDvr: Fix = {
   }
 }
 
-// ── Fix 14: Disable Known Bloat Startup Programs ──────────────
 
 const STARTUP_BLOAT_NAMES = [
   'OneDrive', 'OneDriveSetup', 'Microsoft Teams', 'Teams',
@@ -790,7 +781,6 @@ const fixDisableStartupBloat: Fix = {
   }
 }
 
-// ── Fix 15: Disable USB Selective Suspend ────────────────────
 
 const USB_SUBGROUP = '2a737441-1930-4402-8d77-b2bebba308a3'
 const USB_SUSPEND_SETTING = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
@@ -862,7 +852,6 @@ const fixUsbSelectiveSuspend: Fix = {
   }
 }
 
-// ── Fix 16: Disable CPU Core Parking ─────────────────────────
 
 async function getCpuCoreParking(): Promise<number | null> {
   const out = await powercfgExe(['/query', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES'])
@@ -931,7 +920,6 @@ const fixCoreParkingDisable: Fix = {
   }
 }
 
-// ── Fix 18: Disable Fullscreen Optimizations for VR Apps ─────
 
 const FS_OPT_REG_PATH = 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers'
 const FS_OPT_FLAG = '~ DISABLEDXMAXIMIZEDWINDOWEDMODE'
@@ -1029,7 +1017,6 @@ const fixDisableFullscreenOptimizations: Fix = {
   }
 }
 
-// ── Fix 20: Enable SteamVR Async Reprojection ─────────────────
 
 const fixSteamVRAsyncReprojection: Fix = {
   id: 'fix-steamvr-async-reprojection',
@@ -1117,8 +1104,9 @@ const fixSteamVRAsyncReprojection: Fix = {
   }
 }
 
-// ── Fix 21: VRChat Avatar Distance Culling ────────────────────
 
+// FIXME: undo path doesn't restore avatar_culling_distance if it was unset
+// before. Backup stringifies undefined → ''; restore writes '' back. Maybe.
 const fixVRChatAvatarCulling: Fix = {
   id: 'fix-vrchat-avatar-culling',
   name: 'Enable VRChat Avatar Distance Culling',
@@ -1200,7 +1188,6 @@ const fixVRChatAvatarCulling: Fix = {
   }
 }
 
-// ── Fix 27: VRChat per-avatar physics caps ───────────────────
 // Note on naming: the config keys are still `dynamic_bone_max_*` for legacy
 // reasons — VRChat used the Dynamic Bone Unity asset before 2022 and kept
 // the keys when they swapped to their in-house PhysBones system. Same caps,
@@ -1311,7 +1298,6 @@ const fixVRChatDynamicBoneLimits: Fix = {
   }
 }
 
-// ── Fix 28: VRChat MSAA Reduction ─────────────────────────────
 
 const VRCHAT_PREFS_PATH = 'SOFTWARE\\VRChat\\VRChat'
 
@@ -1376,7 +1362,6 @@ const fixVRChatMsaa: Fix = {
   }
 }
 
-// ── Fix Registry ─────────────────────────────────────────────
 
 // fixMmcssNetworkThrottling, fixMmcssGamesPriority, fixWifiPowerSaving,
 // fixNagleDisable, and fixWindowsTimerResolution were removed when the admin
@@ -1410,7 +1395,6 @@ const ALL_FIXES: Fix[] = [
 
 const fixMap = new Map<string, Fix>(ALL_FIXES.map((f) => [f.id, f]))
 
-// ── Public API ────────────────────────────────────────────────
 
 export function getFix(fixId: string): Fix | null {
   return fixMap.get(fixId) ?? null
@@ -1452,7 +1436,6 @@ export async function previewFix(fixId: string): Promise<FixPreview | { error: s
   }
 }
 
-// ── Pre-fix auto-backup (System Restore Point) ───────────────
 //
 // Throttled to one restore point per 24 hours to avoid filling the
 // snapshot store. Wrapped so a restore-point creation failure never blocks

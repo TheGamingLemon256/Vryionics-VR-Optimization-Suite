@@ -1,6 +1,3 @@
-// VR Optimization Suite — Settings Page
-// App preferences: report mode, admin info, setup reset, about section
-
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../stores/app-store'
 import { useSetupStore } from '../../stores/setup-store'
@@ -325,7 +322,6 @@ export default function SettingsPage(): React.ReactElement {
   )
 }
 
-// ── Shared Components ─────────────────────────────────────────
 
 function SettingsSection({ title, description, children }: {
   title: string

@@ -6,7 +6,6 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { readRegistry } from '../../utils/registry'
 
-// ── Types ──────────────────────────────────────────────────────
 
 export interface VRGameSetting {
   key: string
@@ -36,7 +35,6 @@ export interface SteamGamesResult {
   scannedAt: number
 }
 
-// ── Known VR Game App IDs ──────────────────────────────────────
 
 const KNOWN_VR_GAME_IDS: Record<string, string> = {
   '438100': 'VRChat',
@@ -62,7 +60,6 @@ const KNOWN_VR_GAME_IDS: Record<string, string> = {
   '976730': 'Halo: The Master Chief Collection',
 }
 
-// ── Steam Path Detection ───────────────────────────────────────
 
 function findSteamPath(): string | null {
   try {
@@ -83,7 +80,6 @@ function findSteamPath(): string | null {
   return null
 }
 
-// ── Steam Library Paths ────────────────────────────────────────
 
 function getLibraryPaths(steamPath: string): string[] {
   const paths: string[] = [join(steamPath, 'steamapps')]
@@ -106,7 +102,6 @@ function getLibraryPaths(steamPath: string): string[] {
   return paths
 }
 
-// ── ACF Parser ────────────────────────────────────────────────
 
 interface AppManifest {
   appId: string
@@ -126,7 +121,6 @@ function parseACF(content: string): AppManifest | null {
   }
 }
 
-// ── Settings Checkers ─────────────────────────────────────────
 
 function checkVRChatSettings(_installDir: string): { settingsFile: string | null; settings: VRGameSetting[] } {
   const configPath = join(homedir(), 'AppData', 'LocalLow', 'VRChat', 'VRChat', 'config.json')
@@ -239,7 +233,6 @@ function checkBeatSaberSettings(installDir: string): { settingsFile: string | nu
   return { settingsFile: null, settings: [] }
 }
 
-// ── Per-game settings dispatch ─────────────────────────────────
 
 function getGameSettings(
   appId: string,
@@ -253,7 +246,6 @@ function getGameSettings(
   }
 }
 
-// ── Main Export ───────────────────────────────────────────────
 
 export async function scanSteamGames(): Promise<SteamGamesResult> {
   const steamPath = findSteamPath()

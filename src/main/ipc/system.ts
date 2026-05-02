@@ -1,5 +1,4 @@
-// VR Optimization Suite — System IPC Handlers
-// Setup wizard, config, and system utility handlers.
+// Setup wizard, config, system utility handlers.
 
 import { ipcMain, shell } from 'electron'
 import { execFileSync } from 'child_process'

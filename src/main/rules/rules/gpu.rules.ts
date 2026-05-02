@@ -1,5 +1,3 @@
-// VR Optimization Suite — GPU Diagnostic Rules
-
 import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 
@@ -38,7 +36,7 @@ export const gpuRules: Rule[] = [
         severity: 'critical',
         category: 'gpu',
         explanation: {
-          simple: 'Your graphics card is running out of video memory. When this happens, VR has to borrow much slower system RAM, causing severe stuttering. Reduce texture quality in games or lower the VR render resolution.',
+          simple: 'GPU is out of VRAM. It spills to system RAM over PCIe, which is much slower — that\'s where the stutter comes from. Drop texture quality or lower VR render resolution.',
           advanced: `VRAM usage: ${primary.vramUsed}/${primary.vramTotal}MB (${usagePercent.toFixed(1)}%). VRAM saturation causes GPU paging to system RAM via PCIe (10-50× slower). In VR, this manifests as severe frame time spikes. Reduce texture quality, disable MSAA in favor of TAA, or lower SteamVR resolution to reduce render target VRAM footprint.`
         }
       }

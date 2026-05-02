@@ -24,7 +24,6 @@ import {
 } from '../../stores/setup-store'
 import { useAppStore } from '../../stores/app-store'
 
-// ── Types ─────────────────────────────────────────────────────
 
 interface HeadsetSummary {
   id: string
@@ -139,11 +138,9 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   }
 }
 
-// ── Step definitions ──────────────────────────────────────────
 
 const STEP_LABELS = ['Welcome', 'Headset', 'Connection', 'PC Type', 'Use Case', 'Main Issue', 'Skill', 'Done']
 
-// ── Main Component ────────────────────────────────────────────
 
 export default function SetupWizard(): React.ReactElement {
   const [state, dispatch] = useReducer(wizardReducer, initialState)
@@ -317,7 +314,6 @@ export default function SetupWizard(): React.ReactElement {
   )
 }
 
-// ── Step: Welcome ─────────────────────────────────────────────
 
 function StepWelcome({ onNext }: { onNext: () => void }): React.ReactElement {
   return (
@@ -349,7 +345,6 @@ function StepWelcome({ onNext }: { onNext: () => void }): React.ReactElement {
   )
 }
 
-// ── Step: Headset ─────────────────────────────────────────────
 
 interface StepHeadsetProps {
   brands: string[]
@@ -458,7 +453,6 @@ function StepHeadset({ brands, models, loading, selectedBrand, selectedHeadsetId
   )
 }
 
-// ── Step: Connection (per-headset) ────────────────────────────
 
 /**
  * Human-readable archetype label for the badge next to each connection option.
@@ -559,7 +553,6 @@ function StepConnection({ profile, headsetLabel, selectedConnectionId, onSelect,
   )
 }
 
-// ── Step: PC Type ─────────────────────────────────────────────
 
 function StepPcType({ selected, onSelect, onNext, onBack }: {
   selected: PcType | null
@@ -609,7 +602,6 @@ function StepPcType({ selected, onSelect, onNext, onBack }: {
   )
 }
 
-// ── Step: Primary Use Case ────────────────────────────────────
 
 function StepUseCase({ selected, onSelect, onNext, onBack }: {
   selected: PrimaryUseCase | null
@@ -647,7 +639,6 @@ function StepUseCase({ selected, onSelect, onNext, onBack }: {
   )
 }
 
-// ── Step: Main Complaint ──────────────────────────────────────
 
 function StepMainComplaint({ selected, onSelect, onNext, onBack }: {
   selected: MainComplaint | null
@@ -686,7 +677,6 @@ function StepMainComplaint({ selected, onSelect, onNext, onBack }: {
   )
 }
 
-// ── Step: Skill Level ─────────────────────────────────────────
 
 const SKILL_OPTIONS: Array<{ id: 'beginner' | 'intermediate' | 'advanced'; label: string; emoji: string; description: string }> = [
   { id: 'beginner',     label: 'Beginner',     emoji: '🌱', description: 'Plain-English explanations only. No technical jargon or registry paths. (App opens in Simple Mode)' },
@@ -739,7 +729,6 @@ function StepSkillLevel({ selected, onSelect, onNext, onBack }: {
   )
 }
 
-// ── Step: Done ────────────────────────────────────────────────
 
 function StepDone({ state, onFinish, onBack }: {
   state: WizardState
@@ -806,7 +795,6 @@ function complaintDisplayLabel(c: MainComplaint | null): string {
   }
 }
 
-// ── Shared UI ─────────────────────────────────────────────────
 
 function ConfigRow({ label, value }: { label: string; value: string }): React.ReactElement {
   return (

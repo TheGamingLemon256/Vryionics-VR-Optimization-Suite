@@ -12,7 +12,6 @@ import {
   affinityMaskToDecimal,
 } from '../../data/cpu-database'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Returns true if the model string (lowercased) looks like an AM4 Zen 2/3 processor. */
 function isAm4Model(model: string): boolean {
@@ -36,7 +35,6 @@ function formatCoreRange(range: [number, number]): string {
   return `${range[0]}–${range[1]}`
 }
 
-// ── Rule: AM4 RAM Below Optimal ───────────────────────────────────────────────
 
 const cpuAm4RamSuboptimal: Rule = {
   id: 'cpu-am4-ram-suboptimal',
@@ -86,7 +84,6 @@ const cpuAm4RamSuboptimal: Rule = {
   },
 }
 
-// ── Rule: AM5 RAM Below Sweet Spot ───────────────────────────────────────────
 
 const cpuAm5RamSuboptimal: Rule = {
   id: 'cpu-am5-ram-suboptimal',
@@ -131,7 +128,6 @@ const cpuAm5RamSuboptimal: Rule = {
   },
 }
 
-// ── Rule: AM5 RAM Above Sweet Spot (2:1 UCLK Mode) ───────────────────────────
 
 const cpuAm5RamAboveSweetSpot: Rule = {
   id: 'cpu-am5-ram-above-sweet-spot',
@@ -176,7 +172,6 @@ const cpuAm5RamAboveSweetSpot: Rule = {
   },
 }
 
-// ── Rule: Dual-CCD V-Cache Affinity for VR ────────────────────────────────────
 
 const cpuVcacheAffinityVr: Rule = {
   id: 'cpu-vcache-affinity-vr',
@@ -243,7 +238,6 @@ const cpuVcacheAffinityVr: Rule = {
   },
 }
 
-// ── Rule: Mixed RAM / 4-Stick Configuration ───────────────────────────────────
 
 const cpuMixedRamFourSticks: Rule = {
   id: 'cpu-mixed-ram-four-sticks',
@@ -304,7 +298,6 @@ const cpuMixedRamFourSticks: Rule = {
   },
 }
 
-// ── Rule: Zen 4 Model-Specific VR Configuration Note ─────────────────────────
 
 const cpuZen4ModelSpecificNote: Rule = {
   id: 'cpu-zen4-model-specific-note',
@@ -373,7 +366,6 @@ const cpuZen4ModelSpecificNote: Rule = {
   },
 }
 
-// ── Rule: 7950X3D / 9950X3D VRChat CCD Affinity ──────────────────────────────
 
 const cpu7950x3dVrchatAffinity: Rule = {
   id: 'cpu-7950x3d-vrchat-affinity',
@@ -466,7 +458,6 @@ const cpu7950x3dVrchatAffinity: Rule = {
   },
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
 
 export const cpuSpecificRules: Rule[] = [
   cpuAm4RamSuboptimal,

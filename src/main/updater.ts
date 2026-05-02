@@ -492,7 +492,6 @@ if ($launched) {
     return null
   }
 
-  // ── Private helpers ─────────────────────────────────────────
 
   /**
    * Fetch the latest release. Tries authenticated first (if a PAT is

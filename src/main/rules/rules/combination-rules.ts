@@ -21,9 +21,7 @@ import { dedupeProcesses, formatDedupedNames, summariseProcessList } from '../pr
 
 export const combinationRules: Rule[] = [
 
-  // ═══════════════════════════════════════════════════
   // GPU + CPU COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-gpu-cpu-both-high',
@@ -125,9 +123,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // WIRELESS VR COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-wireless-vr-all-issues',
@@ -259,9 +255,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // USB / WIRED CONNECTION COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-usb-link-bad-controller',
@@ -307,9 +301,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // THERMAL COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-thermal-both-cpu-gpu',
@@ -357,9 +349,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // MEMORY COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-ram-speed-xmp-disabled',
@@ -425,9 +415,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // STREAMING / OBS COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-streaming-plus-gpu-high',
@@ -454,9 +442,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // POWER + OS COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-balanced-power-low-cpu',
@@ -529,9 +515,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // STORAGE COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-vr-on-hdd',
@@ -600,9 +584,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // VR RUNTIME COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-steamvr-ss-too-high',
@@ -678,9 +660,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // INTERNET SPEED + VR CONTEXT
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-slow-internet-cloud-vr',
@@ -724,13 +704,9 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // COMPLETE SYSTEM HEALTH
-  // ═══════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════
   // DEEPER MULTI-FACTOR COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-gpu-thermal-throttle-cascade',
@@ -752,7 +728,7 @@ export const combinationRules: Rule[] = [
         category: 'gpu',
         explanation: {
           simple: `Your GPU is overheating (${gpu.temperature}°C) AND running at high utilization (${gpu.utilization.toFixed(0)}%) AND rendering at above-native resolution (${(ss * 100).toFixed(0)}% supersampling) — this is a reprojection cascade. You'll get severe dropped frames.`,
-          advanced: `GPU temp: ${gpu.temperature}°C | GPU util: ${gpu.utilization.toFixed(1)}% | Supersampling: ${(ss * 100).toFixed(0)}%. This combination triggers a vicious cycle: GPU thermal throttle → clock drops → can't maintain frame rate → reprojection kicks in → reprojection requires additional GPU render passes → more GPU work → more heat → further throttle. Breaking the cycle requires at minimum reducing supersampling to ≤100% immediately, then addressing thermals (fan curve, undervolt) before raising SS again.`
+          advanced: `GPU temp: ${gpu.temperature}°C | GPU util: ${gpu.utilization.toFixed(1)}% | Supersampling: ${(ss * 100).toFixed(0)}%. The feedback loop: GPU throttles → clocks drop → frame rate drops → reprojection kicks in → reprojection adds render passes → more heat → further throttle. Drop supersampling to ≤100% first, then fix thermals (fan curve, undervolt) before raising SS again.`
         }
       }
     }
@@ -921,7 +897,7 @@ export const combinationRules: Rule[] = [
         severity: 'ok',
         category: 'os-config',
         explanation: {
-          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, and the power plan is correct. Any remaining improvements are incremental: supersampling, per-game settings, or hardware upgrades.',
+          simple: 'System looks well-configured for VR. CPU/GPU usage are fine, memory is not pressured, power plan is correct. Anything left to improve is incremental — supersampling, per-game tuning, or hardware.',
           advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
         }
       }

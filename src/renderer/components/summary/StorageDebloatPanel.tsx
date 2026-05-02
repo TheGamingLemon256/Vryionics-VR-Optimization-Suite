@@ -1,9 +1,5 @@
-// VR Optimization Suite — Storage Debloat Panel
-// Lets the user scan for junk files and selectively delete them.
-
 import React, { useState, useCallback, useMemo } from 'react'
 
-// ── Local type definitions ────────────────────────────────────
 // (mirrored from src/main/scanner/modules/storage-debloat.ts — kept local
 //  so the renderer bundle never imports from main)
 
@@ -23,7 +19,6 @@ interface DebloatScanResult {
   scannedAt: number
 }
 
-// ── Helpers ───────────────────────────────────────────────────
 
 function formatSize(mb: number): string {
   if (mb < 1) return '< 1 MB'
@@ -35,7 +30,6 @@ function formatTs(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-// ── Sub-components ────────────────────────────────────────────
 
 interface SafeBadgeProps {
   safe: boolean
@@ -58,7 +52,6 @@ function SafeBadge({ safe }: SafeBadgeProps): React.ReactElement {
   )
 }
 
-// ── Category row ──────────────────────────────────────────────
 
 interface CategoryRowProps {
   cat: DebloatCategory
@@ -159,7 +152,6 @@ function CategoryRow({ cat, checked, onToggle, onOpenFolder }: CategoryRowProps)
   )
 }
 
-// ── Scan idle state ───────────────────────────────────────────
 
 interface ScanIdleProps {
   onScan: () => void
@@ -199,7 +191,6 @@ function ScanIdleState({ onScan, isScanning }: ScanIdleProps): React.ReactElemen
   )
 }
 
-// ── Completion state ──────────────────────────────────────────
 
 interface CompletionProps {
   freedMB: number
@@ -244,7 +235,6 @@ function CompletionState({ freedMB, errors, onRescan }: CompletionProps): React.
   )
 }
 
-// ── Main component ────────────────────────────────────────────
 
 type PanelPhase = 'idle' | 'scanning' | 'results' | 'cleaning' | 'done'
 
@@ -258,7 +248,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
   const [cleanErrors, setCleanErrors] = useState<string[]>([])
   const [cleanProgress, setCleanProgress] = useState<string[]>([])
 
-  // ── Scan ──────────────────────────────────────────────────
 
   const handleScan = useCallback(async () => {
     setPhase('scanning')
@@ -284,7 +273,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
     }
   }, [api])
 
-  // ── Selection helpers ─────────────────────────────────────
 
   const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => {
@@ -308,7 +296,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
-  // ── Computed values ───────────────────────────────────────
 
   const selectedCategories = useMemo(() => {
     if (!scanResult) return []
@@ -320,7 +307,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
     [selectedCategories]
   )
 
-  // ── Clean ─────────────────────────────────────────────────
 
   const handleClean = useCallback(async () => {
     if (selectedCategories.length === 0) return
@@ -340,7 +326,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
     }
   }, [selectedCategories, api])
 
-  // ── Open folder (Downloads) ───────────────────────────────
 
   const handleOpenFolder = useCallback((folderPath: string) => {
     // shell.openPath is exposed via preload as api.shell.openPath in most setups
@@ -351,7 +336,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
     }
   }, [api])
 
-  // ── Rescan ────────────────────────────────────────────────
 
   const handleRescan = useCallback(() => {
     setPhase('idle')
@@ -360,7 +344,6 @@ export default function StorageDebloatPanel(): React.ReactElement {
     setCleanErrors([])
   }, [])
 
-  // ── Render ────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl mx-auto">

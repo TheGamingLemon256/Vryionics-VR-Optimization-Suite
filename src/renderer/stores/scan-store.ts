@@ -1,5 +1,4 @@
-// VR Optimization Suite — Scan Store
-// Manages scan state: progress, results, findings, and health cards.
+// Scan state: progress, results, findings, health cards.
 
 import { create } from 'zustand'
 import type { ScanData, ScanProgress } from '../../main/scanner/types'
@@ -45,7 +44,6 @@ function summariseProcessList(
   return parts.join(', ')
 }
 
-// ── Health Card Builder ──────────────────────────────────────
 
 const CATEGORY_LABELS: Record<RuleCategory, string> = {
   cpu: 'CPU',
@@ -128,7 +126,6 @@ function buildQuickStats(category: RuleCategory, scanData: ScanData): string {
   }
 }
 
-// ── Raw Metrics Builder ──────────────────────────────────────
 
 type RawRow = { label: string; value: string }
 
@@ -350,7 +347,6 @@ function buildHealthCards(findings: Finding[], scanData: ScanData): HealthCardDa
   })
 }
 
-// ── Store ────────────────────────────────────────────────────
 
 /**
  * Snapshot of "what the scan looked like before fixes were applied" — captured

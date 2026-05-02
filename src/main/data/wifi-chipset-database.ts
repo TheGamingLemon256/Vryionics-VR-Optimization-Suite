@@ -54,7 +54,6 @@ export interface WifiChipsetEntry {
   quirks: string[]
 }
 
-// ── Intel Wi-Fi chipsets ─────────────────────────────────────
 
 const intelChipsets: WifiChipsetEntry[] = [
   {
@@ -186,7 +185,6 @@ const intelChipsets: WifiChipsetEntry[] = [
   },
 ]
 
-// ── Qualcomm / Atheros ──────────────────────────────────────
 
 const qualcommChipsets: WifiChipsetEntry[] = [
   {
@@ -251,7 +249,6 @@ const qualcommChipsets: WifiChipsetEntry[] = [
   },
 ]
 
-// ── MediaTek ─────────────────────────────────────────────────
 
 const mediaTekChipsets: WifiChipsetEntry[] = [
   {
@@ -296,7 +293,6 @@ const mediaTekChipsets: WifiChipsetEntry[] = [
   },
 ]
 
-// ── Realtek (most VR-problematic) ───────────────────────────
 
 const realtekChipsets: WifiChipsetEntry[] = [
   {
@@ -385,7 +381,6 @@ const realtekChipsets: WifiChipsetEntry[] = [
   },
 ]
 
-// ── Broadcom ────────────────────────────────────────────────
 
 const broadcomChipsets: WifiChipsetEntry[] = [
   {
@@ -410,7 +405,6 @@ const broadcomChipsets: WifiChipsetEntry[] = [
   },
 ]
 
-// ── Combined Export ──────────────────────────────────────────
 
 export const WIFI_CHIPSET_DATABASE: WifiChipsetEntry[] = [
   ...intelChipsets,

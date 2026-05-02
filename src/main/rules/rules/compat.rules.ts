@@ -7,7 +7,6 @@
 import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 
-// ── Hybrid GPU / Optimus routing (laptops) ────────────────────
 //
 // Laptops with an iGPU + dGPU route VR apps through the iGPU by default on
 // many OEM power configurations. This silently kills VR performance —
@@ -65,7 +64,6 @@ const hybridGpuRule: Rule = {
   },
 }
 
-// ── Core Isolation / HVCI ─────────────────────────────────────
 //
 // Windows "Memory Integrity" (HVCI) refuses to load drivers it can't verify.
 // Older VR drivers (Vive Pro ≤ 2020, WMR generic USB, Lighthouse 1.0) are
@@ -136,7 +134,6 @@ const coreIsolationRule: Rule = {
   },
 }
 
-// ── SteamVR Beta branch ───────────────────────────────────────
 //
 // SteamVR Beta often introduces regressions — users complaining about new
 // crashes / frame-pacing issues should be reminded that Beta is a thing.
@@ -169,7 +166,6 @@ const steamvrBetaRule: Rule = {
   },
 }
 
-// ── Installed but not running VR tools ────────────────────────
 //
 // Gentle hint for users troubleshooting wireless VR: they may already have
 // Virtual Desktop / ALVR installed and forgot about it. Doesn't fire when
@@ -229,7 +225,6 @@ const installedVrToolsRule: Rule = {
   },
 }
 
-// ── Export ────────────────────────────────────────────────────
 
 export const compatRules: Rule[] = [
   hybridGpuRule,

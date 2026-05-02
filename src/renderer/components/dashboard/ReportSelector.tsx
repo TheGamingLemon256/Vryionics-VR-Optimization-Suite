@@ -1,5 +1,3 @@
-// VR Optimization Suite — Report Selector (Dashboard)
-
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 export interface SavedReportMeta {

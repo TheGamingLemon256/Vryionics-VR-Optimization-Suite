@@ -1,6 +1,4 @@
-// VR Optimization Suite — Storage Debloat IPC Handlers
-// Exposes storage:scanDebloat, storage:deleteCategory, storage:deleteCategories
-// to the renderer process.
+// Exposes storage:scanDebloat, storage:deleteCategory, storage:deleteCategories.
 
 import { ipcMain, app } from 'electron'
 import { scanDebloat, deleteDebloatCategory } from '../scanner/modules/storage-debloat'

@@ -13,7 +13,6 @@ import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 import { findCpuEntry, type HybridTopology } from '../../data/cpu-database'
 
-// ── Helpers ─────────────────────────────────────────────────
 
 /**
  * Return the Intel hybrid topology for the detected CPU, or null when the
@@ -26,7 +25,6 @@ function getHybrid(data: ScanData): { hybrid: HybridTopology; model: string; cod
   return { hybrid: entry.hybrid, model: data.cpu.model, codename: entry.codename }
 }
 
-// ── Rule: Intel Hybrid — VR Needs P-Core Affinity ───────────
 //
 // Any 12th-gen+ Intel with E-cores benefits from pinning VR runtime and
 // VR game processes to P-cores. Windows 11 Thread Director handles this
@@ -88,7 +86,6 @@ const intelHybridPCoreAffinity: Rule = {
   },
 }
 
-// ── Rule: Raptor Lake 13/14th-gen Vmin Oxidation Risk ───────
 
 const raptorLakeVminRisk: Rule = {
   id: 'intel-raptor-lake-vmin-microcode',
@@ -151,7 +148,6 @@ const raptorLakeVminRisk: Rule = {
   },
 }
 
-// ── Rule: Arrow Lake — Verify Post-Launch BIOS ──────────────
 
 const arrowLakeBiosBaseline: Rule = {
   id: 'intel-arrow-lake-bios-baseline',
@@ -192,7 +188,6 @@ const arrowLakeBiosBaseline: Rule = {
   },
 }
 
-// ── Rule: Laptop — Thermal / Battery Advisory ───────────────
 //
 // Triggers when a laptop CPU is detected and the user is on battery or
 // the PC type is known to be a laptop (from the wizard).
@@ -254,7 +249,6 @@ const laptopThermalAdvisory: Rule = {
   },
 }
 
-// ── Export ──────────────────────────────────────────────────
 
 export const cpuIntelRules: Rule[] = [
   intelHybridPCoreAffinity,

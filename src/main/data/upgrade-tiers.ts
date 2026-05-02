@@ -2,7 +2,6 @@
 // Baked-in tier tables and upgrade suggestions for the recommendation engine.
 // Prices are approximate USD as of 2024/2025; used-market prices noted explicitly.
 
-// ── Types ─────────────────────────────────────────────────────
 
 export type UpgradeBudget = 'under-100' | '100-250' | '250-500' | '500-1000' | 'any'
 
@@ -29,7 +28,6 @@ export interface UpgradeSuggestion {
   products: UpgradeProduct[]
 }
 
-// ── GPU Tiers ──────────────────────────────────────────────────
 // Covers all mainstream NVIDIA, AMD, and Intel Arc cards relevant for VR.
 // Tier 1 = bare minimum VR capable; Tier 10 = current-gen flagship.
 
@@ -197,7 +195,6 @@ export const GPU_TIERS: ComponentTier[] = [
   }
 ]
 
-// ── CPU Tiers ──────────────────────────────────────────────────
 // V-Cache variants are rated higher within their generation due to
 // dramatically lower VR game CPU overhead (especially VRChat).
 
@@ -342,7 +339,6 @@ export const CPU_TIERS: ComponentTier[] = [
   }
 ]
 
-// ── RAM Tiers ──────────────────────────────────────────────────
 // Derived from totalGB + speed + type in the engine (not name matching).
 // tierLevel here is referenced by the engine's RAM detection logic.
 
@@ -397,7 +393,6 @@ export const RAM_TIERS: ComponentTier[] = [
   }
 ]
 
-// ── Network Tiers ──────────────────────────────────────────────
 // Relevant for wireless VR streaming quality. Wired = best for PCVR server.
 
 export const NETWORK_TIERS: ComponentTier[] = [
@@ -439,12 +434,10 @@ export const NETWORK_TIERS: ComponentTier[] = [
   }
 ]
 
-// ── Upgrade Suggestions ────────────────────────────────────────
 // fromTierLevel → toTierLevel upgrade paths with specific product picks.
 
 export const UPGRADE_SUGGESTIONS: UpgradeSuggestion[] = [
 
-  // ── GPU Upgrades ───────────────────────────────────────────
 
   {
     fromTierLevel: 1,
@@ -679,7 +672,6 @@ export const UPGRADE_SUGGESTIONS: UpgradeSuggestion[] = [
     ]
   },
 
-  // ── CPU Upgrades ───────────────────────────────────────────
 
   {
     fromTierLevel: 1,
@@ -824,7 +816,6 @@ export const UPGRADE_SUGGESTIONS: UpgradeSuggestion[] = [
     ]
   },
 
-  // ── RAM Upgrades ───────────────────────────────────────────
 
   {
     fromTierLevel: 1,
@@ -932,7 +923,6 @@ export const UPGRADE_SUGGESTIONS: UpgradeSuggestion[] = [
     ]
   },
 
-  // ── Storage Upgrades ───────────────────────────────────────
 
   {
     fromTierLevel: 1,
@@ -1001,7 +991,6 @@ export const UPGRADE_SUGGESTIONS: UpgradeSuggestion[] = [
     ]
   },
 
-  // ── Network Upgrades ───────────────────────────────────────
 
   {
     fromTierLevel: 1,

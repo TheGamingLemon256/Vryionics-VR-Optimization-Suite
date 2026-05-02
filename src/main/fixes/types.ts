@@ -1,5 +1,4 @@
-// VR Optimization Suite — Fix Engine Types
-// Every fix follows: Preview -> Backup -> Apply -> Verify -> Log -> Undo
+// Fix lifecycle: Preview -> Backup -> Apply -> Verify -> Log -> Undo.
 
 export interface FixPreview {
   fixId: string

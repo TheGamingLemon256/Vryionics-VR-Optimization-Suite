@@ -14,7 +14,6 @@ import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 import type { HeadsetProfile, KnownIssue, OptimizationTip } from '../../headsets/types'
 
-// ── Helpers ───────────────────────────────────────────────────
 
 function getProfile(data: ScanData): HeadsetProfile | null {
   const p = data.headsetProfile as HeadsetProfile | null | undefined
@@ -75,7 +74,6 @@ function gpuTierScore(gpuName: string): number | null {
   return null
 }
 
-// ── Rules ─────────────────────────────────────────────────────
 
 /**
  * Surface profile-declared knownIssues as findings — one per issue, scoped
@@ -322,7 +320,6 @@ const headsetMinGpuRule: Rule = {
   },
 }
 
-// ── Export ────────────────────────────────────────────────────
 
 export const headsetProfileRules: Rule[] = [
   headsetKnownIssuesRule,

@@ -11,7 +11,6 @@ import AutoFixModal from './AutoFixModal'
 import { OrbitalLoader } from '../shared/OrbitalLoader'
 import { VmscPromoCard } from '../shared/PromoCards'
 
-// ── Step type icon + label ────────────────────────────────────
 
 const STEP_ICONS: Record<NonNullable<ActionStep['type']>, string> = {
   do:      '▸',
@@ -31,7 +30,6 @@ const STEP_COLORS: Record<NonNullable<ActionStep['type']>, string> = {
   info:    'text-gray-400'
 }
 
-// ── Impact badge ─────────────────────────────────────────────
 
 const IMPACT_COLORS: Record<ActionImpact, string> = {
   critical: 'bg-red-500/20 text-red-300 border-red-500/30',
@@ -47,7 +45,6 @@ const IMPACT_LABELS: Record<ActionImpact, string> = {
   low:      'Low Impact'
 }
 
-// ── Effort badge ─────────────────────────────────────────────
 
 const EFFORT_COLORS: Record<ActionEffort, string> = {
   instant:  'bg-green-500/20 text-green-300 border-green-500/30',
@@ -63,7 +60,6 @@ const EFFORT_LABELS: Record<ActionEffort, string> = {
   research: '🔍 Research'
 }
 
-// ── Priority badge colour ─────────────────────────────────────
 
 function priorityColor(n: number): string {
   if (n === 1) return 'bg-red-500 text-white'
@@ -72,7 +68,6 @@ function priorityColor(n: number): string {
   return 'bg-gray-600 text-gray-200'
 }
 
-// ── Fix change (matches engine's FixChange) ───────────────────
 
 interface FixChange {
   target: string
@@ -90,7 +85,6 @@ interface FixPreview {
   error?: string
 }
 
-// ── Per-card fix button state machine ─────────────────────────
 
 type CardFixPhase = 'idle' | 'previewing' | 'confirming' | 'applying' | 'success' | 'failed' | 'undoing' | 'undone'
 
@@ -102,7 +96,6 @@ function isEmptyBloatPreview(preview: FixPreview): boolean {
   )
 }
 
-// ── Single action plan card ───────────────────────────────────
 
 interface ActionCardProps {
   plan: ActionPlan
@@ -411,7 +404,6 @@ function ActionCard({ plan, index }: ActionCardProps): React.ReactElement {
   )
 }
 
-// ── Overview stats row ────────────────────────────────────────
 
 interface OverviewProps {
   plans: ActionPlan[]
@@ -446,7 +438,6 @@ function OverviewBar({ plans }: OverviewProps): React.ReactElement {
   )
 }
 
-// ── Category filter pills ─────────────────────────────────────
 
 interface FilterBarProps {
   categories: string[]
@@ -484,7 +475,6 @@ function FilterBar({ categories, selected, onSelect }: FilterBarProps): React.Re
   )
 }
 
-// ── All clear state ───────────────────────────────────────────
 
 function AllClearPanel(): React.ReactElement {
   return (
@@ -499,7 +489,6 @@ function AllClearPanel(): React.ReactElement {
   )
 }
 
-// ── No scan yet state ─────────────────────────────────────────
 
 function NoScanPanel(): React.ReactElement {
   const startScan = useScanStore((s) => s.startScan)
@@ -533,7 +522,6 @@ function NoScanPanel(): React.ReactElement {
   )
 }
 
-// ── Main component ────────────────────────────────────────────
 
 export default function ExecutiveSummary(): React.ReactElement {
   const actionPlan   = useScanStore((s) => s.actionPlan)

@@ -1,8 +1,5 @@
-// VR Optimization Suite — nvidia-smi Integration
-// See CODING-RULES-DICTIONARY.md Section 11: nvidia-smi Integration
-//
-// IMPORTANT: nvidia-smi only works for NVIDIA GPUs.
-// Detect GPU vendor FIRST — skip all nvidia-smi calls for AMD/Intel.
+// nvidia-smi only works for NVIDIA GPUs. Detect vendor FIRST —
+// skip nvidia-smi entirely for AMD/Intel. See CODING-RULES-DICTIONARY.md §11.
 
 import { execFile, execFileSync } from 'child_process'
 import { existsSync } from 'fs'

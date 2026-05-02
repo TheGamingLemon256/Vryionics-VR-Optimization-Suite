@@ -160,7 +160,6 @@ export const headsetConnectionRules: Rule[] = [
     }
   },
 
-  // ── Overlay / presentation-path conflicts ─────────────────────
   // The conflict data is populated by headset-connection.ts by enumerating
   // known troublemakers (RTSS, MSI Afterburner OSD, Special K, etc). One
   // rule surfaces them all with per-tool guidance instead of a rule-per-tool.
@@ -211,7 +210,6 @@ export const headsetConnectionRules: Rule[] = [
     },
   },
 
-  // ── Companion-app awareness (informational) ───────────────────
   // Not a "problem" — surfacing detected tools so the user knows the app sees
   // them. Silence-on-absence: if none are running, this rule never fires.
   {

@@ -12,7 +12,6 @@
 //
 // No LLM required at runtime — all knowledge is static and curated.
 
-// ── Types ─────────────────────────────────────────────────────
 
 export type GpuVendor = 'nvidia' | 'amd' | 'intel'
 
@@ -77,7 +76,6 @@ export interface GpuDbEntry {
   oneLiner?: string
 }
 
-// ── NVIDIA — Pascal (GTX 10-series, 2016-2017) ──────────────
 
 const nvidiaPascal: GpuDbEntry[] = [
   {
@@ -192,7 +190,6 @@ const nvidiaPascal: GpuDbEntry[] = [
   },
 ]
 
-// ── NVIDIA — Turing (GTX 16xx, RTX 20-series, 2018-2019) ────
 
 const nvidiaTuring: GpuDbEntry[] = [
   {
@@ -284,7 +281,6 @@ const nvidiaTuring: GpuDbEntry[] = [
   },
 ]
 
-// ── NVIDIA — Ampere (RTX 30-series, 2020-2022) ──────────────
 
 const nvidiaAmpere: GpuDbEntry[] = [
   {
@@ -413,7 +409,6 @@ const nvidiaAmpere: GpuDbEntry[] = [
   },
 ]
 
-// ── NVIDIA — Ada Lovelace (RTX 40-series, 2022-2024) ────────
 
 const nvidiaAda: GpuDbEntry[] = [
   {
@@ -542,7 +537,6 @@ const nvidiaAda: GpuDbEntry[] = [
   },
 ]
 
-// ── NVIDIA — Blackwell (RTX 50-series, 2025) ────────────────
 
 const nvidiaBlackwell: GpuDbEntry[] = [
   {
@@ -623,7 +617,6 @@ const nvidiaBlackwell: GpuDbEntry[] = [
   },
 ]
 
-// ── AMD — RDNA2 (RX 6000-series, 2020-2021) ─────────────────
 
 const amdRdna2: GpuDbEntry[] = [
   {
@@ -703,7 +696,6 @@ const amdRdna2: GpuDbEntry[] = [
   },
 ]
 
-// ── AMD — RDNA3 (RX 7000-series, 2022-2024) ─────────────────
 
 const amdRdna3: GpuDbEntry[] = [
   {
@@ -807,7 +799,6 @@ const amdRdna3: GpuDbEntry[] = [
   },
 ]
 
-// ── AMD — RDNA4 (RX 9000-series, 2025) ──────────────────────
 
 const amdRdna4: GpuDbEntry[] = [
   {
@@ -862,7 +853,6 @@ const amdRdna4: GpuDbEntry[] = [
   },
 ]
 
-// ── Intel — Arc (Alchemist, Battlemage) ─────────────────────
 
 const intelArc: GpuDbEntry[] = [
   {
@@ -945,7 +935,6 @@ const intelArc: GpuDbEntry[] = [
   },
 ]
 
-// ── Combined Export ──────────────────────────────────────────
 
 export const GPU_DATABASE: GpuDbEntry[] = [
   ...nvidiaPascal,
@@ -959,7 +948,6 @@ export const GPU_DATABASE: GpuDbEntry[] = [
   ...intelArc,
 ]
 
-// ── Lookup ───────────────────────────────────────────────────
 
 /**
  * Find a GPU database entry by matching the detected GPU name against

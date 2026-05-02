@@ -117,13 +117,11 @@ function createWindow(): void {
   }
 }
 
-// ── IPC Handlers ──────────────────────────────────────────────
 
 function registerBaseHandlers(): void {
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:isDevBuild', () => is.dev)
 
-  // ── Logging bridge (renderer → main log) ──────────────────
   // Lets the renderer forward console output + uncaught errors into the
   // unified log file, so bug reports contain both process sides together.
   ipcMain.handle('log:write', (_e, level: string, namespace: string, message: string) => {
@@ -151,7 +149,6 @@ function registerBaseHandlers(): void {
   })
 }
 
-// ── Auto-Updater ──────────────────────────────────────────────
 
 const updater = new AutoUpdater()
 
@@ -166,7 +163,6 @@ function registerUpdaterHandlers(): void {
   ipcMain.handle('updater:status', () => updater.getStatus())
 }
 
-// ── App Lifecycle ─────────────────────────────────────────────
 
 app.whenReady().then(() => {
   // Install global error handlers + open the log file FIRST so everything

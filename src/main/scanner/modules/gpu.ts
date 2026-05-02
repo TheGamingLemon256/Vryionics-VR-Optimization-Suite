@@ -131,7 +131,6 @@ function detectGpuGeneration(name: string, vendor: string): string | null {
   return null
 }
 
-// ── NVIDIA via nvidia-smi ─────────────────────────────────────
 
 async function getNvidiaDevices(): Promise<Partial<GpuDevice>[]> {
   try {
@@ -189,7 +188,6 @@ async function checkReBar(gpuIndex: number): Promise<boolean> {
   }
 }
 
-// ── AMD/Intel via Windows Performance Counters ────────────────
 
 function sumCounterMatching(samples: Awaited<ReturnType<typeof readCounters>>, instancePattern: RegExp): number {
   if (!samples) return 0
@@ -289,14 +287,12 @@ async function checkAmdSam(): Promise<boolean> {
   return false
 }
 
-// ── Registry / system checks ──────────────────────────────────
 
 function checkHagsEnabled(): boolean {
   const val = readRegistryDword('HKLM', 'SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers', 'HwSchMode')
   return val === 2
 }
 
-// ── Main export ───────────────────────────────────────────────
 
 export async function scanGpu(): Promise<ScanModuleResult<GpuData>> {
   try {

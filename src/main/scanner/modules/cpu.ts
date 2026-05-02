@@ -1,5 +1,4 @@
-// VR Optimization Suite — CPU Scan Module
-// Collects CPU model info, per-core usage, temperature, and V-Cache status.
+// CPU scan: model, per-core usage, temperature, V-Cache.
 
 import os from 'node:os'
 import { readKey, readValue } from '../../utils/registry-read'
@@ -61,6 +60,8 @@ async function getContextSwitches(): Promise<number> {
 function detectVCache(model: string): boolean {
   // V-Cache parts ship under the X3D brand. Without WMI's L3 size we drop the
   // "high-L3 Ryzen" fallback; the X3D string match catches every shipped SKU.
+  // double-check this: the CCD layout for 7950X3D might flip on some BIOSes
+  // (cache CCD on CCD0 vs CCD1) — affinity logic downstream assumes CCD0.
   return model.toLowerCase().includes('x3d')
 }
 

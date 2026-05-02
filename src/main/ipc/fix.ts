@@ -1,5 +1,4 @@
-// VR Optimization Suite — Fix IPC Handlers
-// Exposes fix:preview, fix:apply, fix:undo, fix:getHistory to renderer.
+// fix:preview, fix:apply, fix:undo, fix:getHistory.
 
 import { ipcMain } from 'electron'
 import { previewFix, applyFix, undoFix, getFixHistory, getAllFixIds } from '../fixes/engine'

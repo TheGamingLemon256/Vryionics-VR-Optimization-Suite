@@ -1,5 +1,4 @@
-// VR Optimization Suite — Headset Profile Types
-// Schema for per-headset JSON profiles in src/main/headsets/profiles/
+// Schema for per-headset JSON profiles in src/main/headsets/profiles/.
 
 export type HeadsetType = 'standalone-hybrid' | 'tethered' | 'standalone'
 
@@ -20,7 +19,6 @@ export type PanelType = 'LCD' | 'OLED' | 'Mini-LED' | 'Micro-OLED'
 
 export type Severity = 'critical' | 'warning' | 'info' | 'ok'
 
-// ── Connection Method ────────────────────────────────────────
 
 export interface ConnectionMethod {
   id: string // e.g. "usb-link", "air-link", "displayport"
@@ -42,7 +40,6 @@ export interface ConnectionMethod {
   }
 }
 
-// ── Known Issues & Tips ──────────────────────────────────────
 
 export interface KnownIssue {
   id: string
@@ -62,7 +59,6 @@ export interface OptimizationTip {
   applicableConnections?: string[] // If connection-specific
 }
 
-// ── Full Headset Profile ─────────────────────────────────────
 
 export interface HeadsetProfile {
   id: string // e.g. "meta-quest-3"
@@ -107,7 +103,6 @@ export interface HeadsetProfile {
   }
 }
 
-// ── Summary (for lists / wizard display) ─────────────────────
 
 export interface HeadsetProfileSummary {
   id: string

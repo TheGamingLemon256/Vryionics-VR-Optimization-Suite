@@ -73,7 +73,7 @@ export const cpuRules: Rule[] = [
         severity: 'warning',
         category: 'cpu',
         explanation: {
-          simple: 'One of your CPU cores is running at near 100% while the others are mostly idle. This usually means a single game or VR process is the bottleneck — upgrading to a CPU with faster single-core performance would help more than adding cores.',
+          simple: 'One CPU core is pinned near 100% while the rest are idle — single-thread bottleneck. A faster-per-core CPU helps more here than adding cores.',
           advanced: `Core ${hotCoreIndex} is at ${maxCore.toFixed(1)}% while CPU average is only ${avg.toFixed(1)}%. This indicates a single-threaded bottleneck — likely vrcompositor, vrserver, or the game's main thread. Single-core performance (IPC × clock speed) is the limiting factor here, not total core count.`
         }
       }
@@ -91,7 +91,7 @@ export const cpuRules: Rule[] = [
         severity: 'warning',
         category: 'cpu',
         explanation: {
-          simple: 'Your system is doing an unusual amount of "task switching" between programs. This is like having too many people constantly interrupting each other — it wastes time and can cause VR hiccups. Too many background programs may be the cause.',
+          simple: 'Context-switch rate is unusually high. Threads keep getting preempted, which wastes CPU and can cause VR hiccups. Too many background programs is the usual cause.',
           advanced: `Context switch rate: ${data.cpu.contextSwitchesPerSec.toLocaleString()}/s (warning threshold: 60,000/s). High context switch rates indicate excessive thread contention, often from many background services and applications. Each context switch costs ~1-5µs. At this rate, it represents significant overhead. Close unnecessary background apps and services.`
         }
       }
