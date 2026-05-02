@@ -1,89 +1,135 @@
-// Vryionics VR Optimization Suite — Installed Driver Scanner
+// Vryionics VR Optimization Suite - Installed Driver Scanner
 //
-// Queries Windows PnP for every hardware device in the categories we cover,
-// producing a list of `InstalledDriver` rows the updater then checks against
-// vendor endpoints.
+// Walks HKLM\SYSTEM\CurrentControlSet\Enum\{PCI,USB} to enumerate every
+// hardware device, follows each device's Driver value into
+// Control\Class\<classGUID>\<index>, and reads DriverDate/DriverVersion/
+// ProviderName from there. The updater then checks each row against vendor
+// endpoints.
 //
-// Runs via async `spawn` so the Node event loop keeps pumping while
-// PowerShell enumerates devices — otherwise `spawnSync` would block the
-// main thread for the entire ~5–15 s query and freeze the renderer.
-//
-// The PS script is tuned for speed:
-//   • -PresentOnly filters out ghost devices (halves the enumeration set)
-//   • Get-CimInstance Win32_PnPSignedDriver returns driver metadata (version,
-//     date, manufacturer) in one CIM call — avoiding 3×N Get-PnpDeviceProperty
-//     round-trips that dominate the old implementation's cost.
+// Why registry instead of CIM: Get-CimInstance Win32_PnPSignedDriver pulls
+// the same data, but spawning PowerShell costs ~600 ms cold and ~150 ms
+// warm before the query even starts. reg.exe queries take ~30 ms per key,
+// and we only need a few hundred keys total.
 
-import { spawn } from 'child_process'
+import { readKey, type RegKey } from '../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../utils/registry'
 import { log } from '../logger'
 import type { DriverCategory, DriverVendor, InstalledDriver } from './types'
 
-/**
- * Single-shot CIM query. Pulls every signed driver that Windows tracks in
- * the driver store along with its device metadata. Filters happen in JS
- * afterwards because client-side filtering on a modest (~200 rows) result
- * is faster than per-device PowerShell pipeline round-trips.
- */
-const PS_SCRIPT = `
-$ErrorActionPreference = 'SilentlyContinue'
-$ProgressPreference = 'SilentlyContinue'
+const CLASS_BASE = 'SYSTEM\\CurrentControlSet\\Control\\Class'
 
-# One CIM call returns every driver record the Windows Driver Store tracks.
-# Each record has DeviceName, DriverVersion, DriverDate, Manufacturer,
-# DeviceClass, HardwareID, DeviceID — everything we need, no N-per-device
-# round-trips.
-$drivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -Property DeviceName,DriverVersion,DriverDate,Manufacturer,DeviceClass,DeviceID
+// Restricting enumeration to PCI + USB matches the categories we cover.
+// ACPI / SWD / ROOT mostly host pseudo-devices the previous CIM filter
+// excluded as well, so skipping them keeps parity.
+const ENUM_BUSES = ['PCI', 'USB'] as const
 
-$rows = foreach ($d in $drivers) {
-  if (-not $d.DriverVersion) { continue }
-  if (-not $d.DeviceClass)   { continue }
-  $cls = $d.DeviceClass.ToUpperInvariant()
-  if ($cls -notin @('DISPLAY','USB','MEDIA','NET','HDC','BLUETOOTH','SYSTEM')) { continue }
-  $dateStr = $null
-  if ($d.DriverDate) {
-    try { $dateStr = ([Management.ManagementDateTimeConverter]::ToDateTime($d.DriverDate)).ToString('yyyy-MM-dd') }
-    catch { $dateStr = $null }
-  }
-  [pscustomobject]@{
-    Class = $cls
-    Name  = $d.DeviceName
-    InstanceId = $d.DeviceID
-    Version    = $d.DriverVersion
-    Date       = $dateStr
-    Manufacturer = $d.Manufacturer
+// Mirror of the DeviceClass filter the old PowerShell pipeline applied.
+// Anything outside this set was discarded before reaching the categorize()
+// step, and that behaviour matters: e.g. PRINTER and MOUSE devices have
+// driver metadata too, but we never want them in the updater list.
+const KEPT_CLASSES = new Set([
+  'DISPLAY',
+  'USB',
+  'MEDIA',
+  'NET',
+  'HDC',
+  'BLUETOOTH',
+  'SYSTEM',
+])
+
+interface DeviceRow {
+  className: string
+  name: string
+  instanceId: string
+  manufacturer: string | null
+  driverRel: string | null
+}
+
+interface DriverMeta {
+  version: string | null
+  date: string | null
+  provider: string | null
+}
+
+function readSz(key: RegKey, name: string): string | null {
+  const v = key.values[name]
+  if (!v) return null
+  if (v.type === 'REG_SZ' || v.type === 'REG_EXPAND_SZ') return v.data.trim() || null
+  return null
+}
+
+// DeviceDesc often carries an unresolved "@oem.inf,%key%;Resolved Value"
+// pointer. Windows duplicates the resolved value after the semicolon, so
+// we trust whatever follows the last ';' and fall back to the raw string.
+function resolveDeviceDesc(raw: string | null): string | null {
+  if (!raw) return null
+  const semi = raw.lastIndexOf(';')
+  return semi >= 0 ? raw.slice(semi + 1).trim() : raw.trim()
+}
+
+async function readDeviceRow(busPath: string, family: string, instance: string): Promise<DeviceRow | null> {
+  const path = `HKLM\\${busPath}\\${family}\\${instance}`
+  const key = await readKey(path).catch(() => null)
+  if (!key) return null
+
+  const className = (readSz(key, 'Class') ?? '').toUpperCase()
+  if (!KEPT_CLASSES.has(className)) return null
+
+  const friendly = readSz(key, 'FriendlyName')
+  const desc = resolveDeviceDesc(readSz(key, 'DeviceDesc'))
+  const name = friendly ?? desc
+  if (!name) return null
+
+  return {
+    className,
+    name,
+    instanceId: `${busPath.split('\\').pop()}\\${family}\\${instance}`,
+    manufacturer: readSz(key, 'Mfg') ?? readSz(key, 'Manufacturer'),
+    driverRel: readSz(key, 'Driver'),
   }
 }
 
-$rows | ConvertTo-Json -Compress -Depth 3
-`
-
-interface RawRow {
-  Class: string
-  Name: string
-  InstanceId: string
-  Version: string
-  Date: string | null
-  Manufacturer: string | null
+async function readDriverMeta(driverRel: string): Promise<DriverMeta> {
+  const path = `HKLM\\${CLASS_BASE}\\${driverRel}`
+  const key = await readKey(path).catch(() => null)
+  if (!key) return { version: null, date: null, provider: null }
+  return {
+    version: readSz(key, 'DriverVersion'),
+    date: normalizeDriverDate(readSz(key, 'DriverDate')),
+    provider: readSz(key, 'ProviderName'),
+  }
 }
 
-/** Best-effort classification of a driver row into our category taxonomy. */
-function categorize(row: RawRow): DriverCategory | null {
-  const name = (row.Name ?? '').toLowerCase()
-  const cls = (row.Class ?? '').toLowerCase()
+// DriverDate in the registry is stored as REG_SZ "M-D-YYYY" (en-US, with
+// no zero padding). Convert to ISO yyyy-MM-dd for parity with the old
+// PowerShell output. Anything unparseable becomes null rather than a
+// fabricated date.
+function normalizeDriverDate(raw: string | null): string | null {
+  if (!raw) return null
+  const m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/)
+  if (!m) return null
+  const month = m[1].padStart(2, '0')
+  const day = m[2].padStart(2, '0')
+  return `${m[3]}-${month}-${day}`
+}
+
+function categorize(row: DeviceRow): DriverCategory | null {
+  const name = row.name.toLowerCase()
+  const cls = row.className.toLowerCase()
 
   if (cls === 'display') {
     if (/microsoft basic|remote desktop|virtual/.test(name)) return null
     return 'gpu'
   }
-  if (cls === 'usb' && /controller|xhci|ehci|usb 3/i.test(row.Name)) return 'usb'
-  if (cls === 'media' && /audio|realtek|intel.*smart.*sound|high definition/i.test(row.Name)) return 'audio'
+  if (cls === 'usb' && /controller|xhci|ehci|usb 3/i.test(row.name)) return 'usb'
+  if (cls === 'media' && /audio|realtek|intel.*smart.*sound|high definition/i.test(row.name)) return 'audio'
   if (cls === 'net') {
-    if (/wi-?fi|wireless|wlan|ax\d{3}|be\d{3}|8265|9260|ac\s*\d/i.test(row.Name)) return 'wifi'
-    if (/bluetooth/i.test(row.Name)) return 'bluetooth'
-    if (/ethernet|gigabit|realtek\s*pcie\s*gbe|i2\d{2}|i3\d{2}/i.test(row.Name)) return 'ethernet'
+    if (/wi-?fi|wireless|wlan|ax\d{3}|be\d{3}|8265|9260|ac\s*\d/i.test(row.name)) return 'wifi'
+    if (/bluetooth/i.test(row.name)) return 'bluetooth'
+    if (/ethernet|gigabit|realtek\s*pcie\s*gbe|i2\d{2}|i3\d{2}/i.test(row.name)) return 'ethernet'
     return 'ethernet'
   }
-  if (cls === 'system' && /chipset|sm\s*bus|lpc|pci\s*express\s*root|platform/i.test(row.Name)) return 'chipset'
+  if (cls === 'system' && /chipset|sm\s*bus|lpc|pci\s*express\s*root|platform/i.test(row.name)) return 'chipset'
   if (cls === 'bluetooth') return 'bluetooth'
   return null
 }
@@ -107,85 +153,58 @@ function makeId(cat: DriverCategory, vendor: DriverVendor, name: string, instanc
   return `${slug}-${suffix}`.substring(0, 96)
 }
 
-/**
- * Run PowerShell asynchronously with an overall timeout. Returns stdout on
- * success or throws on error/timeout. Crucially uses `spawn` (not
- * `spawnSync`) so the Node event loop keeps processing IPC while the
- * child runs — the renderer UI stays responsive.
- */
-function runPsAsync(script: string, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true },
-    )
-    let stdout = ''
-    let stderr = ''
-    child.stdout.setEncoding('utf-8')
-    child.stderr.setEncoding('utf-8')
-    child.stdout.on('data', (c: string) => { stdout += c })
-    child.stderr.on('data', (c: string) => { stderr += c })
-
-    const timer = setTimeout(() => {
-      try { child.kill() } catch { /* ignore */ }
-      reject(new Error(`PowerShell exceeded ${timeoutMs / 1000}s timeout`))
-    }, timeoutMs)
-
-    child.on('error', (err) => { clearTimeout(timer); reject(err) })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) {
-        return reject(new Error(`PowerShell exited ${code}: ${stderr.substring(0, 300)}`))
-      }
-      resolve(stdout)
-    })
-  })
-}
-
-/**
- * Scan Windows for installed drivers in our category set.
- * Async — does not block the Node event loop. The renderer stays responsive
- * while PowerShell enumerates devices in the background.
- */
 export async function scanInstalledDrivers(): Promise<InstalledDriver[]> {
   const startedAt = Date.now()
-  log.info('drivers:scanner', 'Scanning installed drivers (async PnP)...')
+  log.info('drivers:scanner', 'Scanning installed drivers via registry...')
 
-  let stdout: string
-  try {
-    stdout = await runPsAsync(PS_SCRIPT, 30_000)
-  } catch (err) {
-    log.warn('drivers:scanner', 'PnP scan failed:', err as Error)
-    return []
-  }
-
-  let raw: RawRow[] = []
-  try {
-    const text = stdout.trim() || '[]'
-    const parsed = JSON.parse(text)
-    raw = Array.isArray(parsed) ? parsed : [parsed]
-  } catch (err) {
-    log.warn('drivers:scanner', `PnP JSON parse failed: ${(err as Error).message}`)
-    return []
+  const rows: DeviceRow[] = []
+  for (const bus of ENUM_BUSES) {
+    const busPath = `SYSTEM\\CurrentControlSet\\Enum\\${bus}`
+    const families = enumerateRegistrySubkeys('HKLM', busPath)
+    for (const family of families) {
+      const instances = enumerateRegistrySubkeys('HKLM', `${busPath}\\${family}`)
+      for (const instance of instances) {
+        const row = await readDeviceRow(busPath, family, instance)
+        if (row) rows.push(row)
+      }
+    }
   }
 
   const drivers: InstalledDriver[] = []
   const seenIds = new Set<string>()
-  for (const row of raw) {
+
+  // Cache per driverRel: many devices share the same class subkey when a
+  // single driver package binds multiple devices (e.g. all USB hubs under
+  // one xHCI driver), and we'd otherwise re-read the same key 5–10 times.
+  const metaCache = new Map<string, DriverMeta>()
+
+  for (const row of rows) {
     const category = categorize(row)
     if (!category) continue
-    const vendor = vendorFromManufacturer(row.Manufacturer, row.Name)
-    const id = makeId(category, vendor, row.Name, row.InstanceId)
+    if (!row.driverRel) continue
+
+    let meta = metaCache.get(row.driverRel)
+    if (!meta) {
+      meta = await readDriverMeta(row.driverRel)
+      metaCache.set(row.driverRel, meta)
+    }
+    if (!meta.version) continue
+
+    // ProviderName is more authoritative than the device's Mfg key for
+    // vendor classification: Mfg often reads "(Standard system devices)"
+    // even when ProviderName is "Intel Corporation".
+    const vendor = vendorFromManufacturer(meta.provider ?? row.manufacturer, row.name)
+    const id = makeId(category, vendor, row.name, row.instanceId)
     if (seenIds.has(id)) continue
     seenIds.add(id)
+
     drivers.push({
       id,
       vendor,
       category,
-      hardwareName: row.Name,
-      installedVersion: String(row.Version),
-      installedDate: row.Date ?? undefined,
+      hardwareName: row.name,
+      installedVersion: meta.version,
+      installedDate: meta.date ?? undefined,
     })
   }
 
