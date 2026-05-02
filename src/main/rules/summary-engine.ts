@@ -604,35 +604,6 @@ function buildSteamVrSettingsPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildDefenderExclusionsPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig || !data.vrRuntime) return null
-  if (!data.vrRuntime.steamvrInstalled) return null
-  const exclArr = Array.isArray(data.osConfig.defenderExclusions) ? data.osConfig.defenderExclusions : []
-  const hasExclusions = exclArr.some(
-    (e) => String(e).toLowerCase().includes('steam') || String(e).toLowerCase().includes('vr')
-  )
-  if (hasExclusions) return null
-  return {
-    id: 'action-defender-exclusions',
-    priority: 8,
-    category: 'OS Config',
-    title: 'Add Steam and SteamVR to Defender Exclusions',
-    summary: 'Windows Defender scans game files during VR, causing shader compilation stalls and micro-freezes.',
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Eliminates "first frame" stutters when loading new areas or shaders.',
-    fixId: 'fix-defender-exclusions',
-    steps: [
-      step('Windows Security → Virus & threat protection → Manage settings → Exclusions → Add or remove exclusions', 'open'),
-      step('Add folder exclusion: C:\\Program Files (x86)\\Steam (or your Steam install path)'),
-      step('Add folder exclusion: %APPDATA%\\..\\Local\\Temp (shader compilation temp files)'),
-      step('Add folder exclusion: wherever your VR games are installed'),
-      step('This can be applied automatically via the "Apply Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['os-defender-no-steam-exclusion']
-  }
-}
-
 function buildDisplayRefreshRatePlan(data: ScanData): ActionPlan | null {
   if (!data.display) return null
   const hz = data.display.primaryRefreshRateHz
@@ -1086,29 +1057,6 @@ function buildGpuInterruptPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildVrProcessPriorityPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.vrProcessPrioritySet) return null
-  return {
-    id: 'action-vr-process-priority',
-    priority: 9,
-    category: 'CPU',
-    title: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-    summary: 'VR runtime processes launch at normal CPU priority. Using Windows Image File Execution Options (IFEO) PerfOptions ensures vrserver, vrcompositor, and other VR processes always start at High priority — persistently, without any manual action each session.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Guarantees VR runtime processes always win CPU scheduling against lower-priority tasks, reducing frame timing jitter.',
-    fixId: 'fix-vr-process-priority',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets CpuPriorityClass = 3 (High) in IFEO for: vrserver.exe, vrcompositor.exe, vrclient.exe, VRChat.exe, OVRServer_x64.exe', 'setting'),
-      step('IFEO PerfOptions applies at process creation — before the process even starts running', 'info'),
-      step('No reboot required — takes effect the next time each VR process is launched')
-    ],
-    relatedRuleIds: ['vr-process-priority-default']
-  }
-}
-
 function buildWuRebootPlan(data: ScanData): ActionPlan | null {
   if (!data.osConfig?.wuAutoRebootEnabled) return null
   return {
@@ -1129,28 +1077,6 @@ function buildWuRebootPlan(data: ScanData): ActionPlan | null {
       step('Windows will still install updates on the next manual restart — updates are not blocked, just not forced', 'info')
     ],
     relatedRuleIds: ['wu-auto-reboot-risk']
-  }
-}
-
-function buildDeliveryOptimizationPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.deliveryOptimizationP2pEnabled) return null
-  return {
-    id: 'action-delivery-optimization',
-    priority: 9,
-    category: 'Network',
-    title: 'Disable Windows Update P2P Seeding to Protect VR Bandwidth',
-    summary: 'Windows Delivery Optimization uploads Windows updates to other PCs using your internet connection (P2P seeding). This consumes upstream bandwidth and generates background disk I/O during VR gameplay.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Stops background P2P upload activity, freeing upstream bandwidth for wireless VR streaming.',
-    fixId: 'fix-disable-delivery-optimization',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization\\DODownloadMode = 0 (HTTP only, no P2P)', 'setting'),
-      step('No reboot required — takes effect immediately for new Delivery Optimization sessions'),
-      step('Windows updates will still download normally via Microsoft servers — only P2P sharing is disabled', 'info')
-    ],
-    relatedRuleIds: ['delivery-optimization-p2p-active']
   }
 }
 
@@ -1690,7 +1616,6 @@ export function buildActionPlan(
   add(buildWifiPowerSavingPlan(scanData))
   add(buildWifi6ePlan(scanData))
   add(buildXmpPlan(scanData))
-  add(buildDefenderExclusionsPlan(scanData))
   add(buildXboxDvrPlan(scanData))
   add(buildStartupBloatPlan(scanData))
   add(buildUsbSuspendPlan(scanData))
@@ -1700,9 +1625,7 @@ export function buildActionPlan(
   // workloads in practice.
   add(buildNaglePlan(scanData))
   add(buildGpuInterruptPlan(scanData))
-  add(buildVrProcessPriorityPlan(scanData))
   add(buildWuRebootPlan(scanData))
-  add(buildDeliveryOptimizationPlan(scanData))
   add(buildTimerResolutionPlan(scanData))
   add(buildGpuTdrPlan(scanData))
   add(buildLaptopBatteryPlan(scanData))

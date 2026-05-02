@@ -66,29 +66,6 @@ export const osConfigRules: Rule[] = [
     }
   },
   {
-    id: 'defender-no-vr-exclusions',
-    category: 'os-config',
-    name: 'No VR Folders in Defender Exclusions',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      // Defensive: tolerate old scan data where the field is a string or undefined
-      const raw = data.osConfig.defenderExclusions
-      const exclusions = Array.isArray(raw) ? raw.map((e) => String(e).toLowerCase()) : []
-      const hasVrExclusion =
-        exclusions.some((e) => e.includes('steamvr') || e.includes('vrchat') || e.includes('steam\\steamapps'))
-      if (hasVrExclusion) return null
-      return {
-        ruleId: 'defender-no-vr-exclusions',
-        severity: 'info',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows Defender is scanning your VR game files in real time, which can cause brief freezes when loading new areas or assets in VR. Adding your Steam and VRChat folders to Defender\'s exclusion list can reduce these hitches.',
-          advanced: `No VR-related paths found in Windows Defender exclusions. Real-time protection scanning can cause 2-50ms hitches when VRChat loads avatar bundles or SteamVR loads shader data. Add to exclusions via Get-MpPreference/Set-MpPreference: C:\\Program Files (x86)\\Steam\\steamapps, %AppData%\\..\\LocalLow\\VRChat. Note: creates a security tradeoff — only do this if you trust your VR content sources.`
-        }
-      }
-    }
-  },
-  {
     id: 'windows-build-old',
     category: 'os-config',
     name: 'Outdated Windows Version',
@@ -316,25 +293,6 @@ export const osConfigRules: Rule[] = [
     }
   },
   {
-    id: 'vr-process-priority-default',
-    category: 'os-config',
-    name: 'VR Process CPU Priority Not Elevated at Launch',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      if (data.osConfig.vrProcessPrioritySet) return null
-      return {
-        ruleId: 'vr-process-priority-default',
-        severity: 'info',
-        category: 'os-config',
-        explanation: {
-          simple: 'VR runtime processes (vrserver, vrcompositor, OVRServer) launch at normal CPU priority. Using Windows Image File Execution Options (IFEO) to set them to High priority ensures they get scheduled before lower-priority tasks — without any manual intervention each session.',
-          advanced: 'IFEO PerfOptions\\CpuPriorityClass = 3 (High priority class) in HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\{exe} forces the process to start at High priority at the kernel scheduler level — before the process even begins executing. This is more reliable than task-based priority boosting (which applies after startup) and persists across reboots. Targets: vrserver.exe, vrcompositor.exe, vrclient.exe, VRChat.exe, OVRServer_x64.exe.'
-        },
-        fixId: 'fix-vr-process-priority'
-      }
-    }
-  },
-  {
     id: 'wu-auto-reboot-risk',
     category: 'os-config',
     name: 'Windows Update Auto-Restart Active During VR',
@@ -371,25 +329,6 @@ export const osConfigRules: Rule[] = [
           advanced: `Windows 11 22H2+ introduced stricter EcoQoS (Quality of Service) enforcement in non-High-Performance power plans. The OS uses "Efficient QoS" hints to throttle background processes via PROCESS_POWER_THROTTLING_EXECUTION_SPEED. While VR runtimes attempt to opt out, this interacts with the scheduler in ways that can degrade frame timing. High Performance power plan disables EcoQoS globally. Current plan: "${data.osConfig.powerPlan}".`
         },
         fixId: 'fix-power-plan'
-      }
-    }
-  },
-  {
-    id: 'delivery-optimization-p2p-active',
-    category: 'os-config',
-    name: 'Windows Delivery Optimization P2P Seeding Active',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig) return null
-      if (!data.osConfig.deliveryOptimizationP2pEnabled) return null
-      return {
-        ruleId: 'delivery-optimization-p2p-active',
-        severity: 'info',
-        category: 'os-config',
-        explanation: {
-          simple: 'Windows Delivery Optimization is using your internet connection to upload Windows updates to other PCs (peer-to-peer seeding). This consumes upstream bandwidth and CPU during VR gameplay. Setting download mode to HTTP-only stops the P2P upload activity.',
-          advanced: 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization\\DODownloadMode is absent (default) or set to 1 (LAN peers), 2 (group peers), or 3 (internet peers). These modes enable peer-to-peer upload/download of Windows update content, consuming bandwidth and generating background network and disk I/O during VR sessions. Setting DODownloadMode = 0 (HTTP only, no peering) disables all P2P activity while still allowing updates via Microsoft servers. No reboot required.'
-        },
-        fixId: 'fix-disable-delivery-optimization'
       }
     }
   }

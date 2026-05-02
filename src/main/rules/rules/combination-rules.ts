@@ -923,7 +923,7 @@ export const combinationRules: Rule[] = [
         severity: 'ok',
         category: 'os-config',
         explanation: {
-          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, and the power plan is correct. Any remaining improvements are incremental — supersampling, per-game settings, or hardware upgrades.',
+          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, and the power plan is correct. Any remaining improvements are incremental: supersampling, per-game settings, or hardware upgrades.',
           advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
         }
       }
