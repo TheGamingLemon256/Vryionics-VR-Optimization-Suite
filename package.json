@@ -1,6 +1,6 @@
 {
   "name": "vryionics-vr-optimization-suite",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Vryionics VR Optimization Suite — Diagnose, explain, and fix VR performance bottlenecks",
   "author": {
     "name": "Vryionics",
