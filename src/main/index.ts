@@ -12,7 +12,6 @@ import { registerReportsHandlers } from './ipc/reports'
 import { registerMetricsHandlers } from './ipc/metrics'
 import { registerSupportHandlers } from './ipc/support'
 import { stopMonitoring, restore as restoreOptimizer } from './live-optimizer/optimizer'
-import { recoverStoppedServices } from './live-optimizer/service-recovery'
 import { AutoUpdater } from './updater'
 import { log, installGlobalErrorHandlers, logFromRenderer, getCurrentLogFile, getLogDir } from './logger'
 import { driverUpdater } from './drivers/updater'
@@ -176,12 +175,10 @@ app.whenReady().then(() => {
   log.info('app', `Vryionics VR Optimization Suite v${app.getVersion()} starting`)
   log.info('app', `Platform: ${process.platform} ${process.arch} | Electron: ${process.versions.electron} | Node: ${process.versions.node}`)
 
-  // CRITICAL safety net: if the previous session ended without a clean
-  // restore (crash, force-quit, OS shutdown), Live Optimizer may have left
-  // services like Audio / Search / Print Spooler stopped, leaving the
-  // user's desktop in a broken state. Reconcile pending services BEFORE
-  // anything else starts.
-  recoverStoppedServices().catch((err) => log.warn('app', 'Service recovery threw:', err as Error))
+  // The new optimizer never stops Windows services, so the v0.2.8
+  // service-recovery shim is no longer needed. Crash recovery now lives in
+  // optimizer.start() and only restores priorities, which is bounded and
+  // self-contained.
 
   electronApp.setAppUserModelId('com.vryionics.vr-optimization-suite')
 
