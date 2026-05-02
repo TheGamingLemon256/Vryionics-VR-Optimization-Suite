@@ -176,7 +176,7 @@ Instead, hardware identification moves to direct registry reads via `reg query`,
 - PCI device enumeration (GPU, network, storage controllers): `HKLM\SYSTEM\CurrentControlSet\Enum\PCI\*`.
 - USB device enumeration (headsets): `HKLM\SYSTEM\CurrentControlSet\Enum\USB\*`.
 - OS build info: `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
-- Display adapter VRAM: `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\NNNN` (the GUID is the standard Display class; `NNNN` is the per-adapter index). Read `HardwareInformation.qwMemorySize` as `REG_BINARY` little-endian QWORD and parse it explicitly. Do NOT use `MemorySize` (legacy DWORD, caps at 4 GB and silently underreports any modern GPU). If the QWORD value is missing on a given adapter, fall back to a one-shot DXGI call (a tiny helper that opens DXGI factory, enumerates adapters, reads `DXGI_ADAPTER_DESC.DedicatedVideoMemory`); this is the same path Task Manager uses and works on every supported Windows version.
+- Display adapter VRAM: `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\NNNN` (the GUID is the standard Display class; `NNNN` is the per-adapter index). Read `HardwareInformation.qwMemorySize` as `REG_BINARY` little-endian QWORD and parse it explicitly. Do NOT use `MemorySize` (legacy DWORD, caps at 4 GB and silently underreports any modern GPU). If the QWORD value is missing on a given adapter, the scanner reports VRAM as `unknown`. A DXGI fallback was considered but isn't realizable under the current constraint stack (no native addon, no PowerShell, no `wmic`); the QWORD covers the vast majority of supported GPUs, and reporting "unknown" is honest behavior for the rare miss.
 
 A small wrapper module (`src/main/utils/registry-read.ts`) handles `reg query` calls with parameterized arguments and parses the output into structured data. The module is read-only; nothing in the new posture writes to the registry. Recursive enumeration under `Enum\PCI` is bounded to a single level deep at a time to avoid `reg query` performance issues on machines with many devices.
 
@@ -215,9 +215,11 @@ Until either is available, all releases ship unsigned with prominent verificatio
 
 The previous launch option was hardcoded as `cmd /c start /affinity FFFF /high "" %command%`. The mask `FFFF` pins to logical processors 0 through 15. This is wrong for most non-flagship X3D parts (anything with fewer than 16 logical processors), and wrong for dual-CCD X3D parts where the V-cache CCD is not always processors 0 through 7. (The 9950X3D is 16C/32T and would technically benefit from `FFFF` for raw scheduling, but even there the V-cache CCD is the smaller subset and the affinity mask should reflect that.)
 
-The fix uses VOS's existing CPU database, which already encodes per-model topology (V-cache CCD location, total core count, hybrid CPU layout). The launch-option writer reads the detected CPU model, looks up its topology, computes the appropriate hex affinity mask, and writes the corresponding string. For example, a 7800X3D writes `/affinity FF` (cores 0 through 7); a 7950X3D writes the mask matching its V-cache CCD; a non-X3D AMD CPU does not get the affinity portion at all (only the `/high` priority).
+The fix uses VOS's existing CPU database. The launch-option writer reads the detected CPU model, looks up its `vcacheAffinityMask`, and constructs the launch-option string accordingly.
 
-The existing CPU database needs entries for the affinity mask per model. Adding those is part of the v0.2.9 work.
+For v0.2.9, only single-CCD X3D parts get the `/affinity` portion (5800X3D, 7800X3D, 9800X3D), where the mask is unambiguously `FF`. Dual-CCD X3D parts (7900X3D, 7950X3D, 9950X3D) are deferred to v0.3 because the V-cache CCD's processor index varies by BIOS; shipping the wrong mask silently de-optimizes the user, which is exactly the confidently-wrong AI-tweak failure mode the public audit called out. Until runtime CCD detection lands in v0.3, dual-CCD X3D users get `cmd /c start /high "" %command%` (priority bump only, no affinity). Non-X3D AMD CPUs get the same `/high`-only string.
+
+The CPU database needs the `vcacheAffinityMask` field added to the three single-CCD X3D entries; everywhere else the field is absent or null and the builder omits the affinity portion.
 
 ### Implementation notes
 

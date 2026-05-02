@@ -184,7 +184,7 @@ The two cards differ in shader count and VRAM. Replace the single row with two r
 
 - [ ] **2.3: Locate the device-ID parser that decides which DB row matches.**
 
-Likely in the GPU scanner module or a helper called from it. The parser currently picks the first 1060 row. Update it to disambiguate by VRAM (read VRAM from registry, see Chunk 5 for the registry-read util that lands later; for now, use whatever VRAM source the existing module uses).
+Likely in the GPU scanner module or a helper called from it. The parser currently picks the first 1060 row. Update it to disambiguate by VRAM, reading VRAM from whatever source the existing module uses (WMI). This disambiguation is intentionally written against the WMI shape because the registry-read util doesn't exist yet; in Chunk 6.4 the entire GPU scanner gets re-pointed at registry-read and this disambiguation is rewritten as part of that migration. The fix lands in two stages by design.
 
 - [ ] **2.4: Manual smoke-test on whatever 1060 you have access to (or skip if no hardware).**
 
@@ -326,10 +326,10 @@ This is a stopgap. The real fix is the WMI-to-registry rewrite plus full optimiz
 git add src/main/live-optimizer/optimizer.ts
 git commit -m "live optimizer: interim polling-interval bump to 5s
 
-Reported by @aldrichhecc and @BlakeVRCC. The full rewrite in v0.3 will
-remove PowerShell entirely. This stopgap raises the polling interval
-and short-circuits WMI calls when no VR process is detected, which
-fixes the 100% idle CPU symptom."
+Reported by @aldrichhecc and @BlakeVRCC. The full rewrite later in
+v0.2.9 (Chunk 9) removes PowerShell entirely. This stopgap raises
+the polling interval and short-circuits WMI calls when no VR process
+is detected, which fixes the 100% idle CPU symptom in the meantime."
 ```
 
 ---
@@ -654,16 +654,13 @@ pinned to /reg:64, no shell interpolation. Handles REG_SZ, DWORD,
 QWORD, BINARY, MULTI_SZ, EXPAND_SZ. Returns null on not-found."
 ```
 
-- [ ] **5.6: Implement the DXGI VRAM fallback.**
+- [ ] **5.6: Implement the VRAM read helper (registry QWORD only).**
 
-Create `src/main/utils/dxgi-vram.ts`. The simplest path: use `child_process.execFile` to call PowerShell's... no, we're removing PowerShell. Alternative: use `wmic path Win32_VideoController get AdapterRAM`... no, wmic is gone.
+Create `src/main/utils/vram.ts`. The fallback path is "report unknown."
 
-Realistic options for v0.2.9:
-- Read `HardwareInformation.qwMemorySize` (the QWORD) from the registry first. This works on Win10 and most Win11 builds.
-- If the QWORD is missing OR reads as zero, log a warning and report "unknown" rather than the wrong number.
-- A genuine DXGI call would need a small native helper (~30 lines of C++ and an N-API binding), which we explicitly excluded from v0.2.9 scope. Defer the DXGI fallback to v0.3 if registry-only proves insufficient on real hardware.
+The constraint stack rules out everything else: a real DXGI call would need a native addon (excluded), `wmic path Win32_VideoController get AdapterRAM` doesn't work on Win11 24H2+, and `Get-CimInstance` would re-introduce PowerShell. The user's combined "no native + no PS + no wmic" constraints mean the only available source is the registry QWORD. The spec previously mentioned DXGI as a fallback; that's not realizable under these constraints, and the spec gets updated to match before this lands.
 
-Update the spec? No, the spec mentions DXGI as a fallback but doesn't make it v0.2.9-blocking. Be honest about the cut-down: v0.2.9 reads QWORD only; if it fails, "VRAM: unknown" rather than wrong.
+For the rare case where the QWORD is missing (very old drivers or unusual configs), the helper logs a warning and the scanner reports VRAM as `unknown`. Better than reporting the wrong number.
 
 - [ ] **5.7: Implement registry-only VRAM read.**
 
@@ -699,9 +696,11 @@ For v0.2.9, integration testing is fine here. Skip the unit test rather than fig
 git add src/main/utils/vram.ts
 git commit -m "add VRAM read helper (registry QWORD parse)
 
-DXGI fallback deferred to v0.3 since it would need a native helper
-(out of v0.2.9 scope). When the QWORD is missing the helper returns
-null and the caller reports VRAM as unknown."
+DXGI fallback isn't possible under the current constraint stack
+(no native addon, no PowerShell, no wmic), so the helper returns
+null when the QWORD is missing and the caller reports VRAM as
+unknown. The vast majority of GPUs report the QWORD correctly;
+the unknown case is rare on supported Windows versions."
 ```
 
 ---
@@ -1014,9 +1013,11 @@ import { app } from 'electron'
 import { NEVER_TOUCH_PROCESSES } from './never-touch'
 import { logger } from '../logger'
 
+// extraResources lands files at process.resourcesPath/resources/ in
+// production. In dev we read from the repo's resources/ directly.
 const RESOURCE_DIR = process.env.NODE_ENV === 'development'
   ? join(process.cwd(), 'resources')
-  : join(process.resourcesPath, 'app.asar.unpacked', 'resources')
+  : join(process.resourcesPath, 'resources')
 
 async function readJsonList(filename: string): Promise<string[]> {
   const path = join(RESOURCE_DIR, filename)
@@ -1135,12 +1136,12 @@ export async function clear(): Promise<void> {
 export type { StateEntry }
 ```
 
-Lowered-priority classes (the ones eligible for crash recovery):
+Lowered-priority classes (the ones eligible for crash recovery). The spec calls these "BELOW_NORMAL" and "IDLE" using Windows priority-class names; Node's `os.constants.priority` exposes them as `PRIORITY_BELOW_NORMAL` and `PRIORITY_LOW` (Node maps `PRIORITY_LOW` to Windows' `IDLE_PRIORITY_CLASS`). Same values, different naming.
 
 ```ts
 export const LOWERED_PRIORITY_CLASSES = new Set([
   os.constants.priority.PRIORITY_BELOW_NORMAL,
-  os.constants.priority.PRIORITY_LOW,
+  os.constants.priority.PRIORITY_LOW, // maps to Windows IDLE_PRIORITY_CLASS
 ])
 ```
 
@@ -1397,16 +1398,17 @@ local privilege escalation requires elevated context."
 
 - [ ] **12.1: Audit the existing CPU database for X3D entries.**
 
-Find the X3D rows. For each, add a `vcacheAffinityMask` field. Examples:
+For v0.2.9, ship the launch option for SINGLE-CCD X3D parts only. The mask is unambiguously `FF` (8 cores) on these:
 
-- 5800X3D: `'FF'` (8 cores)
-- 7800X3D: `'FF'` (8 cores)
-- 7900X3D: V-cache CCD only (typically cores 0–5, mask `'3F'`)
-- 7950X3D: V-cache CCD only (typically cores 0–7, mask `'FF'`)
-- 9800X3D: `'FF'` (8 cores)
-- 9950X3D: `'FF'` (V-cache CCD)
+- 5800X3D
+- 7800X3D
+- 9800X3D
 
-(Verify against AMD's published topology before shipping; the masks above are best-guess and the implementer should confirm.)
+Dual-CCD X3D parts (7900X3D, 7950X3D, 9950X3D) are deferred to v0.3. The V-cache CCD's processor index isn't fixed across BIOSes on these chips; getting the mask wrong silently de-optimizes the user's setup, which is exactly the kind of confidently-wrong-AI-tweak the public audit called out. Real runtime CCD detection lands in v0.3.
+
+For dual-CCD X3D parts in v0.2.9, the launch option falls back to `cmd /c start /high "" %command%` with no `/affinity` portion. The user still gets the priority bump; they just don't get the CCD pinning until VOS can do it correctly.
+
+Add `vcacheAffinityMask: 'FF'` to the three single-CCD X3D entries. Leave dual-CCD entries with `vcacheAffinityMask: null` (or no field at all) so the launch-option builder knows to omit the affinity portion.
 
 - [ ] **12.2: Write the failing test.**
 
@@ -1423,9 +1425,10 @@ describe('buildLaunchOption', () => {
     )
   })
 
-  it('emits affinity for 7950X3D V-cache CCD', () => {
+  it('omits affinity for dual-CCD X3D in v0.2.9', () => {
+    // Dual-CCD V-cache CCD detection is deferred to v0.3.
     expect(buildLaunchOption({ model: 'AMD Ryzen 9 7950X3D' })).toBe(
-      'cmd /c start /affinity FF /high "" %command%'
+      'cmd /c start /high "" %command%'
     )
   })
 
