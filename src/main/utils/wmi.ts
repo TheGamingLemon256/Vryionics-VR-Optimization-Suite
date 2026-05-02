@@ -56,6 +56,7 @@ export interface WmiRamInfo {
   SMBIOSMemoryType: number
   ConfiguredClockSpeed: number
   Manufacturer: string
+  DeviceLocator: string
 }
 
 export interface WmiDiskInfo {
@@ -107,7 +108,8 @@ export async function queryRamInfo(): Promise<WmiRamInfo[]> {
     'MemoryType',
     'SMBIOSMemoryType',
     'ConfiguredClockSpeed',
-    'Manufacturer'
+    'Manufacturer',
+    'DeviceLocator'
   ])
 }
 

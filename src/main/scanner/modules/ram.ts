@@ -46,11 +46,38 @@ function mapMemoryType(smbiosType: number, legacyType: number): 'DDR4' | 'DDR5' 
   return 'Unknown'
 }
 
-function estimateChannels(stickCount: number, totalGB: number): number {
-  // Heuristic: if sticks are in pairs and total GB is symmetric, likely dual channel
-  if (stickCount >= 2 && stickCount % 2 === 0) return 2
-  if (stickCount >= 4) return 2 // Quad channel looks like dual channel to WMI
-  return 1
+export interface DimmDescriptor {
+  slot: number
+  sizeGB: number
+}
+
+export type ChannelMode = 'single' | 'dual'
+
+/**
+ * Decide single vs dual channel from the populated DIMM set.
+ *
+ * Reasoning: the WMI MemoryChannel report and BankLabel strings are
+ * unreliable across BIOS vendors. What we can trust is which slots are
+ * populated and the size of each stick. Dual channel requires at least
+ * two equal-size sticks; mixed sizes force flex / single-channel mode
+ * for the asymmetric portion. Slot numbering is BIOS-dependent so we
+ * only use it for tie-breaking, not for channel identification.
+ */
+export function detectChannelMode(dimms: DimmDescriptor[]): ChannelMode {
+  const populated = dimms.filter(d => d.sizeGB > 0)
+  if (populated.length < 2) return 'single'
+
+  const first = populated[0].sizeGB
+  const allEqual = populated.every(d => d.sizeGB === first)
+  if (!allEqual) return 'single'
+
+  return 'dual'
+}
+
+function parseDeviceLocatorSlot(loc: string | undefined): number | null {
+  if (!loc) return null
+  const m = loc.match(/(\d+)/)
+  return m ? parseInt(m[1], 10) : null
 }
 
 function isXmpEnabled(configuredSpeed: number, jedecSpeed: number): boolean {
@@ -160,7 +187,11 @@ export async function scanRam(): Promise<ScanModuleResult<RamData>> {
     const ratedSpeed = sticks.length > 0 ? (sticks[0].Speed || 0) : 0
     const xmpSpeed = isXmpEnabled(actualSpeed, jedecBaseline) ? ratedSpeed : null
 
-    const channels = estimateChannels(sticks.length, totalGB)
+    const dimms: DimmDescriptor[] = sticks.map((s, i) => ({
+      slot: parseDeviceLocatorSlot(s.DeviceLocator) ?? i,
+      sizeGB: Math.round(Number(s.Capacity ?? 0) / (1024 ** 3)),
+    }))
+    const channels = detectChannelMode(dimms) === 'dual' ? 2 : 1
 
     const nonpagedPoolMB = memCounters
       ? Math.round(memCounters.nonpagedPoolBytes / 1024 / 1024)
