@@ -1,9 +1,9 @@
 // VR Optimization Suite — OS Config Scan Module
 // Collects Windows version, Game Mode, Defender exclusions, virtualization drivers.
 
-import { readRegistryDword, readRegistry, registryKeyExists } from '../../utils/registry'
-import { queryWindowsVersion, queryServices } from '../../utils/wmi'
-import { runPowerShellJson, tryRunPowerShell } from '../../utils/powershell'
+import { readRegistryDword, readRegistry, registryKeyExists, enumerateRegistrySubkeys } from '../../utils/registry'
+import { readKey } from '../../utils/registry-read'
+import { tryRunPowerShell } from '../../utils/powershell'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { ScanModuleResult, OsConfigData } from '../types'
@@ -15,17 +15,28 @@ interface StartupItem {
 }
 
 async function getStartupItems(): Promise<StartupItem[]> {
-  const script = `
-Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location |
-  ForEach-Object { @{ name = $_.Name; enabled = $true; impact = 'Unknown' } } |
-  ConvertTo-Json -Compress
-`
-  try {
-    const raw = await runPowerShellJson<StartupItem[]>(script)
-    return Array.isArray(raw) ? raw : [raw]
-  } catch {
-    return []
+  // The Run keys are the conventional auto-start surface for desktop apps.
+  // Win32_StartupCommand also includes Startup-folder shortcuts, but those
+  // are best handled by reading the folders directly (left as a follow-up).
+  const paths = [
+    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',
+  ]
+
+  const items: StartupItem[] = []
+  const seen = new Set<string>()
+  for (const path of paths) {
+    const key = await readKey(path).catch(() => null)
+    if (!key) continue
+    for (const [name, value] of Object.entries(key.values)) {
+      if (value.type !== 'REG_SZ' && value.type !== 'REG_EXPAND_SZ') continue
+      if (seen.has(name)) continue
+      seen.add(name)
+      items.push({ name, enabled: true, impact: 'Unknown' })
+    }
   }
+  return items
 }
 
 async function getDefenderExclusions(): Promise<string[]> {
@@ -162,13 +173,19 @@ function getGlobalTimerResolutionEnabled(): boolean {
 }
 
 async function getGpuPnpDeviceId(): Promise<string | null> {
-  try {
-    const out = await tryRunPowerShell(
-      "Get-CimInstance Win32_VideoController | Where-Object { $_.PNPDeviceID -match '^PCI\\\\' } | Select-Object -First 1 -ExpandProperty PNPDeviceID",
-      5000
-    )
-    return out?.trim() || null
-  } catch { return null }
+  // Walk the same display-class subkeys gpu.ts uses; MatchingDeviceId carries
+  // the PCI\VEN_xxxx&DEV_xxxx instance string the GPU rule expects.
+  const DISPLAY_CLASS = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}'
+  for (let i = 0; i < 16; i++) {
+    const sub = String(i).padStart(4, '0')
+    const key = await readKey(`${DISPLAY_CLASS}\\${sub}`).catch(() => null)
+    if (!key) continue
+    const matching = key.values['MatchingDeviceId']
+    if (matching && matching.type === 'REG_SZ' && matching.data.toUpperCase().startsWith('PCI\\')) {
+      return matching.data
+    }
+  }
+  return null
 }
 
 function getGpuInterruptPrioritySet(pnpDeviceId: string | null): boolean {
@@ -270,66 +287,135 @@ Get-NetAdapter -EA SilentlyContinue |
   return !!(out?.trim())
 }
 
-async function getThirdPartyAv(): Promise<string | null> {
-  const out = await tryRunPowerShell(`
-$av = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -EA SilentlyContinue |
-  Where-Object { $_.displayName -notlike '*Windows Defender*' -and $_.displayName -notlike '*Microsoft*' } |
-  Select-Object -First 1 -ExpandProperty displayName
-if ($av) { Write-Output $av }
-`, 8000)
-  return out?.trim() || null
+function getThirdPartyAv(): string | null {
+  // Security Center is exposed only via the WMI namespace root/SecurityCenter2.
+  // No registry equivalent exists, so we drop this check; downstream rules
+  // already null-coalesce it.
+  return null
 }
 
 async function getBiosInfo(): Promise<{ date: string | null; version: string | null }> {
-  const out = await tryRunPowerShell(`
-$bios = Get-CimInstance Win32_BIOS -EA SilentlyContinue | Select-Object ReleaseDate, SMBIOSBIOSVersion
-if ($bios) {
-  Write-Output "date:$($bios.ReleaseDate)"
-  Write-Output "version:$($bios.SMBIOSBIOSVersion)"
-}
-`, 8000)
-  if (!out) return { date: null, version: null }
-  const dateMatch = out.match(/^date:(.+)/m)
-  const versionMatch = out.match(/^version:(.+)/m)
+  const key = await readKey('HKLM\\HARDWARE\\DESCRIPTION\\System\\BIOS').catch(() => null)
+  if (!key) return { date: null, version: null }
+
+  const releaseDate = key.values['BIOSReleaseDate']
+  const biosVersion = key.values['BIOSVersion']
+  const systemBiosVersion = key.values['SystemBiosVersion']
+
   let date: string | null = null
-  if (dateMatch) {
-    // ReleaseDate is a CIM datetime: "20230515000000.000000+000" → "2023-05-15"
-    const raw = dateMatch[1].trim()
-    const m = raw.match(/^(\d{4})(\d{2})(\d{2})/)
-    if (m) date = `${m[1]}-${m[2]}-${m[3]}`
+  if (releaseDate && releaseDate.type === 'REG_SZ') {
+    const m = releaseDate.data.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (m) date = `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
   }
-  return {
-    date,
-    version: versionMatch ? versionMatch[1].trim() : null
+
+  // BIOSVersion is REG_MULTI_SZ on most boards; fall back to SystemBiosVersion
+  // (also REG_MULTI_SZ) when absent.
+  let version: string | null = null
+  if (biosVersion && biosVersion.type === 'REG_MULTI_SZ' && biosVersion.data.length > 0) {
+    version = biosVersion.data[0]
+  } else if (biosVersion && biosVersion.type === 'REG_SZ') {
+    version = biosVersion.data
+  } else if (systemBiosVersion && systemBiosVersion.type === 'REG_MULTI_SZ' && systemBiosVersion.data.length > 0) {
+    version = systemBiosVersion.data[0]
   }
+
+  return { date, version }
 }
 
-async function getLaptopStatus(): Promise<{ isLaptop: boolean; isOnBattery: boolean }> {
-  const out = await tryRunPowerShell(`
-$battery = Get-CimInstance Win32_Battery -EA SilentlyContinue | Select-Object -First 1
-if ($battery) {
-  Write-Output "laptop:true"
-  # BatteryStatus: 1=Discharging (on battery), 2=AC, 3=Fully Charged, 4=Low, 5=Critical, 6=Charging, 7=Charging+High, 8=Charging+Low, 9=Charging+Critical, 10=Undefined, 11=Partially Charged
-  if ($battery.BatteryStatus -eq 1 -or $battery.BatteryStatus -eq 4 -or $battery.BatteryStatus -eq 5) {
-    Write-Output "battery:true"
-  } else {
-    Write-Output "battery:false"
-  }
-} else {
-  Write-Output "laptop:false"
-  Write-Output "battery:false"
+function getLaptopStatus(): { isLaptop: boolean; isOnBattery: boolean } {
+  // The Enum\BATTERY hive is populated by the Composite Battery driver and is
+  // a reliable laptop indicator on Windows. Live charge state lives behind
+  // GetSystemPowerStatus which is unavailable from the registry; we report
+  // false rather than guessing.
+  const isLaptop = registryKeyExists('HKLM', 'SYSTEM\\CurrentControlSet\\Enum\\ACPI\\PNP0C0A')
+    || registryKeyExists('HKLM', 'SYSTEM\\CurrentControlSet\\Services\\CmBatt')
+  return { isLaptop, isOnBattery: false }
 }
-`, 8000)
-  if (!out) return { isLaptop: false, isOnBattery: false }
-  return {
-    isLaptop: out.includes('laptop:true'),
-    isOnBattery: out.includes('battery:true')
+
+interface WindowsVersionInfo {
+  version: string
+  buildNumber: string
+}
+
+async function readWindowsVersion(): Promise<WindowsVersionInfo | null> {
+  const key = await readKey('HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').catch(() => null)
+  if (!key) return null
+
+  const major = key.values['CurrentMajorVersionNumber']
+  const minor = key.values['CurrentMinorVersionNumber']
+  const build = key.values['CurrentBuildNumber']
+  const legacyVersion = key.values['CurrentVersion']
+
+  let version = ''
+  if (major && major.type === 'REG_DWORD' && minor && minor.type === 'REG_DWORD') {
+    version = `${major.data}.${minor.data}`
+  } else if (legacyVersion && legacyVersion.type === 'REG_SZ') {
+    version = legacyVersion.data
   }
+
+  let buildNumber = ''
+  if (build && build.type === 'REG_SZ') {
+    buildNumber = build.data
+  }
+
+  if (!version && !buildNumber) return null
+  return { version, buildNumber }
+}
+
+interface ServiceInfo {
+  Name: string
+  DisplayName: string
+  State: string
+  StartMode: string
+}
+
+const START_MODE: Record<number, string> = {
+  0: 'Boot',
+  1: 'System',
+  2: 'Auto',
+  3: 'Manual',
+  4: 'Disabled',
+}
+
+async function readServices(filter: (name: string) => boolean): Promise<ServiceInfo[]> {
+  // The SCM service catalog lives at HKLM\SYSTEM\CurrentControlSet\Services.
+  // We can't tell live running state from the registry, so State is reported
+  // as 'Unknown'. The downstream filter only inspects names + display strings.
+  const childNames = enumerateRegistrySubkeys('HKLM', 'SYSTEM\\CurrentControlSet\\Services')
+
+  const results: ServiceInfo[] = []
+  for (const name of childNames) {
+    if (!filter(name)) continue
+    const svcKey = await readKey(`HKLM\\SYSTEM\\CurrentControlSet\\Services\\${name}`).catch(() => null)
+    if (!svcKey) continue
+
+    const display = svcKey.values['DisplayName']
+    const start = svcKey.values['Start']
+    const startMode = start && start.type === 'REG_DWORD' ? (START_MODE[start.data] ?? 'Unknown') : 'Unknown'
+
+    results.push({
+      Name: name,
+      DisplayName: display && (display.type === 'REG_SZ' || display.type === 'REG_EXPAND_SZ') ? display.data : name,
+      State: 'Unknown',
+      StartMode: startMode,
+    })
+  }
+  return results
 }
 
 export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
   try {
     console.log('[scan:os-config] Collecting OS configuration...')
+
+    const isRelevantService = (name: string): boolean => {
+      const n = name.toLowerCase()
+      return (
+        n.includes('steamvr') || n.includes('oculus') ||
+        n.includes('wmr') || n.includes('hyper-v') ||
+        n.includes('vmms') || n.includes('docker') ||
+        n.includes('xbox') || n.includes('vr')
+      )
+    }
 
     const [
       winVersion,
@@ -342,50 +428,39 @@ export async function scanOsConfig(): Promise<ScanModuleResult<OsConfigData>> {
       nagleEnabled,
       pcieAspmActive
     ] = await Promise.all([
-      queryWindowsVersion(),
+      readWindowsVersion(),
       getStartupItems(),
       getDefenderExclusions(),
       detectVirtualizationDrivers(),
-      queryServices(),
+      readServices(isRelevantService),
       getUsbSelectiveSuspendEnabled(),
       getCoresMinParkedPercent(),
       getNagleEnabled(),
       getPcieAspmActive()
     ])
 
-    // GPU PNP device ID must be fetched before the interrupt priority check (sequential)
     const gpuPnpDeviceId = await getGpuPnpDeviceId()
     const gpuInterruptPrioritySet = getGpuInterruptPrioritySet(gpuPnpDeviceId)
 
-    const [vpnActive, thirdPartyAv, biosInfo, laptopStatus] = await Promise.all([
+    const [vpnActive, biosInfo] = await Promise.all([
       getVpnActive().catch(() => false),
-      getThirdPartyAv().catch(() => null),
       getBiosInfo().catch(() => ({ date: null, version: null })),
-      getLaptopStatus().catch(() => ({ isLaptop: false, isOnBattery: false }))
     ])
+    const thirdPartyAv = getThirdPartyAv()
+    const laptopStatus = getLaptopStatus()
 
     const build = winVersion ? parseInt(winVersion.buildNumber, 10) : 0
     const gameModeEnabled = getGameModeEnabled()
 
-    // Filter services to only VR/gaming-relevant ones
+    // Cap relevant services at 20 to keep report payloads small; rules look at
+    // a handful of well-known names rather than the full list.
     const relevantServices = services
-      .filter((s) => {
-        const name = s.Name.toLowerCase()
-        const display = s.DisplayName.toLowerCase()
-        return (
-          name.includes('steamvr') || name.includes('oculus') ||
-          name.includes('wmr') || name.includes('hyper-v') ||
-          name.includes('vmms') || name.includes('docker') ||
-          display.includes('gaming') || display.includes('xbox') ||
-          display.includes('vr') || name.includes('vr')
-        )
-      })
-      .slice(0, 20) // Limit to top 20 relevant services
+      .slice(0, 20)
       .map((s) => ({
         name: s.Name,
         displayName: s.DisplayName,
         status: s.State,
-        startType: s.StartMode
+        startType: s.StartMode,
       }))
 
     console.log(
