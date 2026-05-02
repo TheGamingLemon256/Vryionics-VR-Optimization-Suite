@@ -1,10 +1,10 @@
 // VR Optimization Suite — Storage Scan Module
 // Detects drive types, VR install drive, shader cache sizes, temp folder.
 
-import { queryDiskDrives, queryLogicalDisks } from '../../utils/wmi'
-import { runPowerShellJson, tryRunCmd, tryRunPowerShell } from '../../utils/powershell'
-import { readFileSync, existsSync } from 'fs'
+import { existsSync, statfsSync } from 'fs'
 import { join } from 'path'
+import { readKey } from '../../utils/registry-read'
+import { runPowerShellJson, tryRunCmd } from '../../utils/powershell'
 import type { ScanModuleResult, StorageData, StorageDrive } from '../types'
 
 interface DriveQueueLength {
@@ -24,35 +24,92 @@ $counters.CounterSamples | Where-Object { $_.InstanceName -ne '_total' } |
     const items = Array.isArray(raw) ? raw : [raw]
     return items.map((i) => ({
       letter: i.InstanceName,
-      queueLength: Math.round(i.CookedValue * 10) / 10
+      queueLength: Math.round(i.CookedValue * 10) / 10,
     }))
   } catch {
     return []
   }
 }
 
-function detectDriveType(model: string, mediaType: string): 'SSD' | 'NVMe' | 'HDD' {
-  const m = model.toLowerCase()
-  const t = mediaType.toLowerCase()
-  if (t.includes('nvme') || m.includes('nvme') || m.includes('m.2')) return 'NVMe'
-  if (t.includes('ssd') || m.includes('ssd') || m.includes('solid')) return 'SSD'
-  if (t.includes('fixed hard disk')) {
-    // Could be HDD or SSD — check for known SSD keywords
-    if (m.includes('samsung') && (m.includes('870') || m.includes('860') || m.includes('ssd'))) return 'SSD'
-    return 'HDD'
+interface PhysicalDiskHint {
+  friendlyName: string
+  isNvme: boolean
+}
+
+/**
+ * Walk Services\disk\Enum to find the PNP keys for every disk attached, then
+ * read each device's FriendlyName. The bus class (SCSI, NVMe, IDE) tells us
+ * whether a drive is NVMe; the FriendlyName carries vendor strings we use to
+ * distinguish SSDs from spinning rust.
+ */
+async function readPhysicalDiskHints(): Promise<PhysicalDiskHint[]> {
+  const enumKey = await readKey('HKLM\\SYSTEM\\CurrentControlSet\\Services\\disk\\Enum').catch(() => null)
+  if (!enumKey) return []
+
+  const hints: PhysicalDiskHint[] = []
+  for (const [name, value] of Object.entries(enumKey.values)) {
+    if (!/^\d+$/.test(name)) continue
+    if (value.type !== 'REG_SZ') continue
+
+    const pnpPath = value.data
+    const isNvme = /\\nvme[_\\&]/i.test(pnpPath) || /\bNVMe\b/i.test(pnpPath)
+    const deviceKey = await readKey(`HKLM\\SYSTEM\\CurrentControlSet\\Enum\\${pnpPath}`).catch(() => null)
+    const friendly = deviceKey?.values['FriendlyName']
+    const friendlyName = friendly && friendly.type === 'REG_SZ' ? friendly.data : pnpPath
+    hints.push({ friendlyName, isNvme })
   }
-  return 'HDD'
+  return hints
+}
+
+function classifyDriveType(hints: PhysicalDiskHint[]): 'SSD' | 'NVMe' | 'HDD' {
+  // Aggregate hint: any NVMe wins, else any SSD-like model wins, else HDD.
+  if (hints.some(h => h.isNvme)) return 'NVMe'
+  for (const h of hints) {
+    const m = h.friendlyName.toLowerCase()
+    if (m.includes('nvme') || m.includes('m.2')) return 'NVMe'
+    if (m.includes('ssd') || m.includes('solid')) return 'SSD'
+    if (/samsung\s*8[67]0/.test(m)) return 'SSD'
+  }
+  return hints.length > 0 ? 'HDD' : 'SSD'
+}
+
+interface LocalDrive {
+  letter: string
+  totalGB: number
+  freeGB: number
+}
+
+function enumerateLocalDrives(): LocalDrive[] {
+  const drives: LocalDrive[] = []
+  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const letter = String.fromCharCode(code)
+    const root = `${letter}:\\`
+    try {
+      const stats = statfsSync(root)
+      const totalBytes = stats.bsize * stats.blocks
+      const freeBytes = stats.bsize * stats.bavail
+      // statfs on a non-existent drive throws; guard against zero-byte mounts
+      // anyway so removable optical drives don't show up as 0 GB entries.
+      if (totalBytes <= 0) continue
+      drives.push({
+        letter: `${letter}:`,
+        totalGB: Math.round((totalBytes / 1024 ** 3) * 10) / 10,
+        freeGB: Math.round((freeBytes / 1024 ** 3) * 10) / 10,
+      })
+    } catch {
+      // Drive letter not mounted; skip silently.
+    }
+  }
+  return drives
 }
 
 async function findVrInstallDrive(): Promise<string | null> {
-  // Check Steam library paths from registry/config
   const script = `
 $paths = @(
   "$env:ProgramFiles\\Steam\\steamapps",
   "${process.env.PROGRAMFILES}\\Steam\\steamapps",
   "C:\\Program Files (x86)\\Steam\\steamapps"
 )
-# Also check Steam library config
 $libraryConfig = "$env:ProgramFiles (x86)\\Steam\\steamapps\\libraryfolders.vdf"
 if (Test-Path $libraryConfig) {
   $content = Get-Content $libraryConfig -Raw
@@ -94,15 +151,11 @@ async function getFolderSizeMB(path: string): Promise<number> {
 
 async function getShaderCacheSizeMB(): Promise<number> {
   const paths = [
-    // NVIDIA shader cache
     join(process.env.LOCALAPPDATA || '', 'NVIDIA', 'DXCache'),
     join(process.env.LOCALAPPDATA || '', 'NVIDIA', 'GLCache'),
-    // AMD shader cache
     join(process.env.LOCALAPPDATA || '', 'AMD', 'DxCache'),
-    // D3D shader cache (GPU-vendor-agnostic)
     join(process.env.LOCALAPPDATA || '', 'D3DSCache'),
-    // VRChat shader cache
-    join(process.env.APPDATA || '', '..', 'LocalLow', 'VRChat', 'VRChat', 'ShaderCache')
+    join(process.env.APPDATA || '', '..', 'LocalLow', 'VRChat', 'VRChat', 'ShaderCache'),
   ]
   let total = 0
   for (const p of paths) {
@@ -111,98 +164,46 @@ async function getShaderCacheSizeMB(): Promise<number> {
   return total
 }
 
-async function getNvmePowerStateOptimal(driveLetter: string): Promise<boolean | null> {
-  try {
-    const out = await tryRunPowerShell(`
-# Find the physical disk corresponding to this drive letter
-$vol = Get-Volume -DriveLetter '${driveLetter}' -EA SilentlyContinue
-if (!$vol) { return }
-$part = Get-Partition -DriveLetter '${driveLetter}' -EA SilentlyContinue | Select-Object -First 1
-if (!$part) { return }
-$disk = Get-PhysicalDisk -EA SilentlyContinue | Where-Object {
-  (Get-Disk -Number $part.DiskNumber -EA SilentlyContinue).UniqueId -eq $_.UniqueId
-} | Select-Object -First 1
-if (!$disk) { return }
-# Check if NVMe
-if ($disk.BusType -ne 'NVMe') { Write-Output 'not-nvme'; return }
-Write-Output 'is-nvme'
-# Check NVMe APST (Autonomous Power State Transition) — power saving feature
-# APST can cause intermittent latency spikes under VR load
-$driverKey = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\SCSI' -EA SilentlyContinue |
-  Get-ChildItem -EA SilentlyContinue |
-  Where-Object { (Get-ItemProperty -Path $_.PSPath -EA SilentlyContinue).FriendlyName -like '*NVMe*' -or (Get-ItemProperty -Path $_.PSPath -EA SilentlyContinue).FriendlyName -like '*SSD*' } |
-  Select-Object -First 1
-if ($driverKey) {
-  $apst = (Get-ItemProperty -Path "$($driverKey.PSPath)\\Device Parameters\\QUERY PROTOCOL" -Name 'APSTPowerState' -EA SilentlyContinue).APSTPowerState
-  if ($apst -ne $null) { Write-Output "apst:$apst" }
-}
-# Check Windows NVMe power management policy
-$nvmePolicy = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\StorPort' -Name 'EnableIdlePowerManagement' -EA SilentlyContinue).EnableIdlePowerManagement
-if ($nvmePolicy -ne $null) { Write-Output "idlepm:$nvmePolicy" }
-`, 12000)
-
-    if (!out) return null
-    if (out.includes('not-nvme')) return null
-    if (!out.includes('is-nvme')) return null
-
-    // Check idle power management
-    const idlePmMatch = out.match(/^idlepm:(\d+)/m)
-    if (idlePmMatch) {
-      // 0 = power saving disabled (optimal for VR), 1 = power saving enabled (bad for VR)
-      return idlePmMatch[1] === '0'
-    }
-
-    // If we know it's NVMe but can't determine power state, assume optimal
-    return true
-  } catch {
-    return null
-  }
+async function getNvmeIdlePowerOptimal(): Promise<boolean | null> {
+  // The Windows-wide knob StorPort\EnableIdlePowerManagement gates aggressive
+  // NVMe APST. 0 = power saving disabled (good for VR), 1 = enabled (bad).
+  const value = await readKey('HKLM\\SYSTEM\\CurrentControlSet\\Control\\StorPort').catch(() => null)
+  if (!value) return null
+  const idle = value.values['EnableIdlePowerManagement']
+  if (!idle || idle.type !== 'REG_DWORD') return null
+  return idle.data === 0
 }
 
 export async function scanStorage(): Promise<ScanModuleResult<StorageData>> {
   try {
     console.log('[scan:storage] Querying disk info...')
 
-    const [physicalDisks, logicalDisks, queueLengths, vrDrive] = await Promise.all([
-      queryDiskDrives(),
-      queryLogicalDisks(),
+    const [physicalDiskHints, queueLengths, vrDrive, nvmeIdleOptimal] = await Promise.all([
+      readPhysicalDiskHints(),
       getDriveQueueLengths(),
-      findVrInstallDrive()
+      findVrInstallDrive(),
+      getNvmeIdlePowerOptimal(),
     ])
 
-    // Build drive list from logical disks (DriveType 3 = local disk)
-    const localDisks = logicalDisks.filter((d) => d.DriveType === 3)
+    const localDrives = enumerateLocalDrives()
+    const aggregateType = classifyDriveType(physicalDiskHints)
     const drives: StorageDrive[] = []
-    for (const d of localDisks) {
-      const totalGB = Math.round(Number(d.Size) / 1024 / 1024 / 1024 * 10) / 10
-      const freeGB = Math.round(Number(d.FreeSpace) / 1024 / 1024 / 1024 * 10) / 10
-      const letter = d.DeviceID.replace(':', '').trim()
-      const queue = queueLengths.find((q) => q.letter.includes(letter))
 
-      // Try to match to physical disk for type detection
-      // Without a direct mapping, default to SSD (most modern systems)
-      const physicalDisk = physicalDisks[0] // Simplified: use first disk as type reference
-      const driveType: 'SSD' | 'NVMe' | 'HDD' = physicalDisk
-        ? detectDriveType(physicalDisk.Model, physicalDisk.MediaType)
-        : 'SSD'
-
-      const nvmePowerStateOptimal = driveType === 'NVMe'
-        ? await getNvmePowerStateOptimal(letter)
-        : null
+    for (const d of localDrives) {
+      const queue = queueLengths.find((q) => q.letter.includes(d.letter.replace(':', '')))
 
       drives.push({
-        letter: d.DeviceID,
-        type: driveType,
-        totalGB,
-        freeGB,
+        letter: d.letter,
+        type: aggregateType,
+        totalGB: d.totalGB,
+        freeGB: d.freeGB,
         queueLength: queue?.queueLength ?? 0,
-        temperature: null, // Requires vendor-specific SMART data
-        wearPercent: null, // Requires NVMe vendor commands
-        nvmePowerStateOptimal
+        temperature: null,
+        wearPercent: null,
+        nvmePowerStateOptimal: aggregateType === 'NVMe' ? nvmeIdleOptimal : null,
       })
     }
 
-    // VRChat cache size
     const vrchatCachePath = join(
       process.env.APPDATA || '',
       '..', 'LocalLow', 'VRChat', 'VRChat'
@@ -210,10 +211,8 @@ export async function scanStorage(): Promise<ScanModuleResult<StorageData>> {
     const vrchatCacheSizeMB = await getFolderSizeMB(vrchatCachePath)
     const vrchatCacheSizeGB = Math.round(vrchatCacheSizeMB / 1024 * 10) / 10
 
-    // Temp folder
     const tempFolderSizeMB = await getFolderSizeMB(process.env.TEMP || 'C:\\Windows\\Temp')
 
-    // Shader cache
     const shaderCacheSizeMB = await getShaderCacheSizeMB()
 
     console.log(`[scan:storage] ${drives.length} drives, VR drive: ${vrDrive ?? 'undetected'}, shader cache: ${shaderCacheSizeMB}MB`)
@@ -225,7 +224,7 @@ export async function scanStorage(): Promise<ScanModuleResult<StorageData>> {
         vrInstallDrive: vrDrive,
         shaderCacheSizeMB,
         tempFolderSizeMB,
-        vrchatCacheSizeGB
+        vrchatCacheSizeGB,
       }
     }
   } catch (error) {
