@@ -37,6 +37,21 @@ const KEPT_CLASSES = new Set([
   'SYSTEM',
 ])
 
+// Modern Windows installs frequently omit the text 'Class' value on
+// Enum\PCI\<dev>\<instance> keys and only write 'ClassGUID'. Without this
+// fallback every PCI / USB device key fails the KEPT_CLASSES check and
+// the scanner reports zero rows. The GUIDs below are the standard
+// Windows setup-class GUIDs and have been stable since XP.
+const CLASS_GUID_TO_NAME: Record<string, string> = {
+  '{4d36e968-e325-11ce-bfc1-08002be10318}': 'DISPLAY',
+  '{36fc9e60-c465-11cf-8056-444553540000}': 'USB',
+  '{4d36e96c-e325-11ce-bfc1-08002be10318}': 'MEDIA',
+  '{4d36e972-e325-11ce-bfc1-08002be10318}': 'NET',
+  '{4d36e96a-e325-11ce-bfc1-08002be10318}': 'HDC',
+  '{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}': 'BLUETOOTH',
+  '{4d36e97d-e325-11ce-bfc1-08002be10318}': 'SYSTEM',
+}
+
 interface DeviceRow {
   className: string
   name: string
@@ -72,7 +87,11 @@ async function readDeviceRow(busPath: string, family: string, instance: string):
   const key = await readKey(path).catch(() => null)
   if (!key) return null
 
-  const className = (readSz(key, 'Class') ?? '').toUpperCase()
+  let className = (readSz(key, 'Class') ?? '').toUpperCase()
+  if (!className) {
+    const guid = (readSz(key, 'ClassGUID') ?? '').toLowerCase()
+    if (guid) className = CLASS_GUID_TO_NAME[guid] ?? ''
+  }
   if (!KEPT_CLASSES.has(className)) return null
 
   const friendly = readSz(key, 'FriendlyName')
