@@ -82,9 +82,6 @@ export function nvidiaSmiQuery(query: string, timeout = 10000): Promise<string[]
   })
 }
 
-/**
- * Run an arbitrary nvidia-smi command and return raw stdout.
- */
 export function nvidiaSmiRaw(args: string[], timeout = 10000): Promise<string> {
   const smiPath = findNvidiaSmi()
   if (!smiPath) {
@@ -107,9 +104,6 @@ export function nvidiaSmiRaw(args: string[], timeout = 10000): Promise<string> {
   })
 }
 
-/**
- * Check if nvidia-smi is available (i.e., NVIDIA GPU with drivers installed).
- */
 export function isNvidiaAvailable(): boolean {
   return findNvidiaSmi() !== null
 }

@@ -289,7 +289,6 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanData> {
 
   scanData.scanDurationMs = Date.now() - startTime
 
-  // Final progress
   onProgress?.({
     module: 'complete',
     moduleLabel: 'Complete',

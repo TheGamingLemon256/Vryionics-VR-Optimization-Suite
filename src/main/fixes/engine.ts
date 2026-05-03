@@ -1374,7 +1374,6 @@ const ALL_FIXES: Fix[] = [
   fixSteamVRSupersampling,
   fixSteamVRMotionSmoothing,
   fixVRChatCacheSize,
-  // NEW — Fixes 13-22:
   fixDisableXboxDvr,
   // fixDisableStartupBloat — removed. Removing HKCU\Run entries was too broad
   // (killed legitimate startup entries the user wanted) and produced no
@@ -1388,7 +1387,6 @@ const ALL_FIXES: Fix[] = [
   // use DXGI flip model regardless, so the flag made no observable difference.
   fixSteamVRAsyncReprojection,
   fixVRChatAvatarCulling,
-  // NEW — Fixes 23-26:
   fixVRChatDynamicBoneLimits,
   fixVRChatMsaa
 ]

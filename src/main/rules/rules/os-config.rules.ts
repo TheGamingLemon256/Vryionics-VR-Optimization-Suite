@@ -112,7 +112,7 @@ export const osConfigRules: Rule[] = [
         severity: 'warning',
         category: 'os-config',
         explanation: {
-          simple: 'Xbox Game Bar is active. Its background recording hooks run in every application, including VR — adding CPU and GPU overhead even when you\'re not recording. Disabling it removes this hidden tax on your system.',
+          simple: 'Xbox Game Bar is active. Its background recording hooks run in every application, including VR — adding CPU and GPU overhead even when you\'re not recording. Disabling it gets that overhead back.',
           advanced: 'Xbox Game Bar / Game DVR hooks into processes via GameBarPresenceWriter and the broadcast API. Registry keys affected: HKCU\\System\\GameConfigStore → GameDVR_Enabled = 0, and HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR → AppCaptureEnabled = 0. Note that Game Bar can still be re-enabled from Settings → Gaming → Xbox Game Bar after disabling via registry.'
         },
         fixId: 'fix-disable-xbox-dvr'

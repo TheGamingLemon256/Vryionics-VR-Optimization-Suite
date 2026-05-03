@@ -246,7 +246,7 @@ const headsetMinRamRule: Rule = {
           `Your system has ${data.ram.totalGB} GB of RAM, but the ${profile.brand} ${profile.model} ` +
           `lists ${minRam} GB as the minimum recommended. You can run VR, but expect occasional ` +
           `stutters when the OS + VR runtime + game exhaust available memory. ` +
-          `Doubling to ${minRam * 2} GB is the single most impactful upgrade if your motherboard has ` +
+          `Doubling to ${minRam * 2} GB will help noticeably if your motherboard has ` +
           `spare DIMM slots.`,
         advanced:
           `Detected RAM: ${data.ram.totalGB} GB (${data.ram.type}-${data.ram.speed})\n` +

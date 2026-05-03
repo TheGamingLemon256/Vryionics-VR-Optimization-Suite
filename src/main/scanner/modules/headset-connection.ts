@@ -334,7 +334,6 @@ async function getUsbControllerInfo(): Promise<{ type: string; gen: string } | n
   return null
 }
 
-/** Read Virtual Desktop streamer config to get bitrate */
 function getVirtualDesktopBitrate(): number | null {
   const vdPaths = [
     join(process.env.LOCALAPPDATA ?? '', 'VirtualDesktop.Streamer', 'settings.json'),

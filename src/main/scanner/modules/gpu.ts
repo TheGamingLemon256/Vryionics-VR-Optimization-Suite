@@ -81,7 +81,6 @@ function detectVendor(name: string, pnpId: string): 'nvidia' | 'amd' | 'intel' |
   return 'unknown'
 }
 
-/** Detect integrated GPU from name patterns */
 function detectIsIntegrated(name: string): boolean {
   const n = name.toLowerCase()
   return (

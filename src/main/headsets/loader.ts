@@ -38,7 +38,6 @@ import lenovoExplorer from './profiles/lenovo-explorer.json'
 // was halting the setup wizard. Profile file renamed to _steam-link.json.disabled
 // on disk so the dev-scan also skips it. Re-enable by restoring both.
 // import steamLink from './profiles/steam-link.json'
-// Phase-4 expansion — legacy, prosumer, and 2024/2025 flagships
 import metaRiftCv1 from './profiles/meta-rift-cv1.json'
 import metaRiftS from './profiles/meta-rift-s.json'
 import htcViveOriginal from './profiles/htc-vive-original.json'

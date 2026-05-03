@@ -6,7 +6,7 @@ export type RegistryType = 'REG_SZ' | 'REG_DWORD' | 'REG_QWORD' | 'REG_EXPAND_SZ
 // reg.exe accepts the short HKLM/HKCU/etc. forms as input but always echoes
 // the long HKEY_LOCAL_MACHINE/HKEY_CURRENT_USER/etc. forms in its stdout.
 // Anything that compares output lines against the input prefix has to expand.
-const HIVE_LONG_FORM: Record<RegistryHive, string> = {
+export const HIVE_LONG_FORM: Record<RegistryHive, string> = {
   HKLM: 'HKEY_LOCAL_MACHINE',
   HKCU: 'HKEY_CURRENT_USER',
   HKCR: 'HKEY_CLASSES_ROOT',
@@ -25,10 +25,7 @@ export interface RegistryValue {
 // in user-derived input become inert.
 const REG_EXEC_OPTS = { encoding: 'utf8' as const, timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] as const }
 
-/**
- * Read a single registry value.
- * Returns null if the key/value doesn't exist or access is denied.
- */
+/** Returns null if the key/value doesn't exist or access is denied. */
 export function readRegistry(hive: RegistryHive, path: string, name: string): string | null {
   try {
     const output = execFileSync('reg', ['query', `${hive}\\${path}`, '/v', name], REG_EXEC_OPTS)
@@ -50,10 +47,6 @@ export function readRegistryDword(hive: RegistryHive, path: string, name: string
   return isNaN(num) ? null : num
 }
 
-/**
- * Enumerate all values under a registry key.
- * Returns an array of {name, type, data} objects.
- */
 export function enumerateRegistryValues(hive: RegistryHive, path: string): RegistryValue[] {
   try {
     const output = execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
@@ -78,9 +71,6 @@ export function enumerateRegistryValues(hive: RegistryHive, path: string): Regis
   }
 }
 
-/**
- * Enumerate subkey names under a registry key.
- */
 export function enumerateRegistrySubkeys(hive: RegistryHive, path: string): string[] {
   try {
     const output = execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
@@ -105,9 +95,6 @@ export function enumerateRegistrySubkeys(hive: RegistryHive, path: string): stri
   }
 }
 
-/**
- * Check if a registry key exists.
- */
 export function registryKeyExists(hive: RegistryHive, path: string): boolean {
   try {
     execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)

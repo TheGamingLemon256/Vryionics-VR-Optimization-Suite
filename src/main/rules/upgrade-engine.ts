@@ -508,7 +508,7 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 1: HDD — critical; include SATA SSD as affordable first step ──
+  // Tier 1: HDD. Critical, and we include SATA SSD as the affordable first step.
   if (storageTier === 1) {
     console.log('[upgrade:storage] → HDD detected — generating critical storage upgrade recommendation')
     const suggestion = findSuggestion('storage', 1, UPGRADE_SUGGESTIONS)
@@ -532,7 +532,7 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 2: SATA SSD — functional but NVMe meaningfully better for VR ──
+  // Tier 2: SATA SSD. Functional, but NVMe is meaningfully better for VR loading.
   if (storageTier === 2) {
     console.log('[upgrade:storage] → SATA SSD detected — generating eventual NVMe upgrade recommendation')
     const suggestion = findSuggestion('storage', 2, UPGRADE_SUGGESTIONS)
