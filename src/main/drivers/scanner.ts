@@ -18,18 +18,17 @@ import type { DriverCategory, DriverVendor, InstalledDriver } from './types'
 
 const CLASS_BASE = 'SYSTEM\\CurrentControlSet\\Control\\Class'
 
-// Restricting enumeration to PCI + USB matches the categories we cover.
-// ACPI / SWD / ROOT mostly host pseudo-devices the previous CIM filter
-// excluded as well, so skipping them keeps parity.
-const ENUM_BUSES = ['PCI', 'USB'] as const
+// Walking PCI is enough for the driver categories the updater pages
+// surface (GPU / chipset / audio / network / Bluetooth). USB devices
+// were enumerated previously, but USB driver recommendations were
+// never load-bearing for VR users and surfaced confusing per-port
+// hub entries. Skip the whole bus.
+const ENUM_BUSES = ['PCI'] as const
 
 // Mirror of the DeviceClass filter the old PowerShell pipeline applied.
-// Anything outside this set was discarded before reaching the categorize()
-// step, and that behaviour matters: e.g. PRINTER and MOUSE devices have
-// driver metadata too, but we never want them in the updater list.
+// USB intentionally absent — see ENUM_BUSES.
 const KEPT_CLASSES = new Set([
   'DISPLAY',
-  'USB',
   'MEDIA',
   'NET',
   'HDC',
@@ -140,7 +139,6 @@ function categorize(row: DeviceRow): DriverCategory | null {
     if (/microsoft basic|remote desktop|virtual/.test(name)) return null
     return 'gpu'
   }
-  if (cls === 'usb' && /controller|xhci|ehci|usb 3/i.test(row.name)) return 'usb'
   if (cls === 'media' && /audio|realtek|intel.*smart.*sound|high definition/i.test(row.name)) return 'audio'
   if (cls === 'net') {
     if (/wi-?fi|wireless|wlan|ax\d{3}|be\d{3}|8265|9260|ac\s*\d/i.test(row.name)) return 'wifi'
