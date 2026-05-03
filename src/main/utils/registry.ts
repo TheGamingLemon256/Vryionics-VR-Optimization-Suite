@@ -3,6 +3,17 @@ import { execFileSync } from 'child_process'
 export type RegistryHive = 'HKLM' | 'HKCU' | 'HKCR' | 'HKU' | 'HKCC'
 export type RegistryType = 'REG_SZ' | 'REG_DWORD' | 'REG_QWORD' | 'REG_EXPAND_SZ' | 'REG_MULTI_SZ' | 'REG_BINARY'
 
+// reg.exe accepts the short HKLM/HKCU/etc. forms as input but always echoes
+// the long HKEY_LOCAL_MACHINE/HKEY_CURRENT_USER/etc. forms in its stdout.
+// Anything that compares output lines against the input prefix has to expand.
+const HIVE_LONG_FORM: Record<RegistryHive, string> = {
+  HKLM: 'HKEY_LOCAL_MACHINE',
+  HKCU: 'HKEY_CURRENT_USER',
+  HKCR: 'HKEY_CLASSES_ROOT',
+  HKU:  'HKEY_USERS',
+  HKCC: 'HKEY_CURRENT_CONFIG',
+}
+
 export interface RegistryValue {
   name: string
   type: RegistryType
@@ -73,7 +84,9 @@ export function enumerateRegistryValues(hive: RegistryHive, path: string): Regis
 export function enumerateRegistrySubkeys(hive: RegistryHive, path: string): string[] {
   try {
     const output = execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
-    const fullPath = `${hive}\\${path}\\`
+    // reg query output uses the long-form hive prefix even when we passed the
+    // short one. Compare against that.
+    const fullPath = `${HIVE_LONG_FORM[hive]}\\${path}\\`
     const subkeys: string[] = []
 
     for (const line of output.split('\n')) {
