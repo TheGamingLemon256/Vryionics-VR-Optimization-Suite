@@ -319,7 +319,7 @@ function analyzeCpu(scanData: ScanData): UpgradeRecommendation | null {
 }
 
 
-function detectRamTierLevel(scanData: ScanData): number | null {
+export function detectRamTierLevel(scanData: ScanData): number | null {
   const ram = scanData.ram
   if (!ram) return null
 

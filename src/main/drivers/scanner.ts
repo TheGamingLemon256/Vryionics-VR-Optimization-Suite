@@ -41,7 +41,7 @@ const KEPT_CLASSES = new Set([
 // fallback every PCI / USB device key fails the KEPT_CLASSES check and
 // the scanner reports zero rows. The GUIDs below are the standard
 // Windows setup-class GUIDs and have been stable since XP.
-const CLASS_GUID_TO_NAME: Record<string, string> = {
+export const CLASS_GUID_TO_NAME: Record<string, string> = {
   '{4d36e968-e325-11ce-bfc1-08002be10318}': 'DISPLAY',
   '{36fc9e60-c465-11cf-8056-444553540000}': 'USB',
   '{4d36e96c-e325-11ce-bfc1-08002be10318}': 'MEDIA',

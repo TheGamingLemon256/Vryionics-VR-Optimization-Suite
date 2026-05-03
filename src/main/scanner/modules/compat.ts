@@ -231,6 +231,16 @@ async function detectInstalledVrTools(): Promise<VrCompatibilityData['installedV
   return installed
 }
 
+// UPS units, USB-attached accessory batteries, and a few enterprise rigs
+// surface in the ACPI battery class on otherwise-clearly-desktop machines
+// and trip the battery-presence laptop heuristic. The motherboard chipset
+// database only catalogs desktop chipsets (AM4/AM5/LGA1700/etc.), so a
+// hit there is a positive desktop signal that should override the battery
+// reading.
+export function applyDesktopChipsetOverride(rawIsLaptop: boolean, chipsetName: string | null): boolean {
+  return chipsetName ? false : rawIsLaptop
+}
+
 async function detectMotherboard(): Promise<VrCompatibilityData['motherboard']> {
   // SMBIOS data is mirrored into HKLM\HARDWARE\DESCRIPTION\System\BIOS
   // by the Windows ACPI/SMBIOS subsystem on every boot. Same fields as
@@ -295,13 +305,7 @@ export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData
     ])
     const steamvrBranch = detectSteamVrBranch()
 
-    // Desktop chipset trumps battery presence. UPS units, USB-attached
-    // accessory batteries, and a few enterprise rigs all surface in the
-    // ACPI battery class on otherwise-clearly-desktop machines and trip
-    // the battery heuristic. The chipset database only catalogs desktop
-    // chipsets (AM4/AM5/LGA1700/etc.), so a hit there is a positive
-    // desktop signal and we should ignore the battery reading.
-    const isLaptop = motherboard?.chipset ? false : gpuState.isLaptop
+    const isLaptop = applyDesktopChipsetOverride(gpuState.isLaptop, motherboard?.chipset ?? null)
 
     console.log(
       `[scan:compat] hybrid=${gpuState.hasHybridGpu} laptop=${isLaptop} ` +
