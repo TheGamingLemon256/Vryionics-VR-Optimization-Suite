@@ -67,6 +67,15 @@ function step(text: string, type: ActionStep['type'] = 'do'): ActionStep {
   return { text, type }
 }
 
+// Standard upfront warning prepended to any plan whose steps poke at BIOS
+// or UEFI settings. A wrong setting can stop a machine from booting; we
+// don't want a casual user who clicked through expecting a one-click fix
+// to wander into the boot menu and brick something. Loud and short.
+const BIOS_WARNING: ActionStep = {
+  type: 'warning',
+  text: 'ADVANCED USERS ONLY. The steps below require entering BIOS/UEFI. A wrong setting can prevent your computer from booting and may force a CMOS reset to recover. Only proceed if you are comfortable navigating BIOS menus and undoing changes by yourself. If anything below sounds unfamiliar, do not continue.',
+}
+
 // PLAN BUILDERS — one function per root cause
 
 function buildWifi24GhzPlan(data: ScanData): ActionPlan | null {
@@ -163,6 +172,7 @@ function buildReBarPlan(data: ScanData): ActionPlan | null {
     effort: 'minutes',
     expectedGain: '5-15% improvement in GPU-limited VR scenarios.',
     steps: [
+      BIOS_WARNING,
       step('Reboot and enter BIOS (Del or F2 at startup)', 'reboot'),
       step('Find "Above 4G Decoding" — enable it first (required for ReBAR)'),
       step('Find "Resizable BAR" or "Smart Access Memory" — enable it'),
@@ -192,6 +202,7 @@ function buildAmdSamPlan(data: ScanData): ActionPlan | null {
     expectedGain: '5-15% improvement in GPU-limited VR scenarios with heavy world/avatar loading.',
     relatedRuleIds: ['gpu-sam-disabled'],
     steps: [
+      BIOS_WARNING,
       step('Reboot and enter BIOS (Del, F2, or F12 at startup)', 'reboot'),
       step('Enable "Above 4G Decoding" first — required for SAM to work'),
       step('Find "Resizable BAR", "Smart Access Memory", or "SAM" and enable it'),
@@ -232,7 +243,9 @@ function buildIntegratedGpuPlan(data: ScanData): ActionPlan | null {
         step(`${gpu.name} is integrated — shares ${vramLabel} as VRAM`, 'info'),
         step('Light VR is possible: SteamVR at low/medium settings, VRChat at minimum quality'),
         step('Set Windows → Display → Graphics → GPU preference for SteamVR and VRChat to "High performance"', 'setting'),
-        step('Ensure maximum RAM allocation in BIOS: look for "UMA Frame Buffer Size" or "iGPU Memory" — set to 4GB if available'),
+        step('Optional, advanced: increase the iGPU memory share in BIOS. See the warning below before attempting this.', 'info'),
+        BIOS_WARNING,
+        step('In BIOS, look for "UMA Frame Buffer Size" or "iGPU Memory" and set it to 2GB or 4GB if available. The label varies by motherboard vendor.'),
         step('Close ALL background apps during VR — every MB of RAM shared with GPU matters'),
         step('A dedicated GPU (NVIDIA RTX 3060 or AMD RX 6600 or better) would give 10× better VR performance', 'info')
       ]
@@ -352,6 +365,8 @@ function buildXmpPlan(data: ScanData): ActionPlan | null {
     effort: 'minutes',
     expectedGain: 'Faster RAM reduces CPU-to-memory latency, helping CPU-limited VR scenarios.',
     steps: [
+      BIOS_WARNING,
+      step('If the system fails to POST after enabling XMP/EXPO, clear CMOS (motherboard manual usually shows the jumper or button) and the system reverts to safe defaults.', 'info'),
       step('Reboot and enter BIOS (Del or F2 during startup)', 'reboot'),
       step('Go to: AI Tweaker / OC / DRAM Configuration → Memory Profile or XMP/EXPO'),
       step('Select the XMP profile (Intel) or EXPO profile (AMD)'),
@@ -810,11 +825,15 @@ function buildBiosUpdatePlan(data: ScanData): ActionPlan | null {
     effort: 'hours',
     expectedGain: 'May resolve intermittent USB tracking drops, PCIe communication errors, or VR headset detection issues.',
     steps: [
+      {
+        type: 'warning',
+        text: 'ADVANCED USERS ONLY. A BIOS flash that is interrupted or that uses the wrong file for your board can permanently brick the motherboard. There is no software recovery from a failed flash on most boards. Only proceed if you are sure you have the right file for your exact board revision and your power source is stable. If anything below sounds unfamiliar, do not continue.',
+      },
       step(`Current BIOS: ${data.osConfig.biosVersion ?? 'unknown version'} dated ${data.osConfig.biosDate}`, 'info'),
-      step('Go to your motherboard manufacturer\'s website → Support → Drivers & Downloads → enter your board model', 'open'),
+      step('Go to your motherboard manufacturer\'s website → Support → Drivers & Downloads → enter your EXACT board model and revision', 'open'),
       step('Download the latest BIOS and follow the vendor\'s flash instructions — usually done via USB stick or EZ Flash', 'setting'),
-      step('IMPORTANT: do not interrupt a BIOS update — connect to UPS or ensure stable power', 'info'),
-      step('After updating, re-enable XMP/EXPO in BIOS if it was enabled', 'info')
+      step('Do not interrupt a BIOS update under any circumstance. Connect to a UPS or wait for stable power before starting.', 'info'),
+      step('After updating, re-enter BIOS and re-enable XMP/EXPO if it was previously enabled. The flash usually wipes those settings.', 'info')
     ],
     relatedRuleIds: ['bios-outdated']
   }
@@ -1245,6 +1264,10 @@ function buildCpuThermalThrottlePlan(data: ScanData): ActionPlan | null {
       step('Open HWiNFO64 or HWMonitor and check CPU temperature under VR load — should be below 90°C', 'open'),
       step('If above 90°C: replace thermal paste (even 2-year-old paste can dry out), ensure heatsink is seated correctly'),
       step('Clean dust from CPU cooler and case fans — dust buildup is the #1 cause of thermal throttle'),
+      {
+        type: 'warning',
+        text: 'The remaining steps go into BIOS. ADVANCED USERS ONLY. A wrong setting can prevent your computer from booting and may force a CMOS reset. Skip these if BIOS is unfamiliar territory; the cooling steps above usually handle thermal throttle on their own.',
+      },
       step('In BIOS: check if PL1/PL2 power limits are set too aggressively — use recommended spec values for your CPU', 'setting'),
       step('Disable CPU overclocks if present — even "stable" OCs can throttle under sustained VR load', 'info'),
       step('After cooling improvement: verify in HWiNFO64 that CPU stays at boost speeds during a VRChat session', 'info')

@@ -18,7 +18,8 @@ const STEP_ICONS: Record<NonNullable<ActionStep['type']>, string> = {
   setting: '⚙',
   install: '⬇',
   reboot:  '↺',
-  info:    'ℹ'
+  info:    'ℹ',
+  warning: '⚠'
 }
 
 const STEP_COLORS: Record<NonNullable<ActionStep['type']>, string> = {
@@ -27,7 +28,8 @@ const STEP_COLORS: Record<NonNullable<ActionStep['type']>, string> = {
   setting: 'text-yellow-300',
   install: 'text-green-300',
   reboot:  'text-orange-300',
-  info:    'text-gray-400'
+  info:    'text-gray-400',
+  warning: 'text-red-400'
 }
 
 
@@ -242,6 +244,19 @@ function ActionCard({ plan, index }: ActionCardProps): React.ReactElement {
               const type = s.type ?? 'do'
               const icon = STEP_ICONS[type]
               const iconColor = STEP_COLORS[type]
+              if (type === 'warning') {
+                return (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2"
+                  >
+                    <span className="flex-shrink-0 w-5 text-center text-base mt-0.5 font-bold text-red-400">
+                      {icon}
+                    </span>
+                    <span className="text-xs text-red-200 leading-relaxed font-medium">{s.text}</span>
+                  </li>
+                )
+              }
               return (
                 <li key={i} className="flex items-start gap-2.5">
                   <span className={`flex-shrink-0 w-5 text-center text-sm mt-0.5 font-bold ${iconColor}`}>

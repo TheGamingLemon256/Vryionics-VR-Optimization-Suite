@@ -71,7 +71,7 @@ export type ActionEffort = 'instant' | 'minutes' | 'hours' | 'research'
 
 export interface ActionStep {
   text: string
-  type?: 'do' | 'open' | 'setting' | 'install' | 'reboot' | 'info'
+  type?: 'do' | 'open' | 'setting' | 'install' | 'reboot' | 'info' | 'warning'
 }
 
 export interface ActionPlan {

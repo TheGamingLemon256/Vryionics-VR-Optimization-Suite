@@ -178,8 +178,8 @@ export const gpuRules: Rule[] = [
         severity: 'info',
         category: 'gpu',
         explanation: {
-          simple: 'Resizable BAR lets your CPU access all of your GPU\'s video memory at once, which can improve performance in some VR titles. It\'s free to enable in your motherboard BIOS. Note: AMD GPUs have an equivalent feature called Smart Access Memory (SAM) — see the SAM recommendation if you have an AMD GPU.',
-          advanced: `Resizable BAR is disabled for ${primary.name}. ReBAR allows CPU access to full GPU VRAM instead of 256MB windows, improving texture streaming by 5-15% in bandwidth-limited scenarios. Enable in motherboard BIOS: Advanced → PCIe → Resizable BAR → Enable (requires Above 4G Decoding enabled first). Also enable via NVIDIA Control Panel after reboot. AMD equivalent: Smart Access Memory (SAM) — see the gpu-sam-disabled rule for AMD RX 6000/7000 GPUs.`
+          simple: 'Resizable BAR lets your CPU access all of your GPU\'s video memory at once, which can improve performance in some VR titles. Enabling it requires entering your motherboard BIOS, which is an advanced step. AMD GPUs have an equivalent feature called Smart Access Memory (SAM); see the SAM recommendation if you have an AMD GPU.',
+          advanced: `Resizable BAR is disabled for ${primary.name}. ReBAR allows CPU access to full GPU VRAM instead of 256MB windows, improving texture streaming by 5-15% in bandwidth-limited scenarios. Enabling it requires changes in motherboard BIOS (Advanced → PCIe → Resizable BAR → Enable, with Above 4G Decoding enabled first), which is an advanced operation; a wrong BIOS change can prevent boot. Also enable via NVIDIA Control Panel after reboot. AMD equivalent: Smart Access Memory (SAM); see the gpu-sam-disabled rule for AMD RX 6000/7000 GPUs.`
         }
       }
     }
