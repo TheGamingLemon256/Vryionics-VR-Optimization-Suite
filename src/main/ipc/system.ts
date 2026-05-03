@@ -9,14 +9,14 @@ const store = new Store({ name: 'vros-config' })
 const setupStore = new Store({ name: 'vros-setup' })
 
 export function registerSystemHandlers(): void {
-  // Admin detection
+  // Admin detection. Kept around for any future surface that wants to know
+  // (e.g. driver-installer status badges); v0.2.9 has no admin-required
+  // fixes so the result is informational only.
   ipcMain.handle('system:isAdmin', () => {
     try {
       execFileSync('net', ['session'], { stdio: 'ignore' })
-      console.log('[system:isAdmin] Running as administrator')
       return true
     } catch {
-      console.warn('[system:isAdmin] NOT running as administrator — some fixes will be unavailable')
       return false
     }
   })

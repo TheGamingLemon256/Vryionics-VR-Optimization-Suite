@@ -22,28 +22,10 @@ const REPO_NAME = 'Vryionics-VR-Optimization-Suite'
 const PRODUCT_NAME = 'Vryionics VR Optimization Suite'
 const INSTALLER_PREFIX = 'Vryionics-VR-Optimization-Suite-Setup'
 
-/**
- * Read-only GitHub PAT for private-repo release checks. Stored in
- * update-server/.gh-token during development; embedded alongside the app
- * in packaged builds via resources/.gh-token. Only needs contents:read.
- */
+// The repo has been public since v0.2.7. Release-check calls run
+// unauthenticated, which keeps anything resembling a PAT out of the
+// installer and out of the dev environment's pickup list.
 function getGithubToken(): string {
-  const locations = [
-    // Dev: project root (from out/main -> ../../update-server)
-    path.join(app.getAppPath(), '..', '..', 'update-server', '.gh-token'),
-    // Dev: cwd fallback
-    path.join(process.cwd(), 'update-server', '.gh-token'),
-    // Dev: alternate layout
-    path.join(app.getAppPath(), '..', 'update-server', '.gh-token'),
-    // Packaged: resources/.gh-token (bundled via extraResources)
-    path.join(process.resourcesPath || '', '.gh-token'),
-  ]
-  for (const loc of locations) {
-    try {
-      const token = fs.readFileSync(loc, 'utf-8').trim()
-      if (token) return token
-    } catch { /* not found, try next */ }
-  }
   return ''
 }
 
