@@ -111,30 +111,6 @@ export const gpuRules: Rule[] = [
     }
   },
   {
-    id: 'gpu-pcie-downgraded',
-    category: 'gpu',
-    name: 'PCIe Bandwidth Degraded',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.gpu) return null
-      const primary = data.gpu.devices[data.gpu.primaryGpuIndex]
-      if (!primary || primary.pcieGen === 0) return null
-      if (primary.pcieGen >= 3 && primary.pcieLinkWidth >= 8) return null
-      const issue =
-        primary.pcieGen < 3
-          ? `PCIe Gen ${primary.pcieGen}`
-          : `x${primary.pcieLinkWidth} lanes (should be x16)`
-      return {
-        ruleId: 'gpu-pcie-downgraded',
-        severity: 'warning',
-        category: 'gpu',
-        explanation: {
-          simple: `Your graphics card is connected at reduced speed (${issue}). This means your CPU and GPU can\'t exchange data as fast as they should. Make sure your GPU is in the main PCIe slot on your motherboard.`,
-          advanced: `PCIe link: Gen ${primary.pcieGen} x${primary.pcieLinkWidth} (should be Gen 3 x16 minimum). Possible causes: GPU installed in secondary slot (x4/x8), PCIe slot damage, or BIOS setting. Current bandwidth: ~${(primary.pcieGen * primary.pcieLinkWidth * 985).toFixed(0)} MB/s vs optimal ~${(4 * 16 * 985).toFixed(0)} MB/s. For texture streaming in VR, PCIe bandwidth impacts frame delivery.`
-        }
-      }
-    }
-  },
-  {
     id: 'gpu-hags-disabled',
     category: 'gpu',
     name: 'Hardware Accelerated GPU Scheduling Disabled',
@@ -159,52 +135,6 @@ export const gpuRules: Rule[] = [
         explanation: {
           simple: `Hardware Accelerated GPU Scheduling (HAGS) is off on your ${primary.name}. Turning it on can reduce VR frame-time variance by roughly half a millisecond to two milliseconds, but a few NVIDIA driver branches have shipped HAGS-related compositor bugs (most notoriously the 545.x and 566.x series on Ampere). The toggle lives in Windows Settings, System, Display, Graphics. VOS does not change this for you.`,
           advanced: `HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\HwSchMode is 1 (off); 2 means on. Requires WDDM 2.7+ (Windows 10 v2004 or newer) and a driver that advertises HAGS support: NVIDIA GTX 10xx and later, AMD RX 400 and later, Intel Arc and Iris Xe. When supported, HAGS hands GPU memory scheduling from the kernel-mode driver to firmware on the GPU itself, which trims a small amount of CPU overhead and frame-time jitter. The reason to leave it as a manual choice rather than auto-applied: the same setting has been responsible for documented VR compositor crashes and flicker on specific NVIDIA driver versions, and the right answer is sometimes "wait for the next driver" rather than "flip the bit." Reboot required either way.`
-        }
-      }
-    }
-  },
-  {
-    id: 'gpu-rebar-disabled',
-    category: 'gpu',
-    name: 'Resizable BAR Disabled',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.gpu) return null
-      const primary = data.gpu.devices[data.gpu.primaryGpuIndex]
-      // ReBAR rule is NVIDIA-only. AMD uses Smart Access Memory (SAM) — see gpu-sam-disabled rule.
-      if (!primary || primary.vendor !== 'nvidia') return null
-      if (primary.rebarEnabled) return null
-      return {
-        ruleId: 'gpu-rebar-disabled',
-        severity: 'info',
-        category: 'gpu',
-        explanation: {
-          simple: 'Resizable BAR lets your CPU access all of your GPU\'s video memory at once, which can improve performance in some VR titles. Enabling it requires entering your motherboard BIOS, which is an advanced step. AMD GPUs have an equivalent feature called Smart Access Memory (SAM); see the SAM recommendation if you have an AMD GPU.',
-          advanced: `Resizable BAR is disabled for ${primary.name}. ReBAR allows CPU access to full GPU VRAM instead of 256MB windows, improving texture streaming by 5-15% in bandwidth-limited scenarios. Enabling it requires changes in motherboard BIOS (Advanced → PCIe → Resizable BAR → Enable, with Above 4G Decoding enabled first), which is an advanced operation; a wrong BIOS change can prevent boot. Also enable via NVIDIA Control Panel after reboot. AMD equivalent: Smart Access Memory (SAM); see the gpu-sam-disabled rule for AMD RX 6000/7000 GPUs.`
-        }
-      }
-    }
-  },
-  {
-    id: 'gpu-sam-disabled',
-    category: 'gpu',
-    name: 'AMD Smart Access Memory Disabled',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.gpu) return null
-      const primary = data.gpu.devices[data.gpu.primaryGpuIndex]
-      if (!primary) return null
-      // Only AMD discrete GPUs
-      if (primary.vendor !== 'amd') return null
-      if (primary.isIntegrated) return null
-      if (primary.samEnabled) return null
-      // Only RDNA2 or newer (RX 6000 series+)
-      if (primary.gpuGeneration !== 'RDNA2' && primary.gpuGeneration !== 'RDNA3') return null
-      return {
-        ruleId: 'gpu-sam-disabled',
-        severity: 'info',
-        category: 'gpu',
-        explanation: {
-          simple: 'Your AMD RX 6000/7000 GPU supports Smart Access Memory (SAM), which lets your CPU access all GPU VRAM at once — but it appears to be disabled. Enabling it in your BIOS can give a 5–15% performance boost in GPU-limited VR.',
-          advanced: `Smart Access Memory is disabled for ${primary.name}. SAM (AMD's name for Resizable BAR) allows the CPU to access the full GPU VRAM instead of being limited to 256MB windows, improving texture streaming by 5–15% in GPU-limited scenarios. SAM is equivalent to NVIDIA's ReBAR — both use the PCIe Resizable BAR standard. To enable: enter BIOS → enable "Above 4G Decoding" first (required) → enable "Resizable BAR", "Smart Access Memory", or "SAM". After booting Windows, open AMD Radeon Software → Performance → Tuning → confirm AMD Smart Access Memory shows as Enabled. If still disabled after BIOS changes, ensure your CPU supports SAM (Ryzen 4000+ or Intel 11th gen+).`
         }
       }
     }

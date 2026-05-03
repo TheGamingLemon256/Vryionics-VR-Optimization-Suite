@@ -158,60 +158,6 @@ function buildWifi6ePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildReBarPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.rebarEnabled || gpu.vendor !== 'nvidia') return null
-  return {
-    id: 'action-rebar',
-    priority: 9,
-    category: 'GPU',
-    title: 'Enable Resizable BAR (ReBAR) — NVIDIA Only',
-    summary: 'ReBAR lets your CPU access all GPU VRAM at once, improving texture streaming performance.',
-    impact: 'low',
-    effort: 'minutes',
-    expectedGain: '5-15% improvement in GPU-limited VR scenarios.',
-    steps: [
-      BIOS_WARNING,
-      step('Reboot and enter BIOS (Del or F2 at startup)', 'reboot'),
-      step('Find "Above 4G Decoding" — enable it first (required for ReBAR)'),
-      step('Find "Resizable BAR" or "Smart Access Memory" — enable it'),
-      step('Save and exit BIOS. Then in Windows: NVIDIA Control Panel → Manage 3D Settings → Resizable BAR → Enabled', 'setting'),
-      step('AMD GPU users: use Smart Access Memory (SAM) — see AMD SAM action above', 'info')
-    ],
-    relatedRuleIds: ['gpu-rebar-disabled']
-  }
-}
-
-function buildAmdSamPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[data.gpu.primaryGpuIndex]
-  if (!gpu) return null
-  if (gpu.vendor !== 'amd') return null
-  if (gpu.isIntegrated) return null
-  if (gpu.samEnabled) return null
-  if (gpu.gpuGeneration !== 'RDNA2' && gpu.gpuGeneration !== 'RDNA3') return null
-  return {
-    id: 'action-amd-sam',
-    category: 'GPU',
-    priority: 9,
-    impact: 'medium',
-    effort: 'minutes',
-    title: `Enable AMD Smart Access Memory (SAM) — ${gpu.name}`,
-    summary: `SAM lets your CPU access all GPU VRAM at once. On ${gpu.name}, this can improve VR texture streaming by 5–15%.`,
-    expectedGain: '5-15% improvement in GPU-limited VR scenarios with heavy world/avatar loading.',
-    relatedRuleIds: ['gpu-sam-disabled'],
-    steps: [
-      BIOS_WARNING,
-      step('Reboot and enter BIOS (Del, F2, or F12 at startup)', 'reboot'),
-      step('Enable "Above 4G Decoding" first — required for SAM to work'),
-      step('Find "Resizable BAR", "Smart Access Memory", or "SAM" and enable it'),
-      step('Save and exit BIOS, then boot Windows'),
-      step('Open AMD Radeon Software → Performance → Tuning → confirm "AMD Smart Access Memory: Enabled"', 'setting'),
-      step('Verify in Radeon Software — if still showing disabled, ensure your CPU also supports SAM (Ryzen 4000+ or Intel 11th gen+)', 'info')
-    ]
-  }
-}
 
 function buildIntegratedGpuPlan(data: ScanData): ActionPlan | null {
   if (!data.gpu) return null
@@ -1386,8 +1332,6 @@ export function buildActionPlan(
   // affects legacy fullscreen mode (pre-DXGI flip model); modern VR runtimes
   // use flip model regardless, so the flag made no observable difference.
 
-  add(buildReBarPlan(scanData))
-  add(buildAmdSamPlan(scanData))
   add(buildIntegratedGpuPlan(scanData))
   add(buildGpuDriverUpdatePlan(scanData))
   add(buildGpuThermalThrottlePlan(scanData))
