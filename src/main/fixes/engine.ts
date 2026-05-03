@@ -14,7 +14,7 @@ import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as vdf from 'vdf'
-import psList from 'ps-list'
+import psList from '../utils/ps-list'
 import { buildLaunchOption } from './x3d-launch-option'
 const execFileAsync = promisify(execFile)
 

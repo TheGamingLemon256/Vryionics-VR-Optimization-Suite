@@ -1,4 +1,4 @@
-import psList from 'ps-list'
+import psList from '../utils/ps-list'
 import os from 'node:os'
 import { log } from '../logger'
 import { loadTriggers, loadAllowlist } from './allowlist'

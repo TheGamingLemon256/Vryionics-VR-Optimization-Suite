@@ -1,6 +1,6 @@
 // Process enumeration. See CODING-RULES-DICTIONARY.md §13.
 
-import psList from 'ps-list'
+import psList from './ps-list'
 import type { ProcessInfo } from '../scanner/types'
 
 
