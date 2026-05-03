@@ -41,7 +41,7 @@ function EmptyState({ onScan }: { onScan: () => void }): React.ReactElement {
 export default function Dashboard(): React.ReactElement {
   const [compareOpen, setCompareOpen] = React.useState(false)
   const { isScanning, scanProgress, healthCards, lastScanData, scanError, startScan, cancelScan } = useScanStore()
-  const { advancedMode, toggleAdvancedMode, setCurrentPage, isAdmin } = useAppStore()
+  const { advancedMode, toggleAdvancedMode, setCurrentPage } = useAppStore()
   const { config: setupConfig } = useSetupStore()
   const { reports, activeReportId, loadReport, loadAll, deleteReport, clearAll } = useReportsStore()
 
@@ -150,17 +150,6 @@ export default function Dashboard(): React.ReactElement {
       {scanError && (
         <div className="glass-panel-sm p-4 border border-vr-critical/30 text-vr-critical text-sm">
           ⚠️ Scan error: {scanError}
-        </div>
-      )}
-
-      {/* Admin banner — shown when not running as administrator */}
-      {!isAdmin && (
-        <div className="glass-panel-sm p-3 border border-vr-warning/25 flex items-center gap-3 text-xs">
-          <span className="text-vr-warning text-base flex-shrink-0">⚠</span>
-          <div className="flex-1 min-w-0">
-            <span className="text-vr-warning font-semibold">Not running as Administrator — </span>
-            <span className="text-gray-400">some fixes (MMCSS, registry) require elevated privileges. Right-click the app and select "Run as administrator" to unlock all fixes.</span>
-          </div>
         </div>
       )}
 

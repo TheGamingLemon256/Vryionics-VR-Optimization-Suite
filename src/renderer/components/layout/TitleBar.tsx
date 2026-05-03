@@ -25,7 +25,7 @@ function TitleBar(): React.ReactElement {
         <span className="text-sm font-semibold text-white/90 tracking-wide">
           Vryionics VR Optimization Suite
         </span>
-        <span className="text-[10px] text-gray-500 font-medium">v0.2.8</span>
+        <span className="text-[10px] text-gray-500 font-medium">v0.2.9</span>
       </div>
 
       {/* Update chip + window controls */}
