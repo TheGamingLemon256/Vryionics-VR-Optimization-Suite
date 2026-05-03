@@ -295,8 +295,16 @@ export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData
     ])
     const steamvrBranch = detectSteamVrBranch()
 
+    // Desktop chipset trumps battery presence. UPS units, USB-attached
+    // accessory batteries, and a few enterprise rigs all surface in the
+    // ACPI battery class on otherwise-clearly-desktop machines and trip
+    // the battery heuristic. The chipset database only catalogs desktop
+    // chipsets (AM4/AM5/LGA1700/etc.), so a hit there is a positive
+    // desktop signal and we should ignore the battery reading.
+    const isLaptop = motherboard?.chipset ? false : gpuState.isLaptop
+
     console.log(
-      `[scan:compat] hybrid=${gpuState.hasHybridGpu} laptop=${gpuState.isLaptop} ` +
+      `[scan:compat] hybrid=${gpuState.hasHybridGpu} laptop=${isLaptop} ` +
       `HVCI=${coreIsolation.hvciEnabled} VBS=${coreIsolation.vbsRunning} ` +
       `steamvrBranch=${steamvrBranch} installedTools=${installedVrTools.length} ` +
       `chipset=${motherboard?.chipset ?? 'unknown'}`
@@ -306,7 +314,7 @@ export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData
       success: true,
       data: {
         hasHybridGpu: gpuState.hasHybridGpu,
-        isLaptop: gpuState.isLaptop,
+        isLaptop,
         hvciEnabled: coreIsolation.hvciEnabled,
         coreIsolationEnabled: coreIsolation.coreIsolationEnabled,
         vbsRunning: coreIsolation.vbsRunning,

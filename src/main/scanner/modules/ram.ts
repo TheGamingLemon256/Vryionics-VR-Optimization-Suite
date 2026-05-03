@@ -68,9 +68,9 @@ export async function scanRam(): Promise<ScanModuleResult<RamData>> {
     const counters = await getPoolCounters()
 
     // Without WMI's Win32_PhysicalMemory we cannot enumerate DIMMs from a
-    // pure-registry path. detectChannelMode falls back to 'single' against
-    // an empty descriptor list, which is honest: we report what we can see.
-    const channels = detectChannelMode([]) === 'dual' ? 2 : 1
+    // pure-registry path. Report 0 (unknown) rather than guessing single
+    // and tripping the single-channel rule on every machine.
+    const channels = 0
 
     const nonpagedPoolMB = counters
       ? Math.round(counters.nonpagedPoolBytes / 1024 / 1024)

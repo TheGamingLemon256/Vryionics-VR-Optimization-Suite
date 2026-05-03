@@ -66,10 +66,11 @@ export const ramRules: Rule[] = [
     name: 'RAM May Be in Single-Channel Mode',
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.ram) return null
-      if (data.ram.dualChannelConfirmed) return null // Good — dual channel confirmed
+      if (data.ram.dualChannelConfirmed) return null // Dual channel confirmed
       if (data.ram.totalGB < 8) return null // Low RAM is a different issue
-      // Only flag if we have a clear indication of single channel
-      // dualChannelConfirmed = false (not just undetectable)
+      // channels === 0 means we couldn't determine channel mode from the
+      // registry-only path. Don't fire on unknown.
+      if (data.ram.channels === 0 || data.ram.channels >= 2) return null
       return {
         ruleId: 'ram-single-channel',
         severity: 'warning',

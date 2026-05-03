@@ -1225,6 +1225,8 @@ function buildCpuThermalThrottlePlan(data: ScanData): ActionPlan | null {
 function buildRamSingleChannelPlan(data: ScanData): ActionPlan | null {
   if (!data.ram) return null
   if (data.ram.dualChannelConfirmed) return null
+  // channels === 0 means we couldn't read DIMM topology and shouldn't guess.
+  if (data.ram.channels === 0 || data.ram.channels >= 2) return null
   return {
     id: 'action-ram-single-channel',
     priority: 7,

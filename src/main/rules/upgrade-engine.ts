@@ -325,13 +325,22 @@ function detectRamTierLevel(scanData: ScanData): number | null {
 
   const { totalGB, speed, type } = ram
 
+  // Capacity is plenty regardless of speed/type guesses. The only realistic
+  // upgrade path from 32 GB+ is a generational platform move, which we
+  // surface as tier 5+ only on confirmed DDR5. With unknown type+speed and
+  // 32 GB+ already installed, there's no meaningful recommendation to make.
+  if (totalGB >= 32 && (type !== 'DDR5' || speed === 0)) return null
+
   if (type === 'DDR5') {
     if (totalGB >= 64) return speed >= 6400 ? 8 : 7
     if (totalGB >= 32) return speed >= 6000 ? 6 : 5
     return 4  // DDR5 but low capacity
   }
 
-  // DDR4
+  // DDR4 (or DDR4-shaped unknown). If we don't know the speed, skip rather
+  // than firing a "your RAM is slow" recommendation against fabricated zero.
+  if (speed === 0) return null
+
   if (totalGB < 12) return 1
   if (totalGB < 24) return speed >= 3200 ? 3 : 2
   // 24GB+
