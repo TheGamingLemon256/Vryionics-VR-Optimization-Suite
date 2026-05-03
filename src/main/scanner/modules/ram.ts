@@ -3,6 +3,7 @@
 
 import os from 'node:os'
 import { readCounters } from '../../utils/typeperf'
+import { readDimmInfo } from '../../utils/dimm-info'
 import type { ScanModuleResult, RamData } from '../types'
 
 export interface DimmDescriptor {
@@ -65,12 +66,46 @@ export async function scanRam(): Promise<ScanModuleResult<RamData>> {
     const usedGB = Math.round((totalGB - freeGB) * 10) / 10
     const usagePercent = totalGB > 0 ? Math.round((usedGB / totalGB) * 1000) / 10 : 0
 
-    const counters = await getPoolCounters()
+    const [counters, dimms] = await Promise.all([
+      getPoolCounters(),
+      readDimmInfo(),
+    ])
 
-    // Without WMI's Win32_PhysicalMemory we cannot enumerate DIMMs from a
-    // pure-registry path. Report 0 (unknown) rather than guessing single
-    // and tripping the single-channel rule on every machine.
-    const channels = 0
+    // DIMM info is read via a single short-lived powershell.exe call against
+    // Win32_PhysicalMemory. When that fails (PS missing, query times out,
+    // unparseable JSON), we fall back to "unknown" rather than guessing.
+    const populatedDimms = (dimms ?? []).filter((d) => d.capacityGB > 0)
+    const dimmCount = populatedDimms.length
+
+    let speed = 0
+    let xmpSpeed: number | null = null
+    let type: RamData['type'] = 'Unknown'
+    let channels = 0
+    let dualChannelConfirmed = false
+
+    if (dimmCount > 0) {
+      // Configured speed is what the system is actually running at; rated
+      // SPD speed is what the kit is capable of. When XMP/EXPO is on they
+      // match, when it's off they differ.
+      speed = Math.max(...populatedDimms.map((d) => d.configuredSpeedMHz))
+      const ratedMax = Math.max(...populatedDimms.map((d) => d.speedMHz))
+      xmpSpeed = ratedMax > 0 && ratedMax > speed ? ratedMax : null
+
+      const types = populatedDimms.map((d) => d.type).filter((t) => t !== 'Unknown')
+      if (types.length > 0) type = types[0]
+
+      const allEqualSize = populatedDimms.every(
+        (d) => d.capacityGB === populatedDimms[0].capacityGB,
+      )
+      if (dimmCount >= 2 && allEqualSize) {
+        channels = 2
+        dualChannelConfirmed = true
+      } else if (dimmCount === 1) {
+        channels = 1
+      } else {
+        channels = 1 // mixed sizes: flex mode, single-channel for the asymmetric part
+      }
+    }
 
     const nonpagedPoolMB = counters
       ? Math.round(counters.nonpagedPoolBytes / 1024 / 1024)
@@ -79,7 +114,10 @@ export async function scanRam(): Promise<ScanModuleResult<RamData>> {
       ? Math.round(counters.modifiedPageListBytes / 1024 / 1024)
       : 0
 
-    console.log(`[scan:ram] Done. ${totalGB}GB total, usage: ${usagePercent}%`)
+    console.log(
+      `[scan:ram] Done. ${totalGB}GB total, usage: ${usagePercent}%, ` +
+      `dimms=${dimmCount} type=${type} speed=${speed}MHz channels=${channels || '?'}`
+    )
 
     return {
       success: true,
@@ -88,15 +126,15 @@ export async function scanRam(): Promise<ScanModuleResult<RamData>> {
         usedGB,
         availableGB: freeGB,
         usagePercent,
-        speed: 0,
-        xmpSpeed: null,
-        type: 'Unknown',
+        speed,
+        xmpSpeed,
+        type,
         channels,
         commitChargePercent: 0,
         pagefileUsagePercent: 0,
         nonpagedPoolMB,
         modifiedPagesMB,
-        dualChannelConfirmed: false,
+        dualChannelConfirmed,
       }
     }
   } catch (error) {
