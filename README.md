@@ -48,7 +48,7 @@ VOS still records CPU, GPU temperature, GPU power, and RAM at 1 Hz during every 
 
 Download the latest installer from the [Releases](https://github.com/Vryionics/Vryionics-VR-Optimization-Suite/releases/latest) page.
 
-The installer is **unsigned**. Code-signing certificates cost real money and this is a small open-source project. Windows SmartScreen will show a warning the first time you run it. Click "More info," then "Run anyway." You can verify the installer's SHA-256 against the value posted in the release notes if you want to confirm authenticity.
+The installer is **unsigned**. Code-signing certificates cost real money and this is a small open-source project. Windows SmartScreen will show a warning the first time you run it. Click "More info," then "Run anyway." Each release page publishes both a SHA-512 (the hash electron-builder emits in `latest.yml`) and a SHA-256 (handy for VirusTotal lookups) — verify the installer against either before you run it if you want to confirm authenticity.
 
 As of v0.2.9, the installer and the app run as the standard user. No admin elevation is required to install or to use VOS.
 

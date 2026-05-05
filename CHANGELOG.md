@@ -81,7 +81,9 @@ if you want to change them, research the specific change yourself.
 
 ### Auto-updater
 Stays disabled until code-signing is in place. Updates are manual
-download from GitHub Releases with SHA-256 verification.
+download from GitHub Releases. The installer is verified against the
+SHA-512 that electron-builder writes into `latest.yml`; the release
+page also lists a SHA-256 for VirusTotal-style lookups.
 
 ### Reviewed by
 - @VixenVRC
