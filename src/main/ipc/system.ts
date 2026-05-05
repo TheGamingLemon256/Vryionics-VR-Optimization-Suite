@@ -3,10 +3,17 @@
 import { ipcMain, shell } from 'electron'
 import { execFileSync } from 'child_process'
 import { loadAllProfiles, getProfile, getProfileSummaries } from '../headsets/loader'
+import { isHttpsUrl } from '../utils/url-guard'
+import { isAllowedConfigKey, validateSetupConfig } from './validators'
 import Store from 'electron-store'
 
 const store = new Store({ name: 'vros-config' })
 const setupStore = new Store({ name: 'vros-setup' })
+
+// Renderer should never invoke arbitrary protocol handlers through the
+// open-external bridge — file://, ms-cxh-full:, search-ms:, SMB UNC paths,
+// and friends are all reachable through shell.openExternal if we hand it
+// whatever the renderer sends. https only.
 
 export function registerSystemHandlers(): void {
   // Admin detection. Kept around for any future surface that wants to know
@@ -34,8 +41,13 @@ export function registerSystemHandlers(): void {
   })
 
   ipcMain.handle('setup:saveSetup', (_event, config: unknown) => {
+    const validated = validateSetupConfig(config)
+    if (!validated) {
+      console.warn('[setup:saveSetup] rejected invalid setup payload')
+      return
+    }
     console.log('[setup:saveSetup] Saving user setup configuration')
-    setupStore.set('userSetup', config)
+    setupStore.set('userSetup', validated)
   })
 
   ipcMain.handle('setup:getSetup', () => {
@@ -50,12 +62,19 @@ export function registerSystemHandlers(): void {
   })
 
   ipcMain.handle('config:set', (_event, key: string, value: unknown) => {
+    if (!isAllowedConfigKey(key)) {
+      console.warn(`[config:set] rejected unknown key: ${key}`)
+      return
+    }
     console.log(`[config:set] ${key} = ${JSON.stringify(value)}`)
     store.set(key, value)
   })
 
-  // Open external URL in default browser
   ipcMain.handle('app:openExternal', (_event, url: string) => {
+    if (!isHttpsUrl(url)) {
+      console.warn(`[app:openExternal] refused non-https URL: ${url}`)
+      return
+    }
     console.log(`[app:openExternal] Opening: ${url}`)
     shell.openExternal(url)
   })

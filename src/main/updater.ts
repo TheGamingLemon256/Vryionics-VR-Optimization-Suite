@@ -22,11 +22,26 @@ const REPO_NAME = 'Vryionics-VR-Optimization-Suite'
 const PRODUCT_NAME = 'Vryionics VR Optimization Suite'
 const INSTALLER_PREFIX = 'Vryionics-VR-Optimization-Suite-Setup'
 
-// The repo has been public since v0.2.7. Release-check calls run
-// unauthenticated, which keeps anything resembling a PAT out of the
-// installer and out of the dev environment's pickup list.
-function getGithubToken(): string {
-  return ''
+// SHA-512 verification is mandatory before any installer runs. A null or
+// empty `expectedBase64` means we couldn't extract the hash from latest.yml,
+// which means we have no manifest to verify against — refuse rather than
+// install unverified bytes. Returns 'ok' on success or a human-readable
+// error string on any failure.
+export function verifyInstallerHash(filePath: string, expectedBase64: string | null): 'ok' | string {
+  if (!expectedBase64) {
+    return 'Installer rejected: latest.yml has no sha512 entry. Refusing to install unverified bytes.'
+  }
+  let actualBase64: string
+  try {
+    const buf = fs.readFileSync(filePath)
+    actualBase64 = crypto.createHash('sha512').update(buf).digest('base64')
+  } catch (err) {
+    return `Installer rejected: could not read ${filePath} for verification (${(err as Error).message})`
+  }
+  if (actualBase64 !== expectedBase64) {
+    return 'Installer hash verification failed. Possible tampering.'
+  }
+  return 'ok'
 }
 
 export interface UpdateInfo {
@@ -210,18 +225,14 @@ export class AutoUpdater {
         throw new Error(`Downloaded file is too small (${stat.size} bytes) — likely a redirect or error page`)
       }
 
-      if (this.latestReleaseSha512) {
-        const fileBuffer = fs.readFileSync(dest)
-        const fileHash = crypto.createHash('sha512').update(fileBuffer).digest('base64')
-        if (fileHash !== this.latestReleaseSha512) {
-          console.error('[Updater] SECURITY: Installer hash mismatch!')
-          fs.unlinkSync(dest)
-          throw new Error('Installer hash verification failed — possible tampering')
-        }
-        console.log('[Updater] SHA-512 hash verified OK')
-      } else {
-        console.warn('[Updater] No SHA-512 available — skipping verification')
+      const verdict = verifyInstallerHash(dest, this.latestReleaseSha512)
+      if (verdict !== 'ok') {
+        // The verifier deletes nothing — that stays in this layer so we
+        // never have a verifier with side-effects on disk.
+        fs.unlinkSync(dest)
+        throw new Error(verdict)
       }
+      console.log('[Updater] SHA-512 hash verified')
 
       this.downloadedInstallerPath = dest
       console.log(`[Updater] Downloaded: ${dest} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`)
@@ -485,17 +496,6 @@ if ($launched) {
    *      version they currently have.
    */
   private async fetchLatestRelease(): Promise<any> {
-    const token = getGithubToken()
-    if (token) {
-      try {
-        const result = await this.fetchLatestReleaseWithAuth(token)
-        if (result !== null) return result
-        // null can mean either "no releases" or "auth failed but call
-        // technically succeeded" — try unauth before giving up
-      } catch (err) {
-        console.log(`[Updater] Authenticated fetch failed (${(err as Error).message}) — falling back to unauthenticated`)
-      }
-    }
     return this.fetchLatestReleaseWithAuth(null)
   }
 
@@ -570,16 +570,13 @@ if ($launched) {
 
   private fetchAssetText(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const token = getGithubToken()
       const doRequest = (requestUrl: string, redirectCount = 0) => {
         if (redirectCount > 5) return reject(new Error('Too many redirects fetching asset'))
         const parsed = new URL(requestUrl)
-        const isGitHubApi = parsed.hostname === 'api.github.com'
         const headers: Record<string, string> = {
           'User-Agent': `VROS/${app.getVersion()}`,
           'Accept': 'application/octet-stream'
         }
-        if (token && isGitHubApi) headers['Authorization'] = `Bearer ${token}`
 
         const req = https.request({
           hostname: parsed.hostname,
@@ -607,17 +604,14 @@ if ($launched) {
   private downloadFile(url: string, dest: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const totalSize = this.status.updateInfo?.downloadSize || 0
-      const token = getGithubToken()
 
       const doRequest = (requestUrl: string, redirectCount = 0) => {
         if (redirectCount > 5) return reject(new Error('Too many redirects'))
         const parsed = new URL(requestUrl)
-        const isGitHubApi = parsed.hostname === 'api.github.com'
         const headers: Record<string, string> = {
           'User-Agent': `VROS/${app.getVersion()}`,
           'Accept': 'application/octet-stream'
         }
-        if (token && isGitHubApi) headers['Authorization'] = `Bearer ${token}`
 
         const options = {
           hostname: parsed.hostname,

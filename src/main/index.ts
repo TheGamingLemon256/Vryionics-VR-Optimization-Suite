@@ -20,6 +20,7 @@ import { registerSessionHandlers } from './ipc/sessions'
 import * as sessionRecorder from './session-recorder'
 import { initTray, destroyTray } from './tray'
 import { startScheduler, getSchedulerConfig, setSchedulerConfig } from './scheduler'
+import { isHttpsUrl } from './utils/url-guard'
 import { exportProfile, importProfileFromDisk } from './profile-export'
 
 let mainWindow: BrowserWindow | null = null
@@ -57,7 +58,7 @@ function createOverlayWindow(): void {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -87,7 +88,7 @@ function createWindow(): void {
     backgroundColor: '#0a0a14',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -106,7 +107,11 @@ function createWindow(): void {
   // below still awaits service restoration before the process exits.
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (isHttpsUrl(details.url)) {
+      shell.openExternal(details.url)
+    } else {
+      console.warn(`[mainWindow] blocked window-open to non-https URL: ${details.url}`)
+    }
     return { action: 'deny' }
   })
 
@@ -180,6 +185,32 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // Lock down navigation across every webContents the app creates. Without
+  // this, a renderer could navigate to about:blank or a remote origin and
+  // we'd lose the contextIsolation + preload-only-API guarantee. Same hook
+  // also catches new-window attempts on the overlay window which doesn't
+  // wire its own setWindowOpenHandler.
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-navigate', (e, navUrl) => {
+      // Allow only the local file load and the dev server URL.
+      const allowedDevUrl = process.env['ELECTRON_RENDERER_URL']
+      const isLocalFile = navUrl.startsWith('file://')
+      const isDevUrl = !!allowedDevUrl && navUrl.startsWith(allowedDevUrl)
+      if (!isLocalFile && !isDevUrl) {
+        console.warn(`[web-contents] blocked navigation to ${navUrl}`)
+        e.preventDefault()
+      }
+    })
+    contents.setWindowOpenHandler((details) => {
+      if (isHttpsUrl(details.url)) {
+        shell.openExternal(details.url)
+      } else {
+        console.warn(`[web-contents] blocked window-open to ${details.url}`)
+      }
+      return { action: 'deny' }
+    })
   })
 
   registerBaseHandlers()

@@ -232,11 +232,30 @@ const api = {
   },
 
   on: (channel: string, callback: (...args: unknown[]) => void) => {
+    if (!SUBSCRIBABLE_CHANNELS.has(channel)) {
+      console.warn(`[preload] refused subscription to unallowed channel: ${channel}`)
+      return () => {}
+    }
     const handler = (_: unknown, ...args: unknown[]) => callback(...args)
     ipcRenderer.on(channel, handler)
     return () => ipcRenderer.removeListener(channel, handler)
   }
 }
+
+// Channels the renderer is allowed to subscribe to via the generic on().
+// Anything else is denied — typed subscriptions above (scan, live optimizer,
+// drivers, sessions, updater) handle their own channel and don't go through
+// this bridge.
+const SUBSCRIBABLE_CHANNELS = new Set([
+  'scan:progress',
+  'liveopt:statusUpdate',
+  'session-recorder:state',
+  'drivers:state',
+  'updater-status',
+  'metrics:update',
+  'fix:progress',
+  'log:line',
+])
 
 export type VROSApi = typeof api
 
