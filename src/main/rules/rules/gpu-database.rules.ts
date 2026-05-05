@@ -12,13 +12,12 @@ import type { ScanData } from '../../scanner/types'
 import { findGpuEntry } from '../../data/gpu-database'
 import type { HeadsetProfile } from '../../headsets/types'
 
-// ── Helpers ─────────────────────────────────────────────────
 
 function primaryGpuEntry(data: ScanData) {
   if (!data.gpu || data.gpu.devices.length === 0) return null
   const primary = data.gpu.devices[data.gpu.primaryGpuIndex] ?? data.gpu.devices[0]
   if (!primary) return null
-  const entry = findGpuEntry(primary.name)
+  const entry = findGpuEntry(primary.name, primary.vramTotal)
   if (!entry) return null
   return { primary, entry }
 }
@@ -34,7 +33,6 @@ function headsetResolutionClass(data: ScanData): 'entry' | 'mainstream' | 'high'
   return 'entry'                                            // Quest 2 / 3S, Rift S, Vive
 }
 
-// ── Rule: AV1 Wireless VR Recommendation ────────────────────
 //
 // Fires for wireless VR users with an AV1-capable GPU, telling them to
 // enable AV1 in their streaming app. Also fires as a missed-opportunity
@@ -86,7 +84,6 @@ const av1WirelessEncoder: Rule = {
   },
 }
 
-// ── Rule: AV1 Missing (wireless users) ──────────────────────
 
 const av1MissingOpportunity: Rule = {
   id: 'gpu-av1-missing-for-wireless',
@@ -129,7 +126,6 @@ const av1MissingOpportunity: Rule = {
   },
 }
 
-// ── Rule: PCIe x8 Warning ───────────────────────────────────
 
 const pcieX8Warning: Rule = {
   id: 'gpu-pcie-x8-warning',
@@ -184,7 +180,6 @@ const pcieX8Warning: Rule = {
   },
 }
 
-// ── Rule: VRAM Undersizing for Headset ──────────────────────
 
 const vramUndersizingRule: Rule = {
   id: 'gpu-vram-undersized-for-headset',
@@ -243,7 +238,6 @@ const vramUndersizingRule: Rule = {
   },
 }
 
-// ── Rule: Intel Arc — ReBAR Mandatory ───────────────────────
 
 const intelArcReBarRule: Rule = {
   id: 'gpu-intel-arc-rebar-required',
@@ -290,7 +284,6 @@ const intelArcReBarRule: Rule = {
   },
 }
 
-// ── Rule: DLSS 4 / MFG Availability ─────────────────────────
 
 const dlss4FrameGenAvailable: Rule = {
   id: 'gpu-dlss4-mfg-available',
@@ -331,7 +324,6 @@ const dlss4FrameGenAvailable: Rule = {
   },
 }
 
-// ── Export ──────────────────────────────────────────────────
 
 export const gpuDatabaseRules: Rule[] = [
   av1WirelessEncoder,

@@ -1,171 +1,136 @@
-// VR Optimization Suite — Live Optimizer Store
 import { create } from 'zustand'
 
-// Types (local mirror — keep in sync with src/main/live-optimizer/types.ts)
-type OptimizerPhase = 'disabled' | 'monitoring' | 'countdown' | 'active' | 'restoring'
-export type LogLevel = 'scan' | 'info' | 'spare' | 'kill' | 'success' | 'warning' | 'service' | 'restore'
+export type OptimizerPhase = 'disabled' | 'monitoring' | 'active'
 
-export interface LogEntry {
-  id: number
-  timestamp: number
-  level: LogLevel
-  message: string
-  detail?: string
+export interface RaisedProcessSummary {
+  pid: number
+  name: string
+  result: 'high' | 'above-normal' | 'failed'
 }
 
-export interface LiveOptimizerConfig {
-  enabled: boolean
-  monitorIntervalMs: number
-  activationDelayMs: number
-  stopServices: boolean
-  customExclusions: string[]
-  customTargets: string[]
-  boostVrPriority: boolean
-  throttleBackground: boolean
-  trimMemory: boolean
-  useEcoQoS: boolean
-}
-
-export interface AffectedProcess {
-  name: string; pid: number; path: string | null; killedAt: number
-}
-export interface AffectedService {
-  name: string; displayName: string; stoppedAt: number
+export interface LoweredProcessSummary {
+  pid: number
+  name: string
+  originalPriority: number
 }
 
 export interface LiveOptimizerStatus {
   phase: OptimizerPhase
-  vrDetectedAt: number | null
   activatedAt: number | null
-  countdownSecondsLeft: number | null
-  affectedProcesses: AffectedProcess[]
-  affectedServices: AffectedService[]
-  detectedVrProcessNames: string[]
-  activityLog: LogEntry[]
-  error: string | null
+  triggerProcess: string | null
+  raised: RaisedProcessSummary[]
+  lowered: LoweredProcessSummary[]
+  notes: string[]
+}
+
+export interface LiveOptimizerFlags {
+  enabled: boolean
+  disclosureAccepted: boolean
+  autoEnableOnVrDetected: boolean
+}
+
+export interface SessionRecord {
+  activatedAt: number
+  deactivatedAt: number | null
+  triggerProcess: string
+  raised: RaisedProcessSummary[]
+  lowered: LoweredProcessSummary[]
+  notes: string[]
 }
 
 const DEFAULT_STATUS: LiveOptimizerStatus = {
   phase: 'disabled',
-  vrDetectedAt: null,
   activatedAt: null,
-  countdownSecondsLeft: null,
-  affectedProcesses: [],
-  affectedServices: [],
-  detectedVrProcessNames: [],
-  activityLog: [],
-  error: null
+  triggerProcess: null,
+  raised: [],
+  lowered: [],
+  notes: [],
 }
 
-const DEFAULT_CONFIG: LiveOptimizerConfig = {
+const DEFAULT_FLAGS: LiveOptimizerFlags = {
   enabled: false,
-  monitorIntervalMs: 5000,
-  activationDelayMs: 15000,
-  stopServices: true,
-  customExclusions: [],
-  customTargets: [],
-  boostVrPriority: true,
-  throttleBackground: true,
-  trimMemory: false,
-  useEcoQoS: true
+  disclosureAccepted: false,
+  autoEnableOnVrDetected: true,
+}
+
+interface LiveOptimizerApi {
+  status: () => Promise<{ running: boolean; status: LiveOptimizerStatus }>
+  enable: () => Promise<void>
+  disable: () => Promise<void>
+  getFlags: () => Promise<LiveOptimizerFlags>
+  setDisclosureAccepted: (accepted: boolean) => Promise<void>
+  setAutoEnable: (value: boolean) => Promise<void>
+  openTriggerFile: () => Promise<string>
+  openAllowlistFile: () => Promise<string>
+  readActivityLog: () => Promise<SessionRecord[]>
+  onStatusUpdate: (cb: (status: LiveOptimizerStatus) => void) => () => void
+}
+
+function api(): LiveOptimizerApi {
+  return (window as unknown as { api: { liveOptimizer: LiveOptimizerApi } }).api.liveOptimizer
 }
 
 interface LiveOptimizerState {
   status: LiveOptimizerStatus
-  config: LiveOptimizerConfig
-  loading: boolean
-  error: string | null
+  flags: LiveOptimizerFlags
+  running: boolean
   initialized: boolean
+  error: string | null
 
   init: () => Promise<void>
-  setEnabled: (v: boolean) => Promise<void>
-  updateConfig: (partial: Partial<LiveOptimizerConfig>) => Promise<void>
-  addExclusion: (name: string) => Promise<void>
-  removeExclusion: (name: string) => Promise<void>
-  addTarget: (name: string) => Promise<void>
-  removeTarget: (name: string) => Promise<void>
-  forceOptimize: () => Promise<void>
-  restore: () => Promise<void>
+  enable: () => Promise<void>
+  disable: () => Promise<void>
+  acceptDisclosure: () => Promise<void>
+  setAutoEnable: (value: boolean) => Promise<void>
 }
 
 export const useLiveOptimizerStore = create<LiveOptimizerState>((set, get) => ({
   status: DEFAULT_STATUS,
-  config: DEFAULT_CONFIG,
-  loading: false,
-  error: null,
+  flags: DEFAULT_FLAGS,
+  running: false,
   initialized: false,
+  error: null,
 
   init: async () => {
     if (get().initialized) return
-    set({ loading: true })
     try {
-      const api = (window as any).api
-      const [status, config] = await Promise.all([
-        api.liveOptimizer.getStatus(),
-        api.liveOptimizer.getConfig()
-      ])
+      const [snap, flags] = await Promise.all([api().status(), api().getFlags()])
       set({
-        status: status ?? DEFAULT_STATUS,
-        config: { ...DEFAULT_CONFIG, ...(config ?? {}) },
-        loading: false,
-        initialized: true
+        status: snap.status ?? DEFAULT_STATUS,
+        running: !!snap.running,
+        flags: { ...DEFAULT_FLAGS, ...flags },
+        initialized: true,
       })
-      // Subscribe to live status updates
-      api.liveOptimizer.onStatusUpdate((s: LiveOptimizerStatus) => {
-        set({ status: s })
+      api().onStatusUpdate((s) => {
+        set({ status: s, running: s.phase !== 'disabled' })
       })
     } catch (err) {
-      set({ loading: false, error: (err as Error).message, initialized: true })
+      set({ initialized: true, error: (err as Error).message })
     }
   },
 
-  setEnabled: async (v) => {
-    const api = (window as any).api
-    if (v) await api.liveOptimizer.enable()
-    else await api.liveOptimizer.disable()
-    set((s) => ({ config: { ...s.config, enabled: v } }))
+  enable: async () => {
+    try {
+      await api().enable()
+      set((s) => ({ flags: { ...s.flags, enabled: true }, running: true, error: null }))
+    } catch (err) {
+      set({ error: (err as Error).message })
+      throw err
+    }
   },
 
-  updateConfig: async (partial) => {
-    const next = { ...get().config, ...partial }
-    set({ config: next })
-    const api = (window as any).api
-    await api.liveOptimizer.setConfig(next)
+  disable: async () => {
+    await api().disable()
+    set((s) => ({ flags: { ...s.flags, enabled: false }, running: false }))
   },
 
-  addExclusion: async (name) => {
-    const lower = name.toLowerCase().trim()
-    if (!lower) return
-    const config = get().config
-    if (config.customExclusions.includes(lower)) return
-    await get().updateConfig({ customExclusions: [...config.customExclusions, lower] })
+  acceptDisclosure: async () => {
+    await api().setDisclosureAccepted(true)
+    set((s) => ({ flags: { ...s.flags, disclosureAccepted: true } }))
   },
 
-  removeExclusion: async (name) => {
-    const config = get().config
-    await get().updateConfig({ customExclusions: config.customExclusions.filter((e) => e !== name) })
+  setAutoEnable: async (value) => {
+    await api().setAutoEnable(value)
+    set((s) => ({ flags: { ...s.flags, autoEnableOnVrDetected: value } }))
   },
-
-  addTarget: async (name) => {
-    const lower = name.toLowerCase().trim()
-    if (!lower) return
-    const config = get().config
-    if (config.customTargets.includes(lower)) return
-    await get().updateConfig({ customTargets: [...config.customTargets, lower] })
-  },
-
-  removeTarget: async (name) => {
-    const config = get().config
-    await get().updateConfig({ customTargets: config.customTargets.filter((t) => t !== name) })
-  },
-
-  forceOptimize: async () => {
-    const api = (window as any).api
-    await api.liveOptimizer.forceOptimize()
-  },
-
-  restore: async () => {
-    const api = (window as any).api
-    await api.liveOptimizer.restore()
-  }
 }))

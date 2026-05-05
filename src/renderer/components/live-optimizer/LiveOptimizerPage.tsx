@@ -1,5 +1,3 @@
-// VR Optimization Suite — Live Optimizer Page
-
 import React from 'react'
 import LiveOptimizerPanel from './LiveOptimizerPanel'
 

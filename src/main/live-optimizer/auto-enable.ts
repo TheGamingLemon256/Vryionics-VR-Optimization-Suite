@@ -13,8 +13,8 @@
 // own 5 s monitor loop because we don't need to enumerate every process —
 // we only need to know whether ANY VR process is running.
 
-import { spawn } from 'child_process'
 import { log } from '../logger'
+import { enumerateProcesses } from '../utils/process'
 import { startRecording as startSession, finalise as finaliseSession, getActiveSummary } from '../session-recorder'
 import { notify } from '../notifier'
 
@@ -52,36 +52,15 @@ interface AutoEnableHooks {
   disable: () => void
 }
 
-/**
- * Sample currently-running VR processes via PowerShell. Returns the names
- * of VR processes detected. Async — does not block the event loop.
- */
-function pollVrProcesses(): Promise<string[]> {
-  // Build a comma-separated list for Get-Process
-  const namesArg = VR_PROCESS_NAMES.map((n) => `'${n.replace(/'/g, "''")}'`).join(',')
-  const script = `Get-Process -Name ${namesArg} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name -Unique`
-
-  return new Promise((resolve) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true },
-    )
-    let stdout = ''
-    child.stdout.setEncoding('utf-8')
-    child.stdout.on('data', (c: string) => { stdout += c })
-
-    const timer = setTimeout(() => { try { child.kill() } catch { /* ignore */ } resolve([]) }, 8_000)
-    child.on('error', () => { clearTimeout(timer); resolve([]) })
-    child.on('close', () => {
-      clearTimeout(timer)
-      const names = stdout
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0)
-      resolve(names)
-    })
-  })
+async function pollVrProcesses(): Promise<string[]> {
+  const procs = await enumerateProcesses().catch(() => [])
+  const wanted = new Set(VR_PROCESS_NAMES.map((n) => n.toLowerCase()))
+  const seen = new Set<string>()
+  for (const p of procs) {
+    const name = p.name.toLowerCase()
+    if (wanted.has(name)) seen.add(name)
+  }
+  return [...seen]
 }
 
 async function poll(hooks: AutoEnableHooks): Promise<void> {

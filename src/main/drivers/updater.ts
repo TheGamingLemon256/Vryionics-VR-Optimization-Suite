@@ -236,7 +236,7 @@ class DriverUpdater {
     if (this.state.activeInstall) {
       return { success: false, error: 'Another install is already in progress' }
     }
-    this.state.activeInstall = { rowId, progress: { phase: 'restore-point' } }
+    this.state.activeInstall = { rowId, progress: { phase: 'downloading' } }
     this.notify()
 
     try {
@@ -311,7 +311,6 @@ function normalize(v: string): string {
   return v.trim().replace(/\s+/g, '')
 }
 
-// ── Singleton export ──────────────────────────────────────────
 
 export const driverUpdater = new DriverUpdater()
 

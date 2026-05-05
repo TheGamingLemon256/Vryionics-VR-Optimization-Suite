@@ -1,5 +1,3 @@
-// VR Optimization Suite — USB Diagnostic Rules
-
 import type { Rule } from '../types'
 
 export const usbRules: Rule[] = [
@@ -67,7 +65,6 @@ export const usbRules: Rule[] = [
     }
   },
 
-  // ── ASMedia host controller + Quest Link / USB-tethered headset ──
   // ASMedia xHCI controllers (common on consumer X570/B550/Z790 boards)
   // have documented issues with Meta Quest Link: intermittent audio
   // dropouts, occasional USB-reset micro-stutters, and in rare cases

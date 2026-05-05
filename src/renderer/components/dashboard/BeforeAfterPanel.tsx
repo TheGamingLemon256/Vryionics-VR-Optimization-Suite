@@ -65,7 +65,6 @@ export function BeforeAfterPanel(): React.ReactElement | null {
 
   if (!snapshot) return null
 
-  // ── State 1: snapshot captured but no fresh scan yet ────────
   if (!hasFreshScan) {
     return (
       <div className="glass-panel-sm rounded-xl p-4 border border-accent-primary/30 flex items-center gap-3 flex-wrap">
@@ -98,7 +97,6 @@ export function BeforeAfterPanel(): React.ReactElement | null {
     )
   }
 
-  // ── State 2: side-by-side diff ──────────────────────────────
   if (!diff) return null
   const scoreDelta = diff.afterScore - diff.beforeScore
   const scoreColor =

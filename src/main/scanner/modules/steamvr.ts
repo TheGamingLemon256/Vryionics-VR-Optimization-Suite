@@ -1,9 +1,8 @@
-// VR Optimization Suite — SteamVR Settings Scan Module
-// Finds and parses steamvr.vrsettings to extract render resolution, reprojection, etc.
+// Parses steamvr.vrsettings — render resolution, reprojection, etc.
 
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { tryRunCmd } from '../../utils/powershell'
+import { readValue } from '../../utils/registry-read'
 import type { ScanModuleResult } from '../types'
 
 export interface SteamVrSettingsData {
@@ -45,16 +44,9 @@ function parseLaxJson(raw: string): Record<string, unknown> {
 }
 
 async function getSteamVrVersion(): Promise<string | null> {
-  try {
-    const output = await tryRunCmd(
-      'reg query "HKLM\\SOFTWARE\\Valve\\Steam" /v "Version" 2>nul',
-      5000
-    )
-    const match = output?.match(/REG_SZ\s+(.+)/i)
-    return match ? match[1].trim() : null
-  } catch {
-    return null
-  }
+  const v = await readValue('HKLM\\SOFTWARE\\Valve\\Steam', 'Version').catch(() => null)
+  if (v && (v.type === 'REG_SZ' || v.type === 'REG_EXPAND_SZ')) return v.data.trim() || null
+  return null
 }
 
 export async function scanSteamVr(): Promise<ScanModuleResult<SteamVrSettingsData>> {

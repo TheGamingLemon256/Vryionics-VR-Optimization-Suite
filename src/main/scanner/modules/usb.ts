@@ -1,7 +1,7 @@
-// VR Optimization Suite — USB Scanner Module
-// Detects USB host controller quality and VR device USB generations.
+// USB host controller quality and VR device USB generations.
 
-import { tryRunPowerShell } from '../../utils/powershell'
+import { readKey } from '../../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../../utils/registry'
 import type { ScanModuleResult, UsbData } from '../types'
 
 function detectUsbVendor(name: string): string {
@@ -28,8 +28,66 @@ function detectUsbGeneration(name: string): '2.0' | '3.0' | '3.1' | '3.2' | 'Unk
 const VR_USB_KEYWORDS = [
   'oculus', 'meta', 'quest', 'pico', 'valve index', 'htc vive', 'vive',
   'pimax', 'bigscreen beyond', 'sony ps vr', 'psvr', 'mixed reality',
-  'virtual reality', 'alvr'
+  'virtual reality', 'alvr',
 ]
+
+interface RegistryDevice {
+  name: string
+  service: string
+  hardwareId: string
+}
+
+async function readDevice(enumPath: string): Promise<RegistryDevice | null> {
+  const key = await readKey(`HKLM\\${enumPath}`).catch(() => null)
+  if (!key) return null
+
+  const friendly = key.values['FriendlyName']
+  const devDesc = key.values['DeviceDesc']
+  const service = key.values['Service']
+  const hardwareId = key.values['HardwareID']
+
+  // DeviceDesc often holds an "@inf,%key%;Value" indirection — strip it down
+  // to the resolved value, which Windows duplicates after the semicolon.
+  let name = ''
+  if (friendly && friendly.type === 'REG_SZ' && friendly.data.trim()) {
+    name = friendly.data.trim()
+  } else if (devDesc && devDesc.type === 'REG_SZ') {
+    const semi = devDesc.data.lastIndexOf(';')
+    name = semi >= 0 ? devDesc.data.slice(semi + 1).trim() : devDesc.data.trim()
+  }
+
+  if (!name) return null
+
+  let hwId = ''
+  if (hardwareId) {
+    if (hardwareId.type === 'REG_MULTI_SZ' && hardwareId.data.length > 0) hwId = hardwareId.data[0]
+    else if (hardwareId.type === 'REG_SZ') hwId = hardwareId.data
+  }
+
+  return {
+    name,
+    service: service && service.type === 'REG_SZ' ? service.data : '',
+    hardwareId: hwId,
+  }
+}
+
+/**
+ * Walk Enum\<bus> and read each instance's child key. Layout is two levels
+ * deep on USB: bus\VID_xxxx&PID_xxxx\<instance>. We collect every leaf with
+ * a FriendlyName / DeviceDesc.
+ */
+async function enumerateBusDevices(busPath: string): Promise<RegistryDevice[]> {
+  const devices: RegistryDevice[] = []
+  const families = enumerateRegistrySubkeys('HKLM', busPath)
+  for (const family of families) {
+    const instances = enumerateRegistrySubkeys('HKLM', `${busPath}\\${family}`)
+    for (const instance of instances) {
+      const dev = await readDevice(`${busPath}\\${family}\\${instance}`)
+      if (dev) devices.push(dev)
+    }
+  }
+  return devices
+}
 
 export async function scanUsb(): Promise<ScanModuleResult<UsbData>> {
   console.log('[scan:usb] Starting USB scan...')
@@ -39,93 +97,44 @@ export async function scanUsb(): Promise<ScanModuleResult<UsbData>> {
   let genericControllerCount = 0
 
   try {
-    // Enumerate USB host controllers
-    const ctrlOut = await tryRunPowerShell(`
-Get-PnpDevice -Class 'USB' -PresentOnly -EA SilentlyContinue |
-  Where-Object {
-    $_.FriendlyName -like '*Host Controller*' -or
-    $_.FriendlyName -like '*xHCI*' -or
-    $_.FriendlyName -like '*eXtensible*' -or
-    $_.FriendlyName -like '*EHCI*' -or
-    $_.FriendlyName -like '*UHCI*'
-  } |
-  Select-Object FriendlyName |
-  ConvertTo-Json -Compress
-`, 12000)
-    if (ctrlOut) {
-      try {
-        const raw = JSON.parse(ctrlOut)
-        const list = Array.isArray(raw) ? raw : [raw]
-        for (const item of list) {
-          const name = String(item.FriendlyName ?? '')
-          if (!name) continue
-          const vendor = detectUsbVendor(name)
-          const generation = detectUsbGeneration(name)
-          controllers.push({ name, vendor, generation })
-          if (vendor === 'Unknown' && generation === 'Unknown') genericControllerCount++
-        }
-      } catch { /* skip malformed */ }
+    // Host controllers live under PCI, not USB. Their Service value is usbxhci
+    // (USB 3+) or usbehci/usbohci/usbuhci for the older standards.
+    const pciDevices = await enumerateBusDevices('SYSTEM\\CurrentControlSet\\Enum\\PCI')
+    const hostServices = new Set(['usbxhci', 'usbehci', 'usbohci', 'usbuhci'])
+
+    for (const dev of pciDevices) {
+      const svc = dev.service.toLowerCase()
+      if (!hostServices.has(svc)) continue
+
+      const vendor = detectUsbVendor(dev.name)
+      let generation = detectUsbGeneration(dev.name)
+      if (generation === 'Unknown') {
+        if (svc === 'usbxhci') generation = '3.0'
+        else if (svc === 'usbehci') generation = '2.0'
+      }
+
+      controllers.push({ name: dev.name, vendor, generation })
+      if (vendor === 'Unknown' && generation === 'Unknown') genericControllerCount++
     }
 
-    // Find VR-related USB devices
-    const devicesOut = await tryRunPowerShell(`
-Get-PnpDevice -PresentOnly -EA SilentlyContinue |
-  Where-Object { $_.Status -eq 'OK' } |
-  Select-Object FriendlyName, HardwareId |
-  ConvertTo-Json -Compress -Depth 2
-`, 15000)
-    if (devicesOut) {
-      try {
-        const raw = JSON.parse(devicesOut)
-        const list = Array.isArray(raw) ? raw : [raw]
-        for (const item of list) {
-          const name = String(item.FriendlyName ?? '').toLowerCase()
-          if (VR_USB_KEYWORDS.some((kw) => name.includes(kw))) {
-            vrDevicesOnUsb.push(String(item.FriendlyName))
-            // Detect USB generation from HardwareId
-            const hwId = String(Array.isArray(item.HardwareId) ? item.HardwareId[0] : item.HardwareId ?? '')
-            if (hwId.includes('USB\\')) {
-              // Check if it's on a USB 3.x port by looking for USB 3 in parent controller
-              // USB 3.x devices typically have HardwareId containing "USB\VID_" and are
-              // connected to xHCI controllers. We look at transfer speed indicators.
-              if (name.includes('usb 3') || hwId.includes('SS')) {
-                headsetUsbGeneration = '3.0'
-              } else {
-                headsetUsbGeneration = '2.0'
-              }
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
+    // VR-relevant downstream devices live under Enum\USB. We match by
+    // FriendlyName/DeviceDesc keywords to keep parity with the previous
+    // Get-PnpDevice approach.
+    const usbDevices = await enumerateBusDevices('SYSTEM\\CurrentControlSet\\Enum\\USB')
+    for (const dev of usbDevices) {
+      const lower = dev.name.toLowerCase()
+      if (!VR_USB_KEYWORDS.some(kw => lower.includes(kw))) continue
 
-    // Better USB generation detection for VR headsets via PnpTree
-    const vrUsbOut = await tryRunPowerShell(`
-$vrKeywords = @('oculus', 'quest', 'pico', 'vive', 'valve index', 'mixed reality', 'pimax')
-$devs = Get-PnpDevice -PresentOnly -EA SilentlyContinue | Where-Object {
-  $n = $_.FriendlyName.ToLower()
-  ($vrKeywords | Where-Object { $n -like "*$_*" }).Count -gt 0
-}
-if ($devs) {
-  $devs | Select-Object FriendlyName, @{N='InstanceId';E={$_.InstanceId}} | ConvertTo-Json -Compress
-}
-`, 12000)
-    if (vrUsbOut?.trim() && vrUsbOut.trim() !== 'null') {
-      // Try to determine USB speed from instance ID
-      try {
-        const raw = JSON.parse(vrUsbOut)
-        const list = Array.isArray(raw) ? raw : [raw]
-        for (const item of list) {
-          const instanceId = String(item.InstanceId ?? '').toLowerCase()
-          // USB 3.x controllers have instance IDs with "xhci" or the device will show "SuperSpeed"
-          if (instanceId.includes('xhci') || instanceId.includes('&ven_') ) {
-            // Check the parent USB controller from WMI
-            if (instanceId.includes('mi_')) {
-              headsetUsbGeneration = headsetUsbGeneration ?? '3.0'
-            }
-          }
-        }
-      } catch { /* skip */ }
+      vrDevicesOnUsb.push(dev.name)
+      // The hardware ID prefix tells us SuperSpeed vs full-speed: USB\VID
+      // is generic; USB devices on xHCI ports typically also expose a
+      // ContainerID and BusReportedDeviceDesc, but those don't carry speed
+      // either. Use the parent controller's Service to infer.
+      if (lower.includes('usb 3') || /(?:^|\W)ss(?:\W|$)/.test(dev.hardwareId.toLowerCase())) {
+        headsetUsbGeneration = '3.0'
+      } else if (!headsetUsbGeneration) {
+        headsetUsbGeneration = '2.0'
+      }
     }
 
     console.log(
@@ -140,7 +149,7 @@ if ($devs) {
         controllers,
         headsetUsbGeneration,
         vrDevicesOnUsb,
-        genericControllerCount
+        genericControllerCount,
       }
     }
   } catch (error) {
@@ -149,7 +158,7 @@ if ($devs) {
       success: false,
       error: (error as Error).message,
       partial: true,
-      data: { controllers, headsetUsbGeneration, vrDevicesOnUsb, genericControllerCount }
+      data: { controllers, headsetUsbGeneration, vrDevicesOnUsb, genericControllerCount },
     }
   }
 }

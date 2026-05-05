@@ -13,7 +13,6 @@ import type { Finding, ActionPlan, ActionStep } from './types'
 import type { ScanData } from '../scanner/types'
 import { dedupeProcesses } from './process-dedupe'
 
-// ── Impact weight for sorting ─────────────────────────────────
 const IMPACT_ORDER = { critical: 0, high: 1, medium: 2, low: 3 }
 const EFFORT_ORDER = { instant: 0, minutes: 1, hours: 2, research: 3 }
 
@@ -21,7 +20,6 @@ function planScore(p: ActionPlan): number {
   return IMPACT_ORDER[p.impact] * 10 + EFFORT_ORDER[p.effort]
 }
 
-// ── Complaint-based plan boosting ─────────────────────────────
 //
 // Returns a matcher function that answers "is this plan relevant to the
 // user's declared main complaint?". Used by buildActionPlan to bias sort
@@ -64,39 +62,21 @@ function getComplaintBoostMap(
   }
 }
 
-// ── Builder Helpers ───────────────────────────────────────────
 
 function step(text: string, type: ActionStep['type'] = 'do'): ActionStep {
   return { text, type }
 }
 
-// ═══════════════════════════════════════════════════
-// PLAN BUILDERS — one function per root cause
-// ═══════════════════════════════════════════════════
-
-function buildPowerPlanPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  const plan = data.osConfig.powerPlan.toLowerCase()
-  if (plan.includes('high') || plan.includes('ultimate')) return null
-  return {
-    id: 'action-power-plan',
-    priority: 2,
-    category: 'OS Config',
-    title: 'Switch to High Performance Power Plan',
-    summary: 'Your PC is in power-saving mode — this throttles your CPU and causes VR stutter.',
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Eliminates CPU clock-throttle stutters. One of the easiest wins available.',
-    fixId: 'fix-power-plan',
-    steps: [
-      step('Press Win + R, type: control powercfg.cpl, press Enter', 'open'),
-      step('Select "High performance" or "Ultimate Performance" (if available)'),
-      step('If "Ultimate Performance" isn\'t listed: open PowerShell as admin and run: powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61', 'setting'),
-      step('No reboot needed — takes effect immediately')
-    ],
-    relatedRuleIds: ['combo-balanced-power-low-cpu', 'os-power-plan-suboptimal']
-  }
+// Standard upfront warning prepended to any plan whose steps poke at BIOS
+// or UEFI settings. A wrong setting can stop a machine from booting; we
+// don't want a casual user who clicked through expecting a one-click fix
+// to wander into the boot menu and brick something. Loud and short.
+const BIOS_WARNING: ActionStep = {
+  type: 'warning',
+  text: 'ADVANCED USERS ONLY. The steps below require entering BIOS/UEFI. A wrong setting can prevent your computer from booting and may force a CMOS reset to recover. Only proceed if you are comfortable navigating BIOS menus and undoing changes by yourself. If anything below sounds unfamiliar, do not continue.',
 }
+
+// PLAN BUILDERS — one function per root cause
 
 function buildWifi24GhzPlan(data: ScanData): ActionPlan | null {
   if (!data.network?.wifi) return null
@@ -110,7 +90,7 @@ function buildWifi24GhzPlan(data: ScanData): ActionPlan | null {
     summary: '2.4GHz Wi-Fi doesn\'t have enough bandwidth for wireless VR — this is the #1 cause of wireless VR problems.',
     impact: 'critical',
     effort: 'minutes',
-    expectedGain: 'Likely eliminates 80% of wireless VR artifacts, lag, and video quality issues.',
+    expectedGain: 'Should clear up most of the artifacts, lag, and quality drops you see on wireless VR.',
     appliesToArchetypes: ['wifi-wireless'],
     steps: [
       step(`Log into your router settings (usually 192.168.1.1 or 192.168.0.1 in your browser)`, 'open'),
@@ -162,10 +142,10 @@ function buildWifi6ePlan(data: ScanData): ActionPlan | null {
     priority: 11,
     category: 'Network',
     title: 'Upgrade to Wi-Fi 6E (6GHz) for Wireless VR',
-    summary: 'You\'re streaming VR over 5GHz Wi-Fi. 6GHz (Wi-Fi 6E) offers dedicated uncongested spectrum with 2.4x more bandwidth — the biggest single upgrade for AirLink/Virtual Desktop quality.',
+    summary: 'You\'re streaming VR over 5GHz Wi-Fi. 6GHz (Wi-Fi 6E) has dedicated uncongested spectrum with 2.4x more bandwidth, which usually shows up as cleaner AirLink/Virtual Desktop video.',
     impact: 'medium',
     effort: 'hours',
-    expectedGain: 'Cleaner 200Mbps+ sustained wireless stream, lower latency jitter, fewer compression artifacts — especially noticeable in busy scenes.',
+    expectedGain: 'Holds 200Mbps+ wireless more reliably, with less jitter and fewer compression artifacts in busy scenes.',
     steps: [
       step('Current band: 5GHz — 6GHz is available on Wi-Fi 6E routers + compatible headsets', 'info'),
       step('Quest 3 and Quest Pro support 6GHz — check your headset specs'),
@@ -178,147 +158,6 @@ function buildWifi6ePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildWifiPowerSavingPlan(data: ScanData): ActionPlan | null {
-  if (data.network?.wifi?.powerSavingEnabled !== true) return null
-  return {
-    id: 'action-wifi-power-saving',
-    priority: 4,
-    category: 'Network',
-    title: 'Disable Wi-Fi Adapter Power Saving',
-    summary: 'Power saving makes your Wi-Fi adapter "sleep" between packets, adding unpredictable delay spikes.',
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Reduces unpredictable latency spikes during wireless VR.',
-    fixId: 'fix-wifi-power-saving',
-    steps: [
-      step('Open Device Manager: right-click Start → Device Manager', 'open'),
-      step('Expand "Network adapters" → right-click your Wi-Fi adapter → Properties'),
-      step('Click the "Power Management" tab'),
-      step('Uncheck "Allow the computer to turn off this device to save power"'),
-      step('Click OK. Also: right-click the desktop → Display settings → Power & battery → Power mode: Best performance')
-    ],
-    relatedRuleIds: ['wifi-power-saving-on']
-  }
-}
-
-function buildMmcssPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  const needsFix =
-    data.osConfig.mmcss.systemResponsiveness > 10 ||
-    data.osConfig.mmcss.networkThrottlingIndex < 4294967295 ||
-    data.osConfig.mmcss.gamesTaskPriority < 6  // 6 is the recommended Games task Priority; fix sets it to 6
-  if (!needsFix) return null
-  return {
-    id: 'action-mmcss',
-    priority: 5,
-    category: 'OS Config',
-    title: 'Fix MMCSS Settings for VR Priority',
-    summary: 'Windows multimedia scheduling is not optimized — background tasks are stealing CPU time from VR.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces audio glitches and CPU scheduling jitter during VR.',
-    fixId: 'fix-mmcss-responsiveness',
-    steps: [
-      step('This fix can be applied automatically — click "Apply Fix" below', 'setting'),
-      step('Or manually: open regedit → HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile', 'open'),
-      step('Set SystemResponsiveness = 10 (decimal)'),
-      step('Set NetworkThrottlingIndex = ffffffff (hex)'),
-      step('In the Tasks\\Games subkey: set GPU Priority = 8, Priority = 6, Scheduling Category = High'),
-      step('Reboot for changes to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['mmcss-responsiveness-not-optimal', 'combo-mmcss-bad-plus-audio-apps']
-  }
-}
-
-function buildGpuHagsPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.hagsEnabled) return null
-  // Mirror the rule: skip only genuinely pre-DX12 or unknown GPUs
-  const isVeryOld =
-    gpu.vendor === 'unknown' ||
-    /GT [1-7][0-9]{2}\b|GTX [2-6][0-9]{2}\b|GTS|HD [2-5][0-9]{3}\b|HD Graphics [1-4][0-9]{3}\b/i.test(gpu.name)
-  if (isVeryOld) return null
-
-  const vendorNote =
-    gpu.vendor === 'nvidia' ? 'NVIDIA GTX 10xx and later are supported.' :
-    gpu.vendor === 'amd'    ? 'AMD RX 400 series and later are supported.' :
-    gpu.vendor === 'intel'  ? 'Intel Arc and Iris Xe are supported; older Intel integrated support varies by driver.' :
-                              'Check your driver release notes for WDDM 2.7+ support.'
-
-  return {
-    id: 'action-hags',
-    priority: 7,
-    category: 'GPU',
-    title: `Enable Hardware Accelerated GPU Scheduling (HAGS) — ${gpu.name}`,
-    summary: `HAGS lets ${gpu.name} manage its own memory scheduling instead of routing it through the CPU driver, reducing frame time variance in VR.`,
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Reduces frame time variance by 0.5–2ms; improves VR frame pacing consistency.',
-    fixId: 'fix-hags-enable',
-    steps: [
-      step(`Detected GPU: ${gpu.name} — ${vendorNote}`, 'info'),
-      step('Open Settings → System → Display → Graphics → "Change default graphics settings"', 'open'),
-      step('Toggle "Hardware-accelerated GPU scheduling" to On'),
-      step('Reboot your PC for the change to take effect', 'reboot'),
-      step('This can be applied automatically via the "Auto-Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['gpu-hags-disabled']
-  }
-}
-
-function buildReBarPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.rebarEnabled || gpu.vendor !== 'nvidia') return null
-  return {
-    id: 'action-rebar',
-    priority: 9,
-    category: 'GPU',
-    title: 'Enable Resizable BAR (ReBAR) — NVIDIA Only',
-    summary: 'ReBAR lets your CPU access all GPU VRAM at once, improving texture streaming performance.',
-    impact: 'low',
-    effort: 'minutes',
-    expectedGain: '5-15% improvement in GPU-limited VR scenarios.',
-    steps: [
-      step('Reboot and enter BIOS (Del or F2 at startup)', 'reboot'),
-      step('Find "Above 4G Decoding" — enable it first (required for ReBAR)'),
-      step('Find "Resizable BAR" or "Smart Access Memory" — enable it'),
-      step('Save and exit BIOS. Then in Windows: NVIDIA Control Panel → Manage 3D Settings → Resizable BAR → Enabled', 'setting'),
-      step('AMD GPU users: use Smart Access Memory (SAM) — see AMD SAM action above', 'info')
-    ],
-    relatedRuleIds: ['gpu-rebar-disabled']
-  }
-}
-
-function buildAmdSamPlan(data: ScanData): ActionPlan | null {
-  if (!data.gpu) return null
-  const gpu = data.gpu.devices[data.gpu.primaryGpuIndex]
-  if (!gpu) return null
-  if (gpu.vendor !== 'amd') return null
-  if (gpu.isIntegrated) return null
-  if (gpu.samEnabled) return null
-  if (gpu.gpuGeneration !== 'RDNA2' && gpu.gpuGeneration !== 'RDNA3') return null
-  return {
-    id: 'action-amd-sam',
-    category: 'GPU',
-    priority: 9,
-    impact: 'medium',
-    effort: 'minutes',
-    title: `Enable AMD Smart Access Memory (SAM) — ${gpu.name}`,
-    summary: `SAM lets your CPU access all GPU VRAM at once. On ${gpu.name}, this can improve VR texture streaming by 5–15%.`,
-    expectedGain: '5-15% improvement in GPU-limited VR scenarios with heavy world/avatar loading.',
-    relatedRuleIds: ['gpu-sam-disabled'],
-    steps: [
-      step('Reboot and enter BIOS (Del, F2, or F12 at startup)', 'reboot'),
-      step('Enable "Above 4G Decoding" first — required for SAM to work'),
-      step('Find "Resizable BAR", "Smart Access Memory", or "SAM" and enable it'),
-      step('Save and exit BIOS, then boot Windows'),
-      step('Open AMD Radeon Software → Performance → Tuning → confirm "AMD Smart Access Memory: Enabled"', 'setting'),
-      step('Verify in Radeon Software — if still showing disabled, ensure your CPU also supports SAM (Ryzen 4000+ or Intel 11th gen+)', 'info')
-    ]
-  }
-}
 
 function buildIntegratedGpuPlan(data: ScanData): ActionPlan | null {
   if (!data.gpu) return null
@@ -350,7 +189,9 @@ function buildIntegratedGpuPlan(data: ScanData): ActionPlan | null {
         step(`${gpu.name} is integrated — shares ${vramLabel} as VRAM`, 'info'),
         step('Light VR is possible: SteamVR at low/medium settings, VRChat at minimum quality'),
         step('Set Windows → Display → Graphics → GPU preference for SteamVR and VRChat to "High performance"', 'setting'),
-        step('Ensure maximum RAM allocation in BIOS: look for "UMA Frame Buffer Size" or "iGPU Memory" — set to 4GB if available'),
+        step('Optional, advanced: increase the iGPU memory share in BIOS. See the warning below before attempting this.', 'info'),
+        BIOS_WARNING,
+        step('In BIOS, look for "UMA Frame Buffer Size" or "iGPU Memory" and set it to 2GB or 4GB if available. The label varies by motherboard vendor.'),
         step('Close ALL background apps during VR — every MB of RAM shared with GPU matters'),
         step('A dedicated GPU (NVIDIA RTX 3060 or AMD RX 6600 or better) would give 10× better VR performance', 'info')
       ]
@@ -444,8 +285,8 @@ function buildArcAv1Plan(data: ScanData): ActionPlan | null {
     category: 'GPU',
     impact: 'medium',
     effort: 'minutes',
-    title: 'Enable AV1 Encoding for Wireless VR (Intel Arc Advantage)',
-    summary: 'Your Intel Arc GPU has hardware AV1 encoding — sharper wireless VR at the same bitrate versus H.264/HEVC.',
+    title: 'Enable AV1 Encoding for Wireless VR on Intel Arc',
+    summary: 'Your Intel Arc GPU has a hardware AV1 encoder. At the same bitrate, AV1 looks sharper than H.264 or HEVC over wireless.',
     expectedGain: 'Noticeably sharper image quality at the same wireless bitrate, or equal quality at ~30% lower bitrate.',
     relatedRuleIds: ['gpu-arc-wireless-av1'],
     steps: [
@@ -465,11 +306,13 @@ function buildXmpPlan(data: ScanData): ActionPlan | null {
     priority: 6,
     category: 'Memory',
     title: `Enable XMP/EXPO to Unlock RAM Speed (${data.ram.speed}→${data.ram.xmpSpeed} MHz)`,
-    summary: `Your RAM is running at ${data.ram.speed} MHz but rated for ${data.ram.xmpSpeed} MHz — a free speed boost sitting in your BIOS.`,
+    summary: `Your RAM is running at ${data.ram.speed} MHz but rated for ${data.ram.xmpSpeed} MHz. Enabling XMP/EXPO in BIOS makes it run at the speed you paid for.`,
     impact: 'medium',
     effort: 'minutes',
     expectedGain: 'Faster RAM reduces CPU-to-memory latency, helping CPU-limited VR scenarios.',
     steps: [
+      BIOS_WARNING,
+      step('If the system fails to POST after enabling XMP/EXPO, clear CMOS (motherboard manual usually shows the jumper or button) and the system reverts to safe defaults.', 'info'),
       step('Reboot and enter BIOS (Del or F2 during startup)', 'reboot'),
       step('Go to: AI Tweaker / OC / DRAM Configuration → Memory Profile or XMP/EXPO'),
       step('Select the XMP profile (Intel) or EXPO profile (AMD)'),
@@ -633,35 +476,6 @@ function buildSteamVrSettingsPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildDefenderExclusionsPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig || !data.vrRuntime) return null
-  if (!data.vrRuntime.steamvrInstalled) return null
-  const exclArr = Array.isArray(data.osConfig.defenderExclusions) ? data.osConfig.defenderExclusions : []
-  const hasExclusions = exclArr.some(
-    (e) => String(e).toLowerCase().includes('steam') || String(e).toLowerCase().includes('vr')
-  )
-  if (hasExclusions) return null
-  return {
-    id: 'action-defender-exclusions',
-    priority: 8,
-    category: 'OS Config',
-    title: 'Add Steam and SteamVR to Defender Exclusions',
-    summary: 'Windows Defender scans game files during VR, causing shader compilation stalls and micro-freezes.',
-    impact: 'medium',
-    effort: 'minutes',
-    expectedGain: 'Eliminates "first frame" stutters when loading new areas or shaders.',
-    fixId: 'fix-defender-exclusions',
-    steps: [
-      step('Windows Security → Virus & threat protection → Manage settings → Exclusions → Add or remove exclusions', 'open'),
-      step('Add folder exclusion: C:\\Program Files (x86)\\Steam (or your Steam install path)'),
-      step('Add folder exclusion: %APPDATA%\\..\\Local\\Temp (shader compilation temp files)'),
-      step('Add folder exclusion: wherever your VR games are installed'),
-      step('This can be applied automatically via the "Apply Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['os-defender-no-steam-exclusion']
-  }
-}
-
 function buildDisplayRefreshRatePlan(data: ScanData): ActionPlan | null {
   if (!data.display) return null
   const hz = data.display.primaryRefreshRateHz
@@ -747,7 +561,7 @@ function buildThermalPlan(data: ScanData): ActionPlan | null {
              'Thermal throttling is reducing performance to protect the hardware.',
     impact: both ? 'critical' : 'high',
     effort: 'hours',
-    expectedGain: 'Eliminates thermal throttling. Sustained higher clocks = smoother VR.',
+    expectedGain: 'Stops thermal throttling so the chips can hold their boost clocks during a session.',
     steps: both ? [
       step(`CPU: ${data.cpu.temperature}°C | GPU: ${gpu.temperature}°C — both above safe VR operating temps`),
       step('Clean all dust from case fans, heatsinks, and GPU heat sink fins with compressed air'),
@@ -895,58 +709,6 @@ function buildCoreParkingPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildNaglePlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.nagleEnabled) return null
-  const isWireless =
-    data.headsetConnection?.method === 'virtual-desktop' ||
-    data.headsetConnection?.method === 'airlink' ||
-    data.headsetConnection?.method === 'alvr' ||
-    data.headsetConnection?.method === 'unknown-wireless'
-  if (!isWireless) return null
-  return {
-    id: 'action-nagle',
-    priority: 8,
-    category: 'Network',
-    title: 'Disable Nagle Algorithm for Lower Wireless VR Latency',
-    summary: 'TCP Nagle algorithm is bundling packets together — adding consistent latency to your wireless VR stream. Disabling it lets packets send immediately.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces consistent TCP packet latency by 1-5ms for wireless VR streaming.',
-    fixId: 'fix-nagle-disable',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below (sets TcpAckFrequency + TCPNoDelay per adapter)', 'info'),
-      step('Or manually: open regedit → HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces', 'open'),
-      step('For each adapter GUID subkey: add DWORD "TcpAckFrequency" = 1 and "TCPNoDelay" = 1', 'setting'),
-      step('No reboot required — changes take effect on next TCP connection')
-    ],
-    relatedRuleIds: ['nagle-algorithm-active']
-  }
-}
-
-function buildHyperVPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.hyperVRunning) return null
-  return {
-    id: 'action-hyper-v',
-    priority: 4,
-    category: 'OS Config',
-    title: 'Disable Hyper-V to Restore Native Windows Scheduling',
-    summary: 'Hyper-V makes Windows itself run as a virtual machine, adding interrupt latency that disrupts VR compositor frame timing even when no VMs are running.',
-    impact: 'high',
-    effort: 'minutes',
-    expectedGain: 'Removes hypervisor interrupt overhead (~1ms+), restoring native Windows timer precision for VR compositors.',
-    fixId: 'fix-hyper-v-disable',
-    steps: [
-      step('Press Win + R → type: optionalfeatures → press Enter', 'open'),
-      step('Uncheck: "Hyper-V", "Virtual Machine Platform", and "Windows Hypervisor Platform"'),
-      step('Click OK and let Windows apply the changes'),
-      step('Reboot is required — Windows will rebuild its boot image without the hypervisor', 'reboot'),
-      step('Note: disabling Hyper-V will prevent WSL2, Docker Desktop (Hyper-V backend), and Android emulators from running. WSL1 will still work.', 'info'),
-      step('To re-enable later: run the same optionalfeatures tool and re-check the boxes', 'info')
-    ],
-    relatedRuleIds: ['hyper-v-overhead', 'virtualization-active']
-  }
-}
-
 function buildGpuTdrPlan(data: ScanData): ActionPlan | null {
   if (!data.eventLog) return null
   if (data.eventLog.gpuTdrEvents < 2) return null
@@ -1009,37 +771,17 @@ function buildBiosUpdatePlan(data: ScanData): ActionPlan | null {
     effort: 'hours',
     expectedGain: 'May resolve intermittent USB tracking drops, PCIe communication errors, or VR headset detection issues.',
     steps: [
+      {
+        type: 'warning',
+        text: 'ADVANCED USERS ONLY. A BIOS flash that is interrupted or that uses the wrong file for your board can permanently brick the motherboard. There is no software recovery from a failed flash on most boards. Only proceed if you are sure you have the right file for your exact board revision and your power source is stable. If anything below sounds unfamiliar, do not continue.',
+      },
       step(`Current BIOS: ${data.osConfig.biosVersion ?? 'unknown version'} dated ${data.osConfig.biosDate}`, 'info'),
-      step('Go to your motherboard manufacturer\'s website → Support → Drivers & Downloads → enter your board model', 'open'),
+      step('Go to your motherboard manufacturer\'s website → Support → Drivers & Downloads → enter your EXACT board model and revision', 'open'),
       step('Download the latest BIOS and follow the vendor\'s flash instructions — usually done via USB stick or EZ Flash', 'setting'),
-      step('IMPORTANT: do not interrupt a BIOS update — connect to UPS or ensure stable power', 'info'),
-      step('After updating, re-enable XMP/EXPO in BIOS if it was enabled', 'info')
+      step('Do not interrupt a BIOS update under any circumstance. Connect to a UPS or wait for stable power before starting.', 'info'),
+      step('After updating, re-enter BIOS and re-enable XMP/EXPO if it was previously enabled. The flash usually wipes those settings.', 'info')
     ],
     relatedRuleIds: ['bios-outdated']
-  }
-}
-
-function buildTimerResolutionPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.globalTimerResolutionEnabled) return null
-  if (data.osConfig.windowsBuild < 22621) return null // Win 11 22H2
-  return {
-    id: 'action-timer-resolution',
-    priority: 9,
-    category: 'OS Config',
-    title: 'Enable Global Timer Resolution for VR Frame Scheduling (Win 11)',
-    summary: 'Windows 11 changed timer behavior so VR runtime timer requests don\'t apply system-wide. This registry flag restores the precise 0.5ms tick rate that VR compositors need.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Restores 0.5ms timer precision for VR compositors, reducing micro-judder from frame scheduling imprecision.',
-    fixId: 'fix-windows-timer-resolution',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Or manually: open regedit → HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel', 'open'),
-      step('Create or set DWORD value "GlobalTimerResolutionRequests" = 1', 'setting'),
-      step('Reboot for the change to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['timer-resolution-not-optimized']
   }
 }
 
@@ -1090,99 +832,6 @@ function buildVRChatCullingPlan(data: ScanData): ActionPlan | null {
   }
 }
 
-function buildGpuInterruptPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.gpuInterruptPrioritySet) return null
-  if (data.osConfig.gpuPnpDeviceId === null) return null
-  return {
-    id: 'action-gpu-interrupt-priority',
-    priority: 9,
-    category: 'GPU',
-    title: 'Optimize GPU Interrupt Priority for Lower Frame Latency',
-    summary: 'GPU interrupts are processed at normal priority. Enabling MSI mode and High interrupt priority ensures GPU frame-completion signals are handled immediately, reducing frame latency by 1-2ms.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Reduces GPU interrupt processing latency by 1-2ms, improving frame pacing consistency.',
-    fixId: 'fix-gpu-interrupt-priority',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('The fix sets MSISupported = 1 and DevicePriority = 3 (High) in the GPU\'s interrupt management registry keys', 'info'),
-      step(`Detected GPU PNP ID: ${data.osConfig.gpuPnpDeviceId}`, 'info'),
-      step('Registry path: HKLM\\SYSTEM\\CurrentControlSet\\Enum\\{GPU_PNP_ID}\\Device Parameters\\Interrupt Management\\', 'setting'),
-      step('A reboot is required for interrupt mode changes to take effect', 'reboot')
-    ],
-    relatedRuleIds: ['gpu-interrupt-priority-normal']
-  }
-}
-
-function buildVrProcessPriorityPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig) return null
-  if (data.osConfig.vrProcessPrioritySet) return null
-  return {
-    id: 'action-vr-process-priority',
-    priority: 9,
-    category: 'CPU',
-    title: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-    summary: 'VR runtime processes launch at normal CPU priority. Using Windows Image File Execution Options (IFEO) PerfOptions ensures vrserver, vrcompositor, and other VR processes always start at High priority — persistently, without any manual action each session.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Guarantees VR runtime processes always win CPU scheduling against lower-priority tasks, reducing frame timing jitter.',
-    fixId: 'fix-vr-process-priority',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets CpuPriorityClass = 3 (High) in IFEO for: vrserver.exe, vrcompositor.exe, vrclient.exe, VRChat.exe, OVRServer_x64.exe', 'setting'),
-      step('IFEO PerfOptions applies at process creation — before the process even starts running', 'info'),
-      step('No reboot required — takes effect the next time each VR process is launched')
-    ],
-    relatedRuleIds: ['vr-process-priority-default']
-  }
-}
-
-function buildWuRebootPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.wuAutoRebootEnabled) return null
-  return {
-    id: 'action-wu-reboot',
-    priority: 7,
-    category: 'OS Config',
-    title: 'Prevent Windows Update from Restarting During VR Sessions',
-    summary: 'Windows Update can force-restart your PC even while you\'re in an active VR session. Enabling NoAutoRebootWithLoggedOnUsers prevents forced reboots while you\'re logged in.',
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Eliminates unexpected mid-session reboots from Windows Update, protecting VR session continuity.',
-    fixId: 'fix-disable-wu-reboot',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoRebootWithLoggedOnUsers = 1', 'setting'),
-      step('Also sets AUOptions = 2 (notify before download) to prevent background update downloads during VR', 'setting'),
-      step('No reboot required — Windows respects this policy immediately'),
-      step('Windows will still install updates on the next manual restart — updates are not blocked, just not forced', 'info')
-    ],
-    relatedRuleIds: ['wu-auto-reboot-risk']
-  }
-}
-
-function buildDeliveryOptimizationPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.deliveryOptimizationP2pEnabled) return null
-  return {
-    id: 'action-delivery-optimization',
-    priority: 9,
-    category: 'Network',
-    title: 'Disable Windows Update P2P Seeding to Protect VR Bandwidth',
-    summary: 'Windows Delivery Optimization uploads Windows updates to other PCs using your internet connection (P2P seeding). This consumes upstream bandwidth and generates background disk I/O during VR gameplay.',
-    impact: 'medium',
-    effort: 'instant',
-    expectedGain: 'Stops background P2P upload activity, freeing upstream bandwidth for wireless VR streaming.',
-    fixId: 'fix-disable-delivery-optimization',
-    steps: [
-      step('This can be applied automatically via the "Apply Fix" button below', 'info'),
-      step('Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization\\DODownloadMode = 0 (HTTP only, no P2P)', 'setting'),
-      step('No reboot required — takes effect immediately for new Delivery Optimization sessions'),
-      step('Windows updates will still download normally via Microsoft servers — only P2P sharing is disabled', 'info')
-    ],
-    relatedRuleIds: ['delivery-optimization-p2p-active']
-  }
-}
-
 function buildFullscreenOptsPlan(data: ScanData): ActionPlan | null {
   if (!data.vrRuntime) return null
   if (!data.vrRuntime.steamvrInstalled && !data.vrRuntime.oculusInstalled) return null
@@ -1206,30 +855,6 @@ function buildFullscreenOptsPlan(data: ScanData): ActionPlan | null {
       step('Also apply to: vrcompositor.exe, VRChat.exe, OVRServer_x64.exe', 'info')
     ],
     relatedRuleIds: []
-  }
-}
-
-function buildEcoQosPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig?.win11EcoQosRisk) return null
-  const plan = data.osConfig.powerPlan.toLowerCase()
-  if (plan.includes('high') || plan.includes('ultimate')) return null
-  return {
-    id: 'action-eco-qos',
-    priority: 3,
-    category: 'OS Config',
-    title: 'Switch Power Plan to Prevent Win 11 VR Process Throttling',
-    summary: `Windows 11's EcoQoS can silently throttle vrserver and vrcompositor on your "${data.osConfig.powerPlan}" plan — High Performance prevents this.`,
-    impact: 'high',
-    effort: 'instant',
-    expectedGain: 'Prevents OS from silently throttling VR runtime processes to efficiency cores mid-session.',
-    fixId: 'fix-power-plan',
-    steps: [
-      step('Press Win + R → powercfg.cpl → Enter', 'open'),
-      step('Select "High Performance" (or "Ultimate Performance" if available)'),
-      step('This disables EcoQoS globally — VR runtime processes will not be throttled', 'info'),
-      step('This can be applied automatically via the "Apply Fix" button below', 'info')
-    ],
-    relatedRuleIds: ['win11-eco-qos-risk', 'os-power-plan-suboptimal']
   }
 }
 
@@ -1307,32 +932,6 @@ function buildUsbSuspendWiredPlan(data: ScanData): ActionPlan | null {
       step('This can be applied automatically via the "Apply Fix" button below', 'info')
     ],
     relatedRuleIds: ['combo-usb-suspend-wired-headset', 'usb-selective-suspend-active']
-  }
-}
-
-function buildHyperVGpuPlan(data: ScanData): ActionPlan | null {
-  if (!data.osConfig || !data.gpu) return null
-  if (!data.osConfig.hyperVRunning) return null
-  const gpu = data.gpu.devices[0]
-  if (!gpu || gpu.utilization <= 70) return null
-  return {
-    id: 'action-combo-hyper-v-gpu',
-    priority: 4,
-    category: 'OS Config',
-    title: 'Disable Hyper-V — Interrupt Overhead Is Compounding GPU Frame Timing',
-    summary: `Hyper-V is adding virtualized interrupt overhead at ${gpu.utilization.toFixed(0)}% GPU load — causing irregular frame timing even when average frame rate looks fine.`,
-    impact: 'high',
-    effort: 'minutes',
-    expectedGain: 'Removes hypervisor GPU interrupt virtualization, restoring precise VR compositor frame scheduling.',
-    fixId: 'fix-hyper-v-disable',
-    steps: [
-      step('Press Win + R → type: optionalfeatures → press Enter', 'open'),
-      step('Uncheck: "Hyper-V", "Virtual Machine Platform", and "Windows Hypervisor Platform"'),
-      step('Click OK — Windows will rebuild its boot configuration'),
-      step('Reboot is required for the hypervisor to be removed', 'reboot'),
-      step('Note: WSL2 and Docker (Hyper-V backend) will stop working. WSL1 still works.', 'info')
-    ],
-    relatedRuleIds: ['combo-hyper-v-gpu-pressure', 'hyper-v-overhead']
   }
 }
 
@@ -1526,11 +1125,11 @@ function buildVRChatDynamicBonePlan(data: ScanData): ActionPlan | null {
     id: 'action-vrchat-dynamic-bones',
     priority: 3,
     category: 'VR App',
-    title: 'Cap VRChat avatar physics — biggest single CPU win in busy worlds',
+    title: 'Cap VRChat avatar physics for crowded worlds',
     summary: `Your config.json shows ${summaryParts.join(', ')}. In a public world with 20+ players this is usually the difference between locked 90 fps and constant reprojection.`,
     impact: 'critical',
     effort: 'instant',
-    expectedGain: 'Cuts CPU usage 60-80% in populated worlds. Most impactful VRChat-side change you can make.',
+    expectedGain: 'Significantly lower CPU usage in populated worlds — typically the largest VRChat-side improvement available.',
     fixId: 'fix-vrchat-dynamic-bone-limits',
     steps: [
       step('Applied automatically via the "Apply Fix" button below', 'info'),
@@ -1582,7 +1181,7 @@ function buildVRChatNoConfigPlan(data: ScanData): ActionPlan | null {
     summary: 'No config.json found. That means uncapped avatar physics, a small cache, and no avatar culling — fine in an empty world, the worst possible setup in a busy one.',
     impact: 'critical',
     effort: 'instant',
-    expectedGain: 'Applying the recommended config provides immediate CPU relief in any world with more than 5 players. Essential for VRChat VR performance.',
+    expectedGain: 'Drops CPU load right away in any world with more than a handful of players.',
     fixId: 'fix-vrchat-dynamic-bone-limits',
     steps: [
       step('Apply Fix below creates the config.json with recommended settings automatically', 'info'),
@@ -1611,6 +1210,10 @@ function buildCpuThermalThrottlePlan(data: ScanData): ActionPlan | null {
       step('Open HWiNFO64 or HWMonitor and check CPU temperature under VR load — should be below 90°C', 'open'),
       step('If above 90°C: replace thermal paste (even 2-year-old paste can dry out), ensure heatsink is seated correctly'),
       step('Clean dust from CPU cooler and case fans — dust buildup is the #1 cause of thermal throttle'),
+      {
+        type: 'warning',
+        text: 'The remaining steps go into BIOS. ADVANCED USERS ONLY. A wrong setting can prevent your computer from booting and may force a CMOS reset. Skip these if BIOS is unfamiliar territory; the cooling steps above usually handle thermal throttle on their own.',
+      },
       step('In BIOS: check if PL1/PL2 power limits are set too aggressively — use recommended spec values for your CPU', 'setting'),
       step('Disable CPU overclocks if present — even "stable" OCs can throttle under sustained VR load', 'info'),
       step('After cooling improvement: verify in HWiNFO64 that CPU stays at boost speeds during a VRChat session', 'info')
@@ -1622,6 +1225,8 @@ function buildCpuThermalThrottlePlan(data: ScanData): ActionPlan | null {
 function buildRamSingleChannelPlan(data: ScanData): ActionPlan | null {
   if (!data.ram) return null
   if (data.ram.dualChannelConfirmed) return null
+  // channels === 0 means we couldn't read DIMM topology and shouldn't guess.
+  if (data.ram.channels === 0 || data.ram.channels >= 2) return null
   return {
     id: 'action-ram-single-channel',
     priority: 7,
@@ -1669,9 +1274,7 @@ function buildNvmePowerStatePlan(data: ScanData): ActionPlan | null {
   }
 }
 
-// ═══════════════════════════════════════════════════
 // MAIN EXPORT
-// ═══════════════════════════════════════════════════
 
 export function buildActionPlan(
   findings: Finding[],
@@ -1689,7 +1292,6 @@ export function buildActionPlan(
     }
   }
 
-  // ── Critical / blocking issues first ─────────────────────────
   add(buildHeadsetConnectivityPlan(scanData))
   add(buildDisplayRefreshRatePlan(scanData))
   add(buildDisplayHdrPlan(scanData))
@@ -1702,25 +1304,17 @@ export function buildActionPlan(
   add(buildVRChatDynamicBonePlan(scanData))
   add(buildVRChatNoConfigPlan(scanData))
 
-  // ── High-impact OS and config fixes ──────────────────────────
   add(buildLaptopBatteryPlan(scanData))
   add(buildGpuTdrPlan(scanData))
-  add(buildPowerPlanPlan(scanData))
-  add(buildEcoQosPlan(scanData))
-  add(buildHyperVPlan(scanData))
   add(buildCloseBackgroundAppsPlan(scanData))
   add(buildPeripheralSoftwarePlan(scanData))
   add(buildSteamVrSettingsPlan(scanData))
   add(buildSteamVrAsyncPlan(scanData))
   add(buildGpuUndervoltPlan(scanData))
 
-  // ── Medium-impact tuning ──────────────────────────────────────
   add(buildWifiSignalPlan(scanData))
-  add(buildWifiPowerSavingPlan(scanData))
   add(buildWifi6ePlan(scanData))
-  add(buildMmcssPlan(scanData))
   add(buildXmpPlan(scanData))
-  add(buildDefenderExclusionsPlan(scanData))
   add(buildXboxDvrPlan(scanData))
   add(buildStartupBloatPlan(scanData))
   add(buildUsbSuspendPlan(scanData))
@@ -1728,12 +1322,6 @@ export function buildActionPlan(
   // improvement in testing (powercfg setting persisted but VR frame-pacing
   // data showed no change). Modern Windows no longer parks cores under VR
   // workloads in practice.
-  add(buildNaglePlan(scanData))
-  add(buildGpuInterruptPlan(scanData))
-  add(buildVrProcessPriorityPlan(scanData))
-  add(buildWuRebootPlan(scanData))
-  add(buildDeliveryOptimizationPlan(scanData))
-  add(buildTimerResolutionPlan(scanData))
   add(buildGpuTdrPlan(scanData))
   add(buildLaptopBatteryPlan(scanData))
   add(buildBiosUpdatePlan(scanData))
@@ -1746,28 +1334,21 @@ export function buildActionPlan(
   // affects legacy fullscreen mode (pre-DXGI flip model); modern VR runtimes
   // use flip model regardless, so the flag made no observable difference.
 
-  // ── Low-impact optimizations ──────────────────────────────────
-  add(buildGpuHagsPlan(scanData))
-  add(buildReBarPlan(scanData))
-  add(buildAmdSamPlan(scanData))
   add(buildIntegratedGpuPlan(scanData))
   add(buildGpuDriverUpdatePlan(scanData))
   add(buildGpuThermalThrottlePlan(scanData))
   add(buildArcAv1Plan(scanData))
   add(buildInternetSpeedPlan(scanData))
 
-  // ── Combination rule plans ────────────────────────────────────
   add(buildGpuThermalCascadePlan(scanData))
   // buildCoreParkingSpikePlan removed — same reason as buildCoreParkingPlan
   add(buildUsbSuspendWiredPlan(scanData))
-  add(buildHyperVGpuPlan(scanData))
   add(buildLowVramSsPlan(scanData))
   add(buildWifi2GhzEncoderPlan(scanData))
   add(buildStartupBloatVrPlan(scanData))
   add(buildAudioSpatialPlan(scanData))
   add(buildUsbControllerPlan(scanData))
 
-  // ── Inject any additional plans from unhandled critical findings ──
   const handledRuleIds = new Set(plans.flatMap((p) => p.relatedRuleIds))
   const unhandledCritical = findings.filter(
     (f) => f.result.severity === 'critical' && !handledRuleIds.has(f.result.ruleId)
@@ -1797,7 +1378,6 @@ export function buildActionPlan(
     }
   }
 
-  // ── Filter by user's connection archetype ─────────────────────
   // Plans that declare `appliesToArchetypes` are only relevant for certain
   // connection types (e.g. Wi-Fi 6E upgrades → wifi-wireless only). Before
   // this filter existed, every tethered user was seeing Wi-Fi-only plans
@@ -1815,7 +1395,6 @@ export function buildActionPlan(
     console.log(`[summary:buildActionPlan] Filtered ${hiddenCount} plan${hiddenCount !== 1 ? 's' : ''} not applicable to ${archetype} connection`)
   }
 
-  // ── Complaint-aware prioritization ────────────────────────────
   // Boost plans whose category or keywords match the user's declared main
   // complaint. This is a soft bias — plans still sort by impact × effort —
   // but within each impact band, complaint-matching plans surface first.
@@ -1824,7 +1403,6 @@ export function buildActionPlan(
     console.log(`[summary:buildActionPlan] Boosting plans matching complaint "${scanData.userSetup?.mainComplaint}"`)
   }
 
-  // ── Sort by impact × effort × complaint-match ────────────────
   filtered.sort((a, b) => {
     const baseA = planScore(a)
     const baseB = planScore(b)

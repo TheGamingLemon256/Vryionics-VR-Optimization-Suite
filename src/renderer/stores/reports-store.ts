@@ -1,4 +1,3 @@
-// VR Optimization Suite — Reports Store
 import { create } from 'zustand'
 import { useScanStore } from './scan-store'
 import type { ScanData } from '../../main/scanner/types'

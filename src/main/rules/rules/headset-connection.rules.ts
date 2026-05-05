@@ -77,7 +77,7 @@ export const headsetConnectionRules: Rule[] = [
         severity: 'ok',
         category: 'vr-runtime',
         explanation: {
-          simple: 'Your headset is connected via USB cable (Oculus Link or Pico Connect). This is the most reliable connection method — no Wi-Fi needed. For best performance, use a USB 3.2 Gen 2 (10 Gbps) port directly on your motherboard, not through a hub.',
+          simple: 'Your headset is connected via USB cable (Oculus Link or Pico Connect). Wired skips the Wi-Fi variables entirely. For best performance, use a USB 3.2 Gen 2 (10 Gbps) port directly on your motherboard, not through a hub.',
           advanced: `USB Link active. USB controller: ${data.headsetConnection.usbControllerType ?? 'unknown'} (Gen ${data.headsetConnection.usbGeneration ?? 'unknown'}). USB Link quality depends heavily on: (1) USB controller quality — ASMedia/Intel USB 3.2 Gen 2 preferred over generic, (2) Cable quality — use the Oculus official Link cable or a high-quality USB 3.2 cable, (3) Direct motherboard port — hubs add latency and bandwidth contention. Encoder: ${data.headsetConnection.encoderInUse ?? 'unknown'}.`
         }
       }
@@ -160,7 +160,6 @@ export const headsetConnectionRules: Rule[] = [
     }
   },
 
-  // ── Overlay / presentation-path conflicts ─────────────────────
   // The conflict data is populated by headset-connection.ts by enumerating
   // known troublemakers (RTSS, MSI Afterburner OSD, Special K, etc). One
   // rule surfaces them all with per-tool guidance instead of a rule-per-tool.
@@ -211,7 +210,6 @@ export const headsetConnectionRules: Rule[] = [
     },
   },
 
-  // ── Companion-app awareness (informational) ───────────────────
   // Not a "problem" — surfacing detected tools so the user knows the app sees
   // them. Silence-on-absence: if none are running, this rule never fires.
   {

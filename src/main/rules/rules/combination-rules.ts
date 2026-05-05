@@ -21,9 +21,7 @@ import { dedupeProcesses, formatDedupedNames, summariseProcessList } from '../pr
 
 export const combinationRules: Rule[] = [
 
-  // ═══════════════════════════════════════════════════
   // GPU + CPU COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-gpu-cpu-both-high',
@@ -125,9 +123,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // WIRELESS VR COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-wireless-vr-all-issues',
@@ -259,9 +255,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // USB / WIRED CONNECTION COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-usb-link-bad-controller',
@@ -307,9 +301,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // THERMAL COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-thermal-both-cpu-gpu',
@@ -350,16 +342,14 @@ export const combinationRules: Rule[] = [
         severity: 'critical',
         category: 'gpu',
         explanation: {
-          simple: `Your GPU is being slowed down by both heat (${gpu.temperature}°C) AND hitting its power limit (${gpu.powerDraw.toFixed(0)}W / ${gpu.powerLimit.toFixed(0)}W). It's trying to do too much work in too little space. The most effective fix is an undervolt — it reduces heat and power while maintaining or even improving performance.`,
-          advanced: `GPU temp: ${gpu.temperature}°C | Power: ${gpu.powerDraw.toFixed(1)}W / ${gpu.powerLimit.toFixed(1)}W (${((gpu.powerDraw / gpu.powerLimit) * 100).toFixed(0)}%). Dual thermal+power throttle is the worst-case scenario for VR frame consistency, as both constraints simultaneously reduce clocks. An undervolt (MSI Afterburner → Ctrl+F → voltage-frequency curve) typically reduces both by 10-20% while maintaining 98-100% of performance. This is the single highest-ROI GPU optimization available.`
+          simple: `Your GPU is being slowed down by both heat (${gpu.temperature}°C) and hitting its power limit (${gpu.powerDraw.toFixed(0)}W / ${gpu.powerLimit.toFixed(0)}W). An undervolt usually helps with both at once — lower heat and lower power draw without losing much, if any, performance.`,
+          advanced: `GPU temp: ${gpu.temperature}°C | Power: ${gpu.powerDraw.toFixed(1)}W / ${gpu.powerLimit.toFixed(1)}W (${((gpu.powerDraw / gpu.powerLimit) * 100).toFixed(0)}%). Dual thermal+power throttle is the worst-case scenario for VR frame consistency, as both constraints simultaneously reduce clocks. An undervolt (MSI Afterburner → Ctrl+F → voltage-frequency curve) typically reduces both by 10-20% while maintaining 98-100% of performance.`
         }
       }
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // MEMORY COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-ram-speed-xmp-disabled',
@@ -375,7 +365,7 @@ export const combinationRules: Rule[] = [
         severity: 'warning',
         category: 'ram',
         explanation: {
-          simple: `Your RAM is running at ${data.ram.speed} MHz but it's rated for ${data.ram.xmpSpeed} MHz. It's like buying a sports car and leaving it in slow mode. Enable XMP (Intel) or EXPO (AMD) in your BIOS to unlock its full speed. This is a free performance boost.`,
+          simple: `Your RAM is running at ${data.ram.speed} MHz but it's rated for ${data.ram.xmpSpeed} MHz. Enable XMP (Intel) or EXPO (AMD) in your BIOS to run it at the rated speed.`,
           advanced: `Actual RAM speed: ${data.ram.speed} MHz | Rated XMP/EXPO speed: ${data.ram.xmpSpeed} MHz (delta: ${data.ram.xmpSpeed - data.ram.speed} MHz). For AMD Ryzen systems (Zen 2+), fast RAM has a significant impact on the Infinity Fabric (FCLK) performance — especially for VR rendering latency. Enable XMP/EXPO in BIOS → Advanced → DRAM Configuration → Memory Profile. May require a reboot. Ensure kit is installed in the correct dual-channel slots (A2+B2 on most boards).`
         },
         fixId: undefined // User must do this in BIOS
@@ -418,16 +408,14 @@ export const combinationRules: Rule[] = [
         severity: 'critical',
         category: 'ram',
         explanation: {
-          simple: `Both your regular memory (${data.ram.usagePercent.toFixed(0)}% full) and your GPU's video memory (${((gpu.vramUsed / gpu.vramTotal) * 100).toFixed(0)}% full) are nearly maxed out. When both run out simultaneously, the system starts swapping textures between them — causing severe hitching. This is one of the worst performance states for VR.`,
+          simple: `Both your regular memory (${data.ram.usagePercent.toFixed(0)}% full) and your GPU's video memory (${((gpu.vramUsed / gpu.vramTotal) * 100).toFixed(0)}% full) are nearly maxed out. When both run out at once, the system starts swapping textures between them, which causes severe hitching.`,
           advanced: `System RAM: ${data.ram.usedGB.toFixed(1)}/${data.ram.totalGB.toFixed(1)} GB (${data.ram.usagePercent.toFixed(0)}%) | VRAM: ${gpu.vramUsed}/${gpu.vramTotal} MB (${((gpu.vramUsed / gpu.vramTotal) * 100).toFixed(0)}%). When both memory tiers are saturated, VRAM evictions go to system RAM which then pages to disk — a cascade that can spike frame times to 200ms+. Immediate fixes: (1) close browser and Discord before VR, (2) reduce texture quality in game, (3) lower SteamVR render resolution, (4) clear SteamVR shader cache if > 5GB.`
         }
       }
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // STREAMING / OBS COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-streaming-plus-gpu-high',
@@ -454,9 +442,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // POWER + OS COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-balanced-power-low-cpu',
@@ -476,34 +462,8 @@ export const combinationRules: Rule[] = [
         category: 'os-config',
         explanation: {
           simple: `You're on the "${data.osConfig.powerPlan}" power plan while running VR. This tells Windows to save power by keeping your CPU slower. Your CPU is working at ${data.cpu.avgUsage.toFixed(0)}% but may be running at half its potential clock speed. Switch to "High Performance" or "Ultimate Performance" power plan.`,
-          advanced: `Power plan: "${data.osConfig.powerPlan}" (should be "High Performance" or "Ultimate Performance"). Balanced power plan caps CPU P-states, increasing boost-clock response time from ~1ms (High Perf) to ~15-30ms. For VR rendering, this means the CPU can't respond instantly to sudden frame work spikes — the most common cause of unexpected stutter in "otherwise healthy" VR setups. CPU avg ${data.cpu.avgUsage.toFixed(0)}% may under-represent peak frame demands.`,
-          fixId: 'fix-power-plan'
-        } as any
-      }
-    }
-  },
-
-  {
-    id: 'combo-mmcss-bad-plus-audio-apps',
-    category: 'os-config',
-    name: 'MMCSS Misconfigured With Audio Apps Running',
-    evaluate: (data: ScanData): RuleResult | null => {
-      if (!data.osConfig || !data.processes) return null
-      const mmcssNotOptimal =
-        data.osConfig.mmcss.systemResponsiveness > 20 ||
-        data.osConfig.mmcss.networkThrottlingIndex !== 0xFFFFFFFF
-      if (!mmcssNotOptimal) return null
-      const hasAudioApps = data.processes.audio.length > 0
-      if (!hasAudioApps) return null
-      return {
-        ruleId: 'combo-mmcss-bad-plus-audio-apps',
-        severity: 'warning',
-        category: 'os-config',
-        explanation: {
-          simple: `Your Windows multimedia settings (MMCSS) are not tuned for VR, and you have audio apps running (${data.processes.audio.map((p) => p.name).join(', ')}). VoiceMeeter, virtual cables, and audio middleware can cause extra audio latency that interrupts VR audio sync. Fix the MMCSS settings to give VR the scheduling priority it needs.`,
-          advanced: `MMCSS SystemResponsiveness: ${data.osConfig.mmcss.systemResponsiveness} (optimal: 10) | NetworkThrottlingIndex: ${data.osConfig.mmcss.networkThrottlingIndex} (optimal: 0xFFFFFFFF/4294967295). Audio software running: ${data.processes.audio.map((p) => p.name).join(', ')}. MMCSS controls how much CPU is reserved for multimedia (VR) vs background tasks. At SystemResponsiveness=20, Windows gives 20% CPU to background tasks during multimedia playback — reducing VR thread scheduling budget. Audio middleware adds DPC interrupt chains that can spike latency.`,
-          fixId: 'fix-mmcss-responsiveness'
-        } as any
+          advanced: `Power plan: "${data.osConfig.powerPlan}" (should be "High Performance" or "Ultimate Performance"). Balanced power plan caps CPU P-states, increasing boost-clock response time from ~1ms (High Perf) to ~15-30ms. For VR rendering, this means the CPU can't respond instantly to sudden frame work spikes, which often shows up as stutter on systems that otherwise look healthy. CPU avg ${data.cpu.avgUsage.toFixed(0)}% may under-represent peak frame demands.`
+        }
       }
     }
   },
@@ -555,9 +515,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // STORAGE COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-vr-on-hdd',
@@ -595,7 +553,7 @@ export const combinationRules: Rule[] = [
         severity: 'info',
         category: 'storage',
         explanation: {
-          simple: `Your shader cache has grown to ${cacheGB.toFixed(1)} GB. A very large shader cache can actually cause stutters when VR needs to look up shaders — it becomes like searching a filing cabinet that's never been organized. Clearing it takes 10 seconds and Steam will rebuild it automatically.`,
+          simple: `Your shader cache has grown to ${cacheGB.toFixed(1)} GB. A very large cache can slow shader lookups and occasionally cause stutters. Clearing it takes 10 seconds and Steam will rebuild it as needed.`,
           advanced: `Shader cache size: ${cacheGB.toFixed(1)} GB (recommended max: 5-10 GB). The shader cache stores compiled GPU shaders to avoid recompilation. However, an oversized cache increases lookup time and can cause seek latency on slower drives. Clear via Steam → Settings → Shader Pre-Caching → Clear shader cache. SteamVR also has its own cache: %localappdata%\\openvr\\shadercache. Clearing forces a one-time recompilation on next game launch.`
         }
       }
@@ -626,9 +584,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // VR RUNTIME COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-steamvr-ss-too-high',
@@ -704,9 +660,7 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // INTERNET SPEED + VR CONTEXT
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-slow-internet-cloud-vr',
@@ -750,13 +704,9 @@ export const combinationRules: Rule[] = [
     }
   },
 
-  // ═══════════════════════════════════════════════════
   // COMPLETE SYSTEM HEALTH
-  // ═══════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════
   // DEEPER MULTI-FACTOR COMBINATIONS
-  // ═══════════════════════════════════════════════════
 
   {
     id: 'combo-gpu-thermal-throttle-cascade',
@@ -778,7 +728,7 @@ export const combinationRules: Rule[] = [
         category: 'gpu',
         explanation: {
           simple: `Your GPU is overheating (${gpu.temperature}°C) AND running at high utilization (${gpu.utilization.toFixed(0)}%) AND rendering at above-native resolution (${(ss * 100).toFixed(0)}% supersampling) — this is a reprojection cascade. You'll get severe dropped frames.`,
-          advanced: `GPU temp: ${gpu.temperature}°C | GPU util: ${gpu.utilization.toFixed(1)}% | Supersampling: ${(ss * 100).toFixed(0)}%. This combination triggers a vicious cycle: GPU thermal throttle → clock drops → can't maintain frame rate → reprojection kicks in → reprojection requires additional GPU render passes → more GPU work → more heat → further throttle. Breaking the cycle requires at minimum reducing supersampling to ≤100% immediately, then addressing thermals (fan curve, undervolt) before raising SS again.`
+          advanced: `GPU temp: ${gpu.temperature}°C | GPU util: ${gpu.utilization.toFixed(1)}% | Supersampling: ${(ss * 100).toFixed(0)}%. The feedback loop: GPU throttles → clocks drop → frame rate drops → reprojection kicks in → reprojection adds render passes → more heat → further throttle. Drop supersampling to ≤100% first, then fix thermals (fan curve, undervolt) before raising SS again.`
         }
       }
     }
@@ -847,8 +797,7 @@ export const combinationRules: Rule[] = [
         explanation: {
           simple: `Hyper-V is running while your GPU is under heavy load (${gpu.utilization.toFixed(0)}%). Hyper-V's virtualization layer adds interrupt overhead that disrupts VR compositor frame timing — the effect is worse when the GPU is already stressed.`,
           advanced: `Hyper-V active | GPU util: ${gpu.utilization.toFixed(1)}%. Hyper-V places Windows itself in a VM (root partition), adding microsecond-level interrupt virtualization overhead to every GPU interrupt. Under high GPU load (>70%), GPU interrupts arrive more frequently — multiplying the Hyper-V overhead. This manifests as irregular frame timing (high frame time variance) even when the average frame rate appears acceptable in SteamVR's performance graph. Disabling Hyper-V restores native interrupt processing.`
-        },
-        fixId: 'fix-hyper-v-disable'
+        }
       }
     }
   },
@@ -918,7 +867,7 @@ export const combinationRules: Rule[] = [
         severity: 'info',
         category: 'processes',
         explanation: {
-          simple: `${deduped.length} resource-wasting apps are running during your active VR session. Each one steals CPU cycles and RAM that VR needs for stable frame delivery.`,
+          simple: `${deduped.length} background apps are running during your active VR session. Each takes a slice of CPU and RAM that VR could be using.`,
           advanced: `${deduped.length} unique bloat apps active (${data.processes.bloat.length} total instances) alongside ${data.processes.vrCritical.length} VR critical processes. ${topBreakdown}. Background bloat competes with vrserver/vrcompositor for scheduler time. Even 2-3% aggregate CPU contention can push VR frame delivery over budget during complex scenes — avatar loads, physics bursts, shader compilations. Close these before VR, or create a startup script that terminates them before launching SteamVR.`
         }
         // NOTE: no fixId — startup-bloat auto-disable fix was removed (too broad + no visible improvement after apply)
@@ -940,17 +889,16 @@ export const combinationRules: Rule[] = [
       const cpuOk = data.cpu.avgUsage < 70 && (data.cpu.temperature == null || data.cpu.temperature < 80)
       const ramOk = data.ram.usagePercent < 80
       const powerOk = data.osConfig.powerPlan.toLowerCase().includes('high')
-      const mmcssOk = data.osConfig.mmcss.systemResponsiveness <= 10
 
-      if (!gpuOk || !cpuOk || !ramOk || !powerOk || !mmcssOk) return null
+      if (!gpuOk || !cpuOk || !ramOk || !powerOk) return null
 
       return {
         ruleId: 'combo-system-all-clear',
         severity: 'ok',
         category: 'os-config',
         explanation: {
-          simple: 'Your system is well-configured for VR. CPU and GPU usage are healthy, memory is not under pressure, power plan is correct, and MMCSS is tuned. Any remaining improvements are incremental — supersampling, per-game settings, or hardware upgrades.',
-          advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan} | MMCSS: ${data.osConfig.mmcss.systemResponsiveness}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
+          simple: 'System looks well-configured for VR. CPU/GPU usage are fine, memory is not pressured, power plan is correct. Anything left to improve is incremental — supersampling, per-game tuning, or hardware.',
+          advanced: `System health summary: GPU ${gpu.utilization.toFixed(0)}% util at ${gpu.temperature > 0 ? gpu.temperature + '°C' : 'unknown temp'} | CPU ${data.cpu.avgUsage.toFixed(0)}% | RAM ${data.ram.usagePercent.toFixed(0)}% | Power: ${data.osConfig.powerPlan}. All primary performance metrics within acceptable VR ranges. Next optimizations: increase SteamVR render resolution until GPU hits 80-85%, enable ReBAR if not already set, consider upgrading to Wi-Fi 6E if on wireless VR.`
         }
       }
     }

@@ -22,7 +22,6 @@ export interface DriverEntry {
   notes: string[]
 }
 
-// ── NVIDIA Drivers ──────────────────────────────────────────
 
 const nvidiaDrivers: DriverEntry[] = [
   {
@@ -81,7 +80,6 @@ const nvidiaDrivers: DriverEntry[] = [
   },
 ]
 
-// ── AMD Drivers (Adrenalin / Pro) ───────────────────────────
 
 const amdDrivers: DriverEntry[] = [
   {
@@ -130,7 +128,6 @@ const amdDrivers: DriverEntry[] = [
   },
 ]
 
-// ── Intel Arc / Xe Drivers ──────────────────────────────────
 
 const intelDrivers: DriverEntry[] = [
   {
@@ -161,7 +158,6 @@ const intelDrivers: DriverEntry[] = [
   },
 ]
 
-// ── Combined Export ─────────────────────────────────────────
 
 export const DRIVER_DATABASE: DriverEntry[] = [
   ...nvidiaDrivers,

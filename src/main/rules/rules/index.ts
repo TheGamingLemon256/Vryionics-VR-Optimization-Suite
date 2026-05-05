@@ -1,6 +1,3 @@
-// VR Optimization Suite — Rules Index
-// All diagnostic rules combined into one flat array.
-
 import { cpuRules } from './cpu.rules'
 import { gpuRules } from './gpu.rules'
 import { ramRules } from './ram.rules'

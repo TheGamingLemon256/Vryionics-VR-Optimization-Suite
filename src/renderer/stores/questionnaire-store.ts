@@ -6,7 +6,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { QUESTION_TREE, type Question } from '../../main/data/questionnaire-tree'
 
-// ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface QuestionnaireAnswers {
   [questionId: string]: string
@@ -29,11 +28,9 @@ interface QuestionnaireState {
   getProgress: () => { current: number; estimated: number }
 }
 
-// ── Estimated path length ─────────────────────────────────────────────────────
 // Used to render the progress bar — not 100 % accurate, just a reasonable guess.
 const ESTIMATED_QUESTIONS = 10
 
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useQuestionnaireStore = create<QuestionnaireState>()(
   persist(
@@ -43,7 +40,6 @@ export const useQuestionnaireStore = create<QuestionnaireState>()(
       history: [],
       isComplete: false,
 
-      // ── startQuestionnaire ──────────────────────────────────────────────────
       startQuestionnaire: () => {
         set({
           currentQuestionId: QUESTION_TREE.startQuestionId,
@@ -53,7 +49,6 @@ export const useQuestionnaireStore = create<QuestionnaireState>()(
         })
       },
 
-      // ── answerQuestion ──────────────────────────────────────────────────────
       answerQuestion: (questionId, value) => {
         const question = QUESTION_TREE.questions[questionId]
         if (!question) return
@@ -84,7 +79,6 @@ export const useQuestionnaireStore = create<QuestionnaireState>()(
         })
       },
 
-      // ── goBack ──────────────────────────────────────────────────────────────
       goBack: () => {
         const { history, answers } = get()
         if (history.length === 0) return
@@ -105,7 +99,6 @@ export const useQuestionnaireStore = create<QuestionnaireState>()(
         })
       },
 
-      // ── resetQuestionnaire ──────────────────────────────────────────────────
       resetQuestionnaire: () => {
         set({
           answers: {},
@@ -115,14 +108,12 @@ export const useQuestionnaireStore = create<QuestionnaireState>()(
         })
       },
 
-      // ── getCurrentQuestion ──────────────────────────────────────────────────
       getCurrentQuestion: () => {
         const id = get().currentQuestionId
         if (!id) return undefined
         return QUESTION_TREE.questions[id]
       },
 
-      // ── getProgress ─────────────────────────────────────────────────────────
       getProgress: () => {
         const current = get().history.length + 1
         return { current, estimated: Math.max(current, ESTIMATED_QUESTIONS) }

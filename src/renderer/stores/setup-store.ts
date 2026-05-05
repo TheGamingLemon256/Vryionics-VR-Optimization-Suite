@@ -1,6 +1,3 @@
-// VR Optimization Suite — Setup Store
-// Wizard state: selected headset, connection method, skill level.
-
 import { create } from 'zustand'
 
 export type PcType = 'laptop' | 'desktop' | 'unknown'

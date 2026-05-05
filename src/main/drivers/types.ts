@@ -19,8 +19,13 @@ export type DriverVendor =
 /**
  * Hardware category this driver covers. Used to decide install tier:
  *   • auto-safe:    GPU, USB controllers, audio codecs
- *   • guided-only:  Chipset, storage, Wi-Fi, Bluetooth, Ethernet
+ *   • guided-only:  Chipset, Wi-Fi, Bluetooth, Ethernet
  *   • never:        BIOS/UEFI, EC firmware, TPM, CPU microcode
+ *
+ * Storage controllers (AHCI/NVMe) are intentionally excluded: routing the
+ * average user to the Microsoft Update Catalog for AHCI/NVMe drivers is
+ * bad advice. The default Microsoft inbox driver is the right answer for
+ * almost everyone, and a wrong-driver install can prevent boot.
  */
 export type DriverCategory =
   | 'gpu'
@@ -30,7 +35,6 @@ export type DriverCategory =
   | 'ethernet'
   | 'wifi'
   | 'bluetooth'
-  | 'storage'
   | 'unknown'
 
 /** How we'll deliver the update when the user clicks its row. */
@@ -117,8 +121,8 @@ export const TRUSTED_PUBLISHERS: Record<DriverVendor, string[]> = {
  * Everything else falls through to guided-only.
  *
  * User decision (v0.1.7): GPU / USB / audio only. Wi-Fi, Bluetooth, Ethernet,
- * chipset, storage all stay guided — a failed network driver install leaves
- * the user without connectivity to download a fix.
+ * chipset all stay guided. A failed network driver install would leave the
+ * user without connectivity to download a fix.
  */
 export const AUTO_SAFE_CATEGORIES: DriverCategory[] = ['gpu', 'usb', 'audio']
 

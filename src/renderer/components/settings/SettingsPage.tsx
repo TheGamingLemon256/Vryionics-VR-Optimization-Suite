@@ -1,12 +1,10 @@
-// VR Optimization Suite — Settings Page
-// App preferences: report mode, admin info, setup reset, about section
-
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../stores/app-store'
 import { useSetupStore } from '../../stores/setup-store'
 import { useThemeStore, type AccentColor } from '../../stores/theme-store'
 import { PromoDuoFull } from '../shared/PromoCards'
 import { BugReportModal } from '../support/BugReportModal'
+import { LiveOptimizerSettingsCard } from '../live-optimizer/LiveOptimizerSettingsCard'
 
 const ACCENT_OPTIONS: Array<{ id: AccentColor; label: string; hex: string }> = [
   { id: 'purple', label: 'Purple', hex: '#7c5bf5' },
@@ -17,18 +15,16 @@ const ACCENT_OPTIONS: Array<{ id: AccentColor; label: string; hex: string }> = [
 ]
 
 export default function SettingsPage(): React.ReactElement {
-  const { advancedMode, setAdvancedMode, isAdmin, setCurrentPage } = useAppStore()
+  const { advancedMode, setAdvancedMode, setCurrentPage } = useAppStore()
   const { config, resetSetup, isComplete } = useSetupStore()
   const { accent, setAccent, glassOpacity, setGlassOpacity, reducedMotion, setReducedMotion } = useThemeStore()
   const [appVersion, setAppVersion] = useState('0.1.0')
   const [showResetConfirm, setShowResetConfirm] = useState(false)
-  const [adminStatus, setAdminStatus] = useState<boolean | null>(null)
   const [bugReportOpen, setBugReportOpen] = useState(false)
 
   useEffect(() => {
     const api = (window as any).api
     api.app?.getVersion?.()?.then?.(setAppVersion).catch?.(() => {})
-    api.system?.isAdmin?.()?.then?.(setAdminStatus).catch?.(() => setAdminStatus(false))
   }, [])
 
   const handleReset = () => {
@@ -99,34 +95,6 @@ export default function SettingsPage(): React.ReactElement {
         </SettingsSection>
       )}
 
-      {/* System Info */}
-      <SettingsSection title="System" description="Runtime environment and permissions.">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-white">Administrator Privileges</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {adminStatus === null ? 'Checking...' :
-                 adminStatus ? 'Running with admin rights — all fixes available' :
-                 'Running without admin — some registry fixes may be limited'}
-              </p>
-            </div>
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-              adminStatus === null ? 'bg-white/10 text-gray-400' :
-              adminStatus ? 'bg-vr-healthy/15 text-vr-healthy' :
-              'bg-vr-warning/15 text-vr-warning'
-            }`}>
-              {adminStatus === null ? '…' : adminStatus ? 'Admin' : 'Standard'}
-            </span>
-          </div>
-          {adminStatus === false && (
-            <p className="text-xs text-gray-500 glass-panel-sm p-3 rounded-lg">
-              💡 To enable all fixes, right-click the app and select "Run as Administrator".
-            </p>
-          )}
-        </div>
-      </SettingsSection>
-
       {/* About */}
       <SettingsSection title="About" description="Version and build information.">
         <div className="space-y-3">
@@ -168,6 +136,13 @@ export default function SettingsPage(): React.ReactElement {
         description="Export your applied fixes as a portable JSON file to share with friends, or import a friend's profile to apply their tweaks."
       >
         <ProfileExportRow />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Live Optimizer"
+        description="Lowers CPU priority on allowlisted background apps while VR is running, restores everything when VR closes."
+      >
+        <LiveOptimizerSettingsCard />
       </SettingsSection>
 
       {/* Background scheduler */}
@@ -317,7 +292,6 @@ export default function SettingsPage(): React.ReactElement {
   )
 }
 
-// ── Shared Components ─────────────────────────────────────────
 
 function SettingsSection({ title, description, children }: {
   title: string

@@ -14,7 +14,6 @@ import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 import type { HeadsetProfile, KnownIssue, OptimizationTip } from '../../headsets/types'
 
-// ── Helpers ───────────────────────────────────────────────────
 
 function getProfile(data: ScanData): HeadsetProfile | null {
   const p = data.headsetProfile as HeadsetProfile | null | undefined
@@ -75,7 +74,6 @@ function gpuTierScore(gpuName: string): number | null {
   return null
 }
 
-// ── Rules ─────────────────────────────────────────────────────
 
 /**
  * Surface profile-declared knownIssues as findings — one per issue, scoped
@@ -248,7 +246,7 @@ const headsetMinRamRule: Rule = {
           `Your system has ${data.ram.totalGB} GB of RAM, but the ${profile.brand} ${profile.model} ` +
           `lists ${minRam} GB as the minimum recommended. You can run VR, but expect occasional ` +
           `stutters when the OS + VR runtime + game exhaust available memory. ` +
-          `Doubling to ${minRam * 2} GB is the single most impactful upgrade if your motherboard has ` +
+          `Doubling to ${minRam * 2} GB will help noticeably if your motherboard has ` +
           `spare DIMM slots.`,
         advanced:
           `Detected RAM: ${data.ram.totalGB} GB (${data.ram.type}-${data.ram.speed})\n` +
@@ -322,7 +320,6 @@ const headsetMinGpuRule: Rule = {
   },
 }
 
-// ── Export ────────────────────────────────────────────────────
 
 export const headsetProfileRules: Rule[] = [
   headsetKnownIssuesRule,

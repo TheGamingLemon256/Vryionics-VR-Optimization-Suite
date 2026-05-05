@@ -1,5 +1,4 @@
-// VR Optimization Suite — Theme Store
-// Accent color, glass intensity, reduced motion. Persists via api.config.
+// Accent, glass intensity, reduced motion. Persists via api.config.
 
 import { create } from 'zustand'
 

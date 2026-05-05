@@ -1,5 +1,4 @@
-// VR Optimization Suite — Scan Module Registry
-// All Phase 1a scan modules registered here in execution order.
+// Scan modules registered in execution order.
 
 export { scanCpu } from './cpu'
 export { scanGpu } from './gpu'
@@ -8,7 +7,6 @@ export { scanStorage } from './storage'
 export { scanNetwork } from './network'
 export { scanProcesses } from './processes'
 export { scanOsConfig } from './os-config'
-export { scanMmcss } from './mmcss'
 export { scanPowerPlan } from './power-plan'
 export { scanSteamVr } from './steamvr'
 export { scanVrRuntime } from './vr-runtime'
@@ -30,7 +28,6 @@ export const MODULE_ORDER = [
   'processes',
   'vr-runtime',
   'os-config',
-  'mmcss',              // merge → osConfig.mmcss
   'power-plan',         // merge → osConfig.powerPlan
   'steamvr',            // merge → vrRuntime
   'headset-connection', // standalone → scanData.headsetConnection

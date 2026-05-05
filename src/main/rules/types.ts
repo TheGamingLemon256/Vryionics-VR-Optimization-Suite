@@ -1,4 +1,3 @@
-// VR Optimization Suite — Rule Engine Types
 // Rules evaluate ScanData and produce findings with dual-mode explanations.
 
 import type { ScanData, ConnectionArchetype } from '../scanner/types'
@@ -18,7 +17,6 @@ export type RuleCategory =
   | 'audio'
   | 'usb'
 
-// ── Rule Definition ──────────────────────────────────────────
 
 export interface Rule {
   /** Unique rule ID, kebab-case. e.g. 'mmcss-priority-low' */
@@ -36,7 +34,6 @@ export interface Rule {
   evaluate: (data: ScanData) => RuleResult | null
 }
 
-// ── Rule Result ──────────────────────────────────────────────
 
 export interface RuleResult {
   /** Rule that produced this result */
@@ -56,7 +53,6 @@ export interface RuleResult {
   category: RuleCategory
 }
 
-// ── Finding (Rule Result + metadata for UI) ──────────────────
 
 export interface Finding {
   /** Unique finding ID (ruleId + scan timestamp) */
@@ -69,14 +65,13 @@ export interface Finding {
   fixed: boolean
 }
 
-// ── Executive Summary / Action Plan ─────────────────────────
 
 export type ActionImpact = 'critical' | 'high' | 'medium' | 'low'
 export type ActionEffort = 'instant' | 'minutes' | 'hours' | 'research'
 
 export interface ActionStep {
   text: string
-  type?: 'do' | 'open' | 'setting' | 'install' | 'reboot' | 'info'
+  type?: 'do' | 'open' | 'setting' | 'install' | 'reboot' | 'info' | 'warning'
 }
 
 export interface ActionPlan {
@@ -106,7 +101,6 @@ export interface ActionPlan {
   fixId?: string
 }
 
-// ── Rule Summary (for settings/debug display) ────────────────
 
 export interface RuleSummary {
   id: string
@@ -118,7 +112,6 @@ export interface RuleSummary {
   }
 }
 
-// ── Health Card Aggregation ──────────────────────────────────
 
 export type HealthStatus = 'healthy' | 'warning' | 'critical' | 'scanning' | 'unknown' | 'error'
 

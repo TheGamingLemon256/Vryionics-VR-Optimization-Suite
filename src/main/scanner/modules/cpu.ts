@@ -1,49 +1,68 @@
-// VR Optimization Suite — CPU Scan Module
-// Collects CPU model info, per-core usage, temperature, and V-Cache status.
+// CPU scan: model, per-core usage, temperature, V-Cache.
 
-import { queryCpuInfo } from '../../utils/wmi'
+import os from 'node:os'
+import { readKey, readValue } from '../../utils/registry-read'
 import { readRegistryDword, enumerateRegistrySubkeys, registryKeyExists } from '../../utils/registry'
-import { runPowerShellJson, tryRunPowerShell } from '../../utils/powershell'
+import { readCounters, readSingleCounter } from '../../utils/typeperf'
+import { findCpuEntry } from '../../data/cpu-database'
 import type { ScanModuleResult, CpuData } from '../types'
 
-interface PerfCoreCounter {
-  core: number
-  usage: number
+interface CpuIdentity {
+  model: string
+  identifier: string
+  vendor: string
+  baseClockMhz: number
+}
+
+async function readCpuIdentity(): Promise<CpuIdentity | null> {
+  const key = await readKey('HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0').catch(() => null)
+  if (!key) return null
+
+  const name = key.values['ProcessorNameString']
+  const ident = key.values['Identifier']
+  const vendor = key.values['VendorIdentifier']
+  const mhz = key.values['~MHz']
+
+  if (!name || name.type !== 'REG_SZ') return null
+
+  return {
+    model: name.data.trim(),
+    identifier: ident && ident.type === 'REG_SZ' ? ident.data : '',
+    vendor: vendor && vendor.type === 'REG_SZ' ? vendor.data : '',
+    baseClockMhz: mhz && mhz.type === 'REG_DWORD' ? mhz.data : 0,
+  }
 }
 
 async function getCoreUsage(): Promise<number[]> {
-  const script = `
-$counters = Get-Counter '\\Processor(*)\\% Processor Time' -SampleInterval 1 -MaxSamples 2 -ErrorAction SilentlyContinue
-$samples = $counters.CounterSamples | Where-Object { $_.InstanceName -ne '_total' } |
-  Sort-Object { [int]($_.InstanceName -replace '[^0-9]', '') } |
-  Select-Object InstanceName, CookedValue
-$samples | ConvertTo-Json -Compress
-`
-  try {
-    const raw = await runPowerShellJson<Array<{ InstanceName: string; CookedValue: number }>>(script, 30000)
-    const items = Array.isArray(raw) ? raw : [raw]
-    return items.map((i) => Math.round(i.CookedValue * 10) / 10)
-  } catch {
-    return []
+  const samples = await readCounters(['\\Processor(*)\\% Processor Time'], 1, 15000)
+  if (!samples) return []
+
+  const perCore: Array<{ idx: number; value: number }> = []
+  for (const s of samples) {
+    const m = s.counter.match(/Processor\(([^)]+)\)/i)
+    if (!m) continue
+    const inst = m[1]
+    if (inst.toLowerCase() === '_total') continue
+    const idx = parseInt(inst.replace(/[^0-9]/g, ''), 10)
+    if (Number.isFinite(idx)) {
+      perCore.push({ idx, value: s.value })
+    }
   }
+  perCore.sort((a, b) => a.idx - b.idx)
+  return perCore.map((c) => Math.round(c.value * 10) / 10)
 }
 
 async function getContextSwitches(): Promise<number> {
-  try {
-    const script = `(Get-Counter '\\System\\Context Switches/sec' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue`
-    const raw = await tryRunPowerShell(script, 15000)
-    return raw ? Math.round(parseFloat(raw)) : 0
-  } catch {
-    return 0
-  }
+  const v = await readSingleCounter('\\System\\Context Switches/sec', 8000)
+  return v === null ? 0 : Math.round(v)
 }
 
-function detectVCache(model: string, l3CacheSizeKB: number): boolean {
-  const modelLower = model.toLowerCase()
-  return (
-    modelLower.includes('x3d') ||
-    (modelLower.includes('ryzen') && l3CacheSizeKB >= 98304) // 96MB+ L3 = V-Cache
-  )
+function detectVCache(model: string): boolean {
+  // V-Cache parts ship under the X3D brand. Without WMI's L3 size we drop the
+  // "high-L3 Ryzen" fallback; the X3D string match catches every shipped SKU.
+  // double-check this: the CCD layout for 7950X3D might flip on some BIOSes
+  // (cache CCD on CCD0 vs CCD1) — affinity logic downstream assumes CCD0.
+  return model.toLowerCase().includes('x3d')
 }
 
 async function getVCacheEntries(): Promise<Record<string, { endsWith: string; type: number }>> {
@@ -55,99 +74,83 @@ async function getVCacheEntries(): Promise<Record<string, { endsWith: string; ty
 
   for (const appName of appNames) {
     const appPath = `${basePath}\\${appName}`
-    const script = `
-$vals = Get-ItemProperty -Path "HKLM:\\${appPath}" -ErrorAction SilentlyContinue
-if ($vals) { @{ endsWith = $vals.EndsWith; type = $vals.Type } | ConvertTo-Json -Compress }
-`
-    try {
-      const result = await runPowerShellJson<{ endsWith: string; type: number }>(script)
-      if (result) entries[appName] = result
-    } catch {
-      // skip
+    const endsWithVal = await readValue(`HKLM\\${appPath}`, 'EndsWith')
+    const typeDword = readRegistryDword('HKLM', appPath, 'Type')
+    if (endsWithVal && (endsWithVal.type === 'REG_SZ' || endsWithVal.type === 'REG_EXPAND_SZ') && typeDword !== null) {
+      entries[appName] = { endsWith: endsWithVal.data, type: typeDword }
     }
   }
 
   return entries
 }
 
-async function getBoostAndThrottleInfo(): Promise<{ boostClockMhz: number | null; thermalThrottled: boolean }> {
-  try {
-    const out = await tryRunPowerShell(`
-# Get processor performance info
-$cpu = Get-CimInstance Win32_Processor -EA SilentlyContinue | Select-Object -First 1
-if ($cpu) {
-  Write-Output "maxclock:$($cpu.MaxClockSpeed)"
-  Write-Output "currentclock:$($cpu.CurrentClockSpeed)"
-  Write-Output "loadpct:$($cpu.LoadPercentage)"
-}
-# Get per-core max frequency from performance counters
-$maxFreq = (Get-Counter '\\Processor Information(_Total)\\% Processor Performance' -EA SilentlyContinue).CounterSamples.CookedValue
-if ($maxFreq) { Write-Output "perfpct:$([math]::Round($maxFreq))" }
-`, 10000)
+async function getBoostAndThrottleInfo(baseClockMhz: number): Promise<{ boostClockMhz: number | null; thermalThrottled: boolean }> {
+  // Live boost / throttle is read from PDH counters via typeperf. The
+  // registry has no runtime equivalent for current perf state.
+  const samples = await readCounters(
+    [
+      '\\Processor Information(_Total)\\% Processor Performance',
+      '\\Processor Information(_Total)\\Processor Frequency',
+    ],
+    1,
+    8000
+  )
+  if (!samples || samples.length < 2) return { boostClockMhz: null, thermalThrottled: false }
 
-    if (!out) return { boostClockMhz: null, thermalThrottled: false }
+  const perfPct = Math.round(samples[0].value)
+  const currentClock = Math.round(samples[1].value)
 
-    const maxClockMatch = out.match(/^maxclock:(\d+)/m)
-    const currentClockMatch = out.match(/^currentclock:(\d+)/m)
-    const perfPctMatch = out.match(/^perfpct:(\d+)/m)
-
-    const maxClock = maxClockMatch ? parseInt(maxClockMatch[1]) : null
-    const currentClock = currentClockMatch ? parseInt(currentClockMatch[1]) : null
-    const perfPct = perfPctMatch ? parseInt(perfPctMatch[1]) : null
-
-    // Estimate boost clock from performance percentage × base clock
-    let boostClockMhz: number | null = null
-    if (perfPct !== null && maxClock !== null && perfPct > 0) {
-      // perfPct > 100 means boosting — the actual boost clock estimate
-      boostClockMhz = Math.round(maxClock * perfPct / 100)
-    } else if (maxClock !== null) {
-      boostClockMhz = maxClock
-    }
-
-    // Thermal throttle: current clock significantly below base clock
-    // (Win32_Processor.CurrentClockSpeed drops when throttled)
-    let thermalThrottled = false
-    if (currentClock !== null && maxClock !== null && currentClock < maxClock * 0.75) {
-      thermalThrottled = true
-    }
-    // Also check perfPct: if < 80% and system is under load, likely throttled
-    if (perfPct !== null && perfPct < 70) {
-      thermalThrottled = true
-    }
-
-    return { boostClockMhz, thermalThrottled }
-  } catch {
-    return { boostClockMhz: null, thermalThrottled: false }
+  let boostClockMhz: number | null = null
+  if (baseClockMhz > 0 && perfPct > 0) {
+    boostClockMhz = Math.round(baseClockMhz * perfPct / 100)
+  } else if (currentClock > 0) {
+    boostClockMhz = currentClock
+  } else if (baseClockMhz > 0) {
+    boostClockMhz = baseClockMhz
   }
+
+  let thermalThrottled = false
+  if (currentClock > 0 && baseClockMhz > 0 && currentClock < baseClockMhz * 0.75) {
+    thermalThrottled = true
+  }
+  if (perfPct > 0 && perfPct < 70) {
+    thermalThrottled = true
+  }
+
+  return { boostClockMhz, thermalThrottled }
 }
 
 export async function scanCpu(): Promise<ScanModuleResult<CpuData>> {
   try {
     console.log('[scan:cpu] Querying CPU info...')
 
-    const [cpuInfoList, perCoreUsage, contextSwitches, boostThrottle] = await Promise.all([
-      queryCpuInfo(),
-      getCoreUsage(),
-      getContextSwitches(),
-      getBoostAndThrottleInfo()
-    ])
-
-    const cpuInfo = cpuInfoList[0]
-    if (!cpuInfo) {
-      return { success: false, error: 'No CPU info returned from WMI', partial: true }
+    const identity = await readCpuIdentity()
+    if (!identity) {
+      return { success: false, error: 'Could not read CPU identity from registry', partial: true }
     }
 
-    const hasVCache = detectVCache(cpuInfo.Name, cpuInfo.L3CacheSize)
+    const [perCoreUsage, contextSwitches, boostThrottle] = await Promise.all([
+      getCoreUsage(),
+      getContextSwitches(),
+      getBoostAndThrottleInfo(identity.baseClockMhz),
+    ])
 
-    console.log(`[scan:cpu] Model: ${cpuInfo.Name}, Cores: ${cpuInfo.NumberOfCores}, V-Cache: ${hasVCache}`)
+    // os.cpus() reflects logical processors, matching what HARDWARE\...\CentralProcessor\N
+    // would enumerate. Physical core count comes from the model lookup; the registry
+    // does not expose it.
+    const logicalCount = os.cpus().length
+    const dbEntry = findCpuEntry(identity.model)
+    const physicalCores = dbEntry?.cores ?? logicalCount
 
-    // Check V-Cache driver
+    const hasVCache = detectVCache(identity.model)
+
+    console.log(`[scan:cpu] Model: ${identity.model}, Cores: ${physicalCores}, V-Cache: ${hasVCache}`)
+
     const vcacheDriverPresent = registryKeyExists(
       'HKLM',
       'SYSTEM\\CurrentControlSet\\Services\\amd3dvcacheSvc'
     )
 
-    // Get V-Cache app entries
     const vcacheAppEntries = vcacheDriverPresent ? await getVCacheEntries() : {}
 
     const avgUsage =
@@ -158,16 +161,16 @@ export async function scanCpu(): Promise<ScanModuleResult<CpuData>> {
     const { boostClockMhz, thermalThrottled } = boostThrottle
 
     const data: CpuData = {
-      model: cpuInfo.Name.trim(),
-      cores: cpuInfo.NumberOfCores,
-      threads: cpuInfo.NumberOfLogicalProcessors,
-      baseClock: cpuInfo.MaxClockSpeed,
-      boostClock: cpuInfo.MaxClockSpeed, // Max boost not directly available via WMI
-      architecture: cpuInfo.Description || cpuInfo.Name,
+      model: identity.model,
+      cores: physicalCores,
+      threads: logicalCount,
+      baseClock: identity.baseClockMhz,
+      boostClock: identity.baseClockMhz,
+      architecture: identity.identifier || identity.model,
       hasVCache,
       perCoreUsage,
       avgUsage,
-      temperature: null, // Requires vendor-specific tools (HWiNFO64 shared memory, not available)
+      temperature: null,
       contextSwitchesPerSec: contextSwitches,
       vcacheDriverPresent,
       vcacheAppEntries,

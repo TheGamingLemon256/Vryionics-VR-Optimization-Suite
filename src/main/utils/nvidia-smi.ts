@@ -1,10 +1,7 @@
-// VR Optimization Suite — nvidia-smi Integration
-// See CODING-RULES-DICTIONARY.md Section 11: nvidia-smi Integration
-//
-// IMPORTANT: nvidia-smi only works for NVIDIA GPUs.
-// Detect GPU vendor FIRST — skip all nvidia-smi calls for AMD/Intel.
+// nvidia-smi only works for NVIDIA GPUs. Detect vendor FIRST —
+// skip nvidia-smi entirely for AMD/Intel. See CODING-RULES-DICTIONARY.md §11.
 
-import { execFile } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 
 /** Standard nvidia-smi location (may not be on PATH) */
@@ -28,10 +25,10 @@ export function findNvidiaSmi(): string | null {
 
   for (const p of NVIDIA_SMI_PATHS) {
     if (p === 'nvidia-smi') {
-      // Check if it's on PATH by trying to run it
+      // Probe PATH by invoking the binary directly. Failure means it's not
+      // installed (common on AMD/Intel systems) and the next candidate is tried.
       try {
-        const { execSync } = require('child_process')
-        execSync('nvidia-smi --version', { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
+        execFileSync('nvidia-smi', ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
         resolvedPath = 'nvidia-smi'
         return resolvedPath
       } catch {
@@ -85,9 +82,6 @@ export function nvidiaSmiQuery(query: string, timeout = 10000): Promise<string[]
   })
 }
 
-/**
- * Run an arbitrary nvidia-smi command and return raw stdout.
- */
 export function nvidiaSmiRaw(args: string[], timeout = 10000): Promise<string> {
   const smiPath = findNvidiaSmi()
   if (!smiPath) {
@@ -110,9 +104,6 @@ export function nvidiaSmiRaw(args: string[], timeout = 10000): Promise<string> {
   })
 }
 
-/**
- * Check if nvidia-smi is available (i.e., NVIDIA GPU with drivers installed).
- */
 export function isNvidiaAvailable(): boolean {
   return findNvidiaSmi() !== null
 }

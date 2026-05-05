@@ -1,4 +1,3 @@
-// VR Optimization Suite — VR Games Settings Panel
 import React, { useState } from 'react'
 
 interface VRGameSetting {

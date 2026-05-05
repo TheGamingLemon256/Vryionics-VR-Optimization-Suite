@@ -4,7 +4,6 @@
 
 import React, { useState } from 'react'
 
-// ── Local Type Mirrors ────────────────────────────────────────
 // These match the types in upgrade-engine.ts exactly.
 
 export interface UpgradeProduct {
@@ -34,14 +33,12 @@ interface ScanDataSummary {
   ram?: { totalGB: number; type: string } | null
 }
 
-// ── Props ─────────────────────────────────────────────────────
 
 export interface UpgradesPanelProps {
   upgrades: UpgradeRecommendation[]
   scanData: ScanDataSummary | null
 }
 
-// ── Constants ─────────────────────────────────────────────────
 
 type BudgetFilter = 'all' | 'under-100' | '100-250' | '250-500' | '500+'
 
@@ -103,7 +100,6 @@ const BUDGET_FILTERS: { id: BudgetFilter; label: string }[] = [
   { id: '500+',      label: '$500+' }
 ]
 
-// ── Helpers ───────────────────────────────────────────────────
 
 function parsePriceMin(priceStr: string): number {
   // Extract first number from e.g. "$230-280 used" → 230, "$99" → 99
@@ -121,7 +117,6 @@ function productMatchesBudget(product: UpgradeProduct, filter: BudgetFilter): bo
   return true
 }
 
-// ── Sub-components ────────────────────────────────────────────
 
 function ProductCard({ product }: { product: UpgradeProduct }): React.ReactElement {
   const tier = TIER_CONFIG[product.tier]
@@ -157,7 +152,6 @@ function UpgradeCard({ rec, budgetFilter }: {
 
   return (
     <div className={`glass-panel-sm border ${urgency.cardBorder} rounded-xl overflow-hidden transition-all duration-200`}>
-      {/* ── Card Header ───────────────────────────────── */}
       <button
         className="w-full text-left p-4 hover:bg-white/3 transition-colors duration-150"
         onClick={() => setExpanded((e) => !e)}
@@ -191,7 +185,6 @@ function UpgradeCard({ rec, budgetFilter }: {
         </div>
       </button>
 
-      {/* ── Expanded Detail ───────────────────────────── */}
       {expanded && (
         <div className="border-t border-white/6 p-4 space-y-4">
           {/* VR Impact summary */}
@@ -302,7 +295,6 @@ function EmptyState({ hasScanData }: { hasScanData: boolean }): React.ReactEleme
   )
 }
 
-// ── Budget Filter Bar ─────────────────────────────────────────
 
 function BudgetFilterBar({ active, onChange }: {
   active: BudgetFilter
@@ -328,7 +320,6 @@ function BudgetFilterBar({ active, onChange }: {
   )
 }
 
-// ── Main Panel ────────────────────────────────────────────────
 
 export default function UpgradesPanel({ upgrades, scanData }: UpgradesPanelProps): React.ReactElement {
   const [budgetFilter, setBudgetFilter] = useState<BudgetFilter>('all')
@@ -344,7 +335,6 @@ export default function UpgradesPanel({ upgrades, scanData }: UpgradesPanelProps
 
   return (
     <div className="page-enter flex flex-col gap-5">
-      {/* ── Header ─────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white">Hardware Upgrade Path</h1>
@@ -380,15 +370,12 @@ export default function UpgradesPanel({ upgrades, scanData }: UpgradesPanelProps
         )}
       </div>
 
-      {/* ── Hardware Summary Row ────────────────────── */}
       {hasScanData && <HardwareSummaryRow scanData={scanData} />}
 
-      {/* ── Budget Filter ────────────────────────────── */}
       {hasUpgrades && (
         <BudgetFilterBar active={budgetFilter} onChange={setBudgetFilter} />
       )}
 
-      {/* ── Main Content ─────────────────────────────── */}
       {!hasUpgrades ? (
         <EmptyState hasScanData={hasScanData} />
       ) : (

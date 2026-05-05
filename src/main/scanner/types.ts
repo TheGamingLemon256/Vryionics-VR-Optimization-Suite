@@ -1,8 +1,6 @@
-// VR Optimization Suite — Scanner Types
-// Central contract between scan modules (producers) and rules (consumers).
-// Every scan module populates ONE key of ScanData.
+// Contract between scan modules (producers) and rules (consumers).
+// Each scan module populates one key of ScanData.
 
-// ── Process Info ──────────────────────────────────────────────
 
 export interface ProcessInfo {
   name: string
@@ -16,7 +14,6 @@ export interface ProcessInfo {
   gdiObjects: number | null
 }
 
-// ── Module Result Wrapper ────────────────────────────────────
 
 export interface ScanModuleResult<T = unknown> {
   success: boolean
@@ -30,7 +27,6 @@ export interface ScanModuleResult<T = unknown> {
   durationMs?: number
 }
 
-// ── CPU ──────────────────────────────────────────────────────
 
 export interface CpuData {
   model: string
@@ -50,7 +46,6 @@ export interface CpuData {
   thermalThrottled: boolean        // True if CPU is running below base clock (thermal or power limit)
 }
 
-// ── GPU ──────────────────────────────────────────────────────
 
 export interface GpuDevice {
   index: number
@@ -84,7 +79,6 @@ export interface GpuData {
   dpcPerCore: Record<number, number> // core -> DPC %
 }
 
-// ── RAM ──────────────────────────────────────────────────────
 
 export interface RamData {
   totalGB: number
@@ -102,7 +96,6 @@ export interface RamData {
   dualChannelConfirmed: boolean    // True if WMI reports 2+ memory channels active
 }
 
-// ── Storage ──────────────────────────────────────────────────
 
 export interface StorageDrive {
   letter: string
@@ -123,14 +116,12 @@ export interface StorageData {
   vrchatCacheSizeGB: number
 }
 
-// ── Network ──────────────────────────────────────────────────
 
 export interface NetworkAdapter {
   name: string
   type: 'Ethernet' | 'Wi-Fi' | 'Unknown'
   speed: number // Mbps
   connected: boolean
-  // ── Phase-4: chipset identification for Wi-Fi adapters ──
   // Wireless VR performance correlates strongly with adapter chipset vendor.
   // We classify what we can identify, leaving unknowns honest rather than guessing.
   chipsetVendor?: 'Intel' | 'Realtek' | 'MediaTek' | 'Qualcomm' | 'Broadcom' | 'Unknown'
@@ -174,7 +165,6 @@ export interface NetworkData {
   tcpRetransmits: number
 }
 
-// ── VR Runtime ───────────────────────────────────────────────
 
 export interface VrRuntimeData {
   steamvrInstalled: boolean
@@ -203,7 +193,6 @@ export interface VrRuntimeData {
   crashEvents: VrCrashEvent[]
 }
 
-// ── VR Crash Event (from SteamVR log parsing) ─────────────────
 
 export interface VrCrashEvent {
   /** Which log file produced this entry. */
@@ -226,7 +215,6 @@ export type VrCrashSignature =
   | 'gpu-crash'              // Nvlddmkm / DXGI_ERROR_DEVICE_REMOVED
   | 'unknown'
 
-// ── Processes ────────────────────────────────────────────────
 
 export interface ProcessesData {
   vrCritical: ProcessInfo[] // VRChat, vrcompositor, vrserver, etc.
@@ -240,14 +228,6 @@ export interface ProcessesData {
   all: ProcessInfo[] // Full process list
 }
 
-// ── OS Config ────────────────────────────────────────────────
-
-export interface MmcssConfig {
-  systemResponsiveness: number
-  networkThrottlingIndex: number
-  gamesTaskPriority: number
-  gamesSchedulingCategory: string
-}
 
 export interface OsConfigData {
   windowsVersion: string
@@ -255,7 +235,6 @@ export interface OsConfigData {
   gameModeEnabled: boolean
   hpetEnabled: boolean | null
   timerResolution: { current: number; minimum: number; maximum: number } | null // ms
-  mmcss: MmcssConfig
   powerPlan: string
   startupItems: Array<{ name: string; enabled: boolean; impact: string }>
   services: Array<{ name: string; displayName: string; status: string; startType: string }>
@@ -275,7 +254,7 @@ export interface OsConfigData {
   wuAutoRebootEnabled: boolean           // NoAutoRebootWithLoggedOnUsers is absent or 0 (auto-reboot risk)
   deliveryOptimizationP2pEnabled: boolean // DODownloadMode is null or 1/2/3 (P2P seeding active)
   win11EcoQosRisk: boolean  // Win 11 22H2+ + non-High-Performance power plan = risk of VR process throttling
-  // ── System identification ────────────────────────────────────
+  pcieAspmActive: boolean | null         // PCIe Active State Power Management is set to anything other than Off on the active power plan; null if unreadable
   vpnActive: boolean                  // VPN adapter detected as connected
   thirdPartyAv: string | null         // Name of third-party AV product (null if only Defender)
   biosDate: string | null             // 'YYYY-MM-DD' format from Win32_BIOS
@@ -284,7 +263,6 @@ export interface OsConfigData {
   isOnBattery: boolean                // True if currently running on battery power
 }
 
-// ── Speed Test ───────────────────────────────────────────────
 
 export interface SpeedTestData {
   downloadMbps: number | null   // Download from internet CDN
@@ -296,7 +274,6 @@ export interface SpeedTestData {
   note: string | null           // Context note (e.g. "relevant for cloud VR / content download only")
 }
 
-// ── Headset Connection ────────────────────────────────────────
 
 export type HeadsetConnectionMethod =
   | 'usb-link'         // Quest/Pico via USB tether (Oculus Link, Pico Connect USB)
@@ -323,7 +300,6 @@ export interface HeadsetConnectionData {
   encoderInUse: string | null       // 'NVENC' | 'AMF' | 'x264' | null
   headsetOsVersion: string | null   // For USB-connected Android headsets
 
-  // ── Phase-4 additions: richer ecosystem awareness ──
   /** VR companion apps currently running (overlays, trackers, haptics). */
   companionApps: VrCompanionEntry[]
   /** Known SteamVR-conflicting apps running right now (RTSS, MSI Afterburner, etc). */
@@ -346,7 +322,6 @@ export interface VrConflictEntry {
   solution: string
 }
 
-// ── Display ──────────────────────────────────────────────────
 
 export interface DisplayMonitor {
   name: string            // e.g. "DELL U2722D" or device name
@@ -365,7 +340,6 @@ export interface DisplayData {
   anyAdaptiveSyncEnabled: boolean
 }
 
-// ── Audio ─────────────────────────────────────────────────────
 
 export interface AudioData {
   defaultDevice: string | null        // Default audio output device name
@@ -376,7 +350,6 @@ export interface AudioData {
   voipNoiseSuppression: boolean       // Windows voice focus / noise suppression active
 }
 
-// ── USB ──────────────────────────────────────────────────────
 
 export interface UsbData {
   controllers: Array<{
@@ -389,7 +362,6 @@ export interface UsbData {
   genericControllerCount: number      // Number of unidentified USB controllers
 }
 
-// ── Event Log ─────────────────────────────────────────────────
 
 export interface EventLogData {
   gpuTdrEvents: number          // GPU driver timeout events in last 7 days
@@ -399,7 +371,6 @@ export interface EventLogData {
   criticalErrors: string[]      // First lines of notable error messages
 }
 
-// ── User-reported setup context (Phase-5) ─────────────────────
 
 /** Mirrors UserSetupConfig fields that rules care about. */
 export interface UserScanSetup {
@@ -413,7 +384,6 @@ export interface UserScanSetup {
   skillLevel: 'beginner' | 'intermediate' | 'advanced' | null
 }
 
-// ── VR System Compatibility (Phase-4) ─────────────────────────
 // Cross-cutting system flags that affect multiple VR workflows. Collected in
 // a single scan module (compat.ts) so rules have one place to look rather
 // than scraping half a dozen registry keys each.
@@ -456,7 +426,6 @@ export interface VrCompatibilityData {
   } | null
 }
 
-// ── Full ScanData ────────────────────────────────────────────
 
 export type ConnectionArchetype = 'tethered-dp' | 'usb-encoded' | 'wifi-wireless' | 'wigig'
 
@@ -519,7 +488,6 @@ export interface ScanData {
   errors: Record<string, string>
 }
 
-// ── Scan Progress ────────────────────────────────────────────
 
 export interface ScanProgress {
   module: string
@@ -529,7 +497,6 @@ export interface ScanProgress {
   completedModules: number
 }
 
-// ── Scan Module Registry ─────────────────────────────────────
 
 export type ScanModuleId =
   | 'cpu'
@@ -540,10 +507,8 @@ export type ScanModuleId =
   | 'vr-runtime'
   | 'processes'
   | 'os-config'
-  | 'mmcss'
   | 'power-plan'
   | 'steamvr'
-  // Phase 1b modules
   | 'wireless-vr'
   | 'vcache'
   | 'dpc-latency'

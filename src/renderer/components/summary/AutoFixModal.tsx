@@ -1,4 +1,3 @@
-// VR Optimization Suite — Auto Fix All Modal
 import React, { useState, useEffect } from 'react'
 import { useScanStore } from '../../stores/scan-store'
 

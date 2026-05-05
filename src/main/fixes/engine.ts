@@ -5,16 +5,42 @@
 
 import Store from 'electron-store'
 import { readRegistryDword, readRegistry } from '../utils/registry'
-import { runCmd, runPowerShell } from '../utils/powershell'
+import { readKey, readValue } from '../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../utils/registry'
 import type { Fix, FixPreview, FixResult, FixHistoryEntry, FixChange } from './types'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
-const execAsync = promisify(exec)
+import * as vdf from 'vdf'
+import psList from '../utils/ps-list'
+import { buildLaunchOption } from './x3d-launch-option'
+const execFileAsync = promisify(execFile)
 
-// ── Persistent storage for backups + history ──────────────────
+// Run reg.exe with explicit arg array; no cmd.exe parsing in the middle.
+async function regExe(args: string[], timeoutMs = 8000): Promise<string> {
+  const { stdout } = await execFileAsync('reg', args, { timeout: timeoutMs })
+  return stdout
+}
+
+async function tryRegExe(args: string[], timeoutMs = 8000): Promise<string | null> {
+  try {
+    return await regExe(args, timeoutMs)
+  } catch {
+    return null
+  }
+}
+
+async function powercfgExe(args: string[], timeoutMs = 8000): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('powercfg', args, { timeout: timeoutMs })
+    return stdout
+  } catch {
+    return null
+  }
+}
+
 
 const fixStore = new Store<{
   backups: Record<string, Record<string, string>>
@@ -48,484 +74,22 @@ function markUndone(fixId: string): void {
   }
 }
 
-// ── Registry helpers ──────────────────────────────────────────
-
-const MMCSS_PATH = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile'
-const MMCSS_GAMES_PATH = `${MMCSS_PATH}\\Tasks\\Games`
 
 async function regWriteDword(hive: 'HKLM' | 'HKCU', path: string, name: string, value: number): Promise<void> {
-  // Use PowerShell Set-ItemProperty to avoid cmd.exe quote-escaping issues with paths
-  // that contain spaces (e.g. "Windows NT"). reg.exe via runCmd gets malformed args.
-  const psHive = hive === 'HKLM' ? 'HKLM:' : 'HKCU:'
-  await runPowerShell(
-    `$p = '${psHive}\\${path}'\n` +
-    `if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }\n` +
-    `Set-ItemProperty -Path $p -Name '${name}' -Value ${value} -Type DWord -Force`
-  )
+  // execFile passes argv elements verbatim, so paths with spaces don't need
+  // shell-quoting. /f forces overwrite without prompting; reg.exe creates
+  // intermediate keys automatically when the leaf value is added.
+  await regExe(['add', `${hive}\\${path}`, '/v', name, '/t', 'REG_DWORD', '/d', String(value), '/f'])
 }
 
 async function regWriteSz(hive: 'HKLM' | 'HKCU', path: string, name: string, value: string): Promise<void> {
-  const psHive = hive === 'HKLM' ? 'HKLM:' : 'HKCU:'
-  await runPowerShell(
-    `$p = '${psHive}\\${path}'\n` +
-    `if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }\n` +
-    `Set-ItemProperty -Path $p -Name '${name}' -Value '${value}' -Type String -Force`
-  )
+  await regExe(['add', `${hive}\\${path}`, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'])
 }
 
-// ── Fix 1: MMCSS SystemResponsiveness ────────────────────────
-
-const fixMmcssResponsiveness: Fix = {
-  id: 'fix-mmcss-responsiveness',
-  name: 'Maximize VR CPU Priority (MMCSS)',
-  description: 'Sets SystemResponsiveness to 0 so the MMCSS scheduler dedicates maximum CPU headroom to real-time VR processes.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness') ?? 20
-    return {
-      fixId: 'fix-mmcss-responsiveness',
-      name: 'Maximize VR CPU Priority (MMCSS)',
-      description: 'Sets SystemResponsiveness to 0 — dedicates maximum CPU time to real-time audio/VR tasks.',
-      changes: [{
-        target: `Registry: HKLM\\${MMCSS_PATH}`,
-        currentValue: `SystemResponsiveness = ${current} (${current}% CPU reserved for background)`,
-        newValue: 'SystemResponsiveness = 0 (max CPU for VR/audio)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupResponsiveness = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness') ?? 20
-    const backupGamesPriority = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2
-    const backupGpuPriority = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8
-    const backupCategory = readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium'
-    storeBackup('fix-mmcss-responsiveness', {
-      SystemResponsiveness: String(backupResponsiveness),
-      GamesPriority: String(backupGamesPriority),
-      GpuPriority: String(backupGpuPriority),
-      SchedulingCategory: backupCategory
-    })
-    try {
-      // SystemProfile level
-      await regWriteDword('HKLM', MMCSS_PATH, 'SystemResponsiveness', 0)
-      // Games task level — Priority=6 and GPU Priority=8 are the recommended VR values.
-      // The rule fires when Priority < 6; setting it to 6 clears the condition.
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', 6)
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', 8)
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', 'High')
-      const verify = readRegistryDword('HKLM', MMCSS_PATH, 'SystemResponsiveness')
-      const success = verify === 0
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-responsiveness', name: 'Maximize VR CPU Priority (MMCSS)',
-        appliedAt: Date.now(),
-        changes: [
-          { target: `HKLM\\${MMCSS_PATH}\\SystemResponsiveness`, currentValue: String(backupResponsiveness), newValue: '0' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\Priority`, currentValue: String(backupGamesPriority), newValue: '6' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\GPU Priority`, currentValue: String(backupGpuPriority), newValue: '8' },
-          { target: `HKLM\\${MMCSS_GAMES_PATH}\\Scheduling Category`, currentValue: backupCategory, newValue: 'High' }
-        ],
-        backupValues: {
-          SystemResponsiveness: String(backupResponsiveness),
-          GamesPriority: String(backupGamesPriority),
-          GpuPriority: String(backupGpuPriority),
-          SchedulingCategory: backupCategory
-        },
-        undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-responsiveness', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-responsiveness', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-responsiveness')
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'SystemResponsiveness', parseInt(backup?.SystemResponsiveness ?? '20'))
-      if (backup?.GamesPriority != null) await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', parseInt(backup.GamesPriority))
-      if (backup?.GpuPriority != null) await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', parseInt(backup.GpuPriority))
-      if (backup?.SchedulingCategory != null) await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', backup.SchedulingCategory)
-      markUndone('fix-mmcss-responsiveness')
-      return { fixId: 'fix-mmcss-responsiveness', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-responsiveness', success: false, error: (e as Error).message }
-    }
-  }
+async function regDeleteValue(hive: 'HKLM' | 'HKCU', path: string, name: string): Promise<void> {
+  await regExe(['delete', `${hive}\\${path}`, '/v', name, '/f'])
 }
 
-// ── Fix 2: MMCSS NetworkThrottlingIndex ───────────────────────
-
-const fixMmcssNetworkThrottling: Fix = {
-  id: 'fix-mmcss-network-throttling',
-  name: 'Disable MMCSS Network Throttling',
-  description: 'Sets NetworkThrottlingIndex to 0xFFFFFFFF to prevent Windows throttling network-heavy multimedia tasks.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex') ?? 10
-    return {
-      fixId: 'fix-mmcss-network-throttling',
-      name: 'Disable MMCSS Network Throttling',
-      description: 'Removes artificial packet throttling that adds latency to wireless VR streaming.',
-      changes: [{
-        target: `Registry: HKLM\\${MMCSS_PATH}\\NetworkThrottlingIndex`,
-        currentValue: current === 0xffffffff ? '0xFFFFFFFF (already disabled)' : `${current} (throttling active)`,
-        newValue: '0xFFFFFFFF (disabled)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backup = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex') ?? 10
-    storeBackup('fix-mmcss-network-throttling', { NetworkThrottlingIndex: String(backup) })
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex', 0xffffffff)
-      const verify = readRegistryDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex')
-      const success = verify === 0xffffffff
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-network-throttling', name: 'Disable MMCSS Network Throttling',
-        appliedAt: Date.now(),
-        changes: [{ target: `NetworkThrottlingIndex`, currentValue: String(backup), newValue: '4294967295' }],
-        backupValues: { NetworkThrottlingIndex: String(backup) }, undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-network-throttling', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-network-throttling', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-network-throttling')
-    try {
-      await regWriteDword('HKLM', MMCSS_PATH, 'NetworkThrottlingIndex', parseInt(backup?.NetworkThrottlingIndex ?? '10'))
-      markUndone('fix-mmcss-network-throttling')
-      return { fixId: 'fix-mmcss-network-throttling', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-network-throttling', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 3: MMCSS Games task priority ─────────────────────────
-
-const fixMmcssGamesPriority: Fix = {
-  id: 'fix-mmcss-games-priority',
-  name: 'Set Games Scheduling Priority',
-  description: 'Configures MMCSS Games task: Priority=6, Scheduling Category=High, GPU Priority=8.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const prio = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2
-    const cat = readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium'
-    const gpuPrio = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8
-    return {
-      fixId: 'fix-mmcss-games-priority',
-      name: 'Set Games Scheduling Priority',
-      description: 'Elevates MMCSS Games task so VR processes get CPU time before lower-priority tasks.',
-      changes: [
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\Priority`, currentValue: String(prio), newValue: '6' },
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\Scheduling Category`, currentValue: cat, newValue: 'High' },
-        { target: `HKLM\\${MMCSS_GAMES_PATH}\\GPU Priority`, currentValue: String(gpuPrio), newValue: '8' }
-      ],
-      requiresAdmin: true, requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupValues: Record<string, string> = {
-      Priority: String(readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority') ?? 2),
-      SchedulingCategory: readRegistry('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category') ?? 'Medium',
-      GpuPriority: String(readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority') ?? 8)
-    }
-    storeBackup('fix-mmcss-games-priority', backupValues)
-    try {
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', 6)
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', 'High')
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', 8)
-      const verify = readRegistryDword('HKLM', MMCSS_GAMES_PATH, 'Priority')
-      const success = verify === 6
-      const changes: FixChange[] = [
-        { target: 'Priority', currentValue: backupValues.Priority, newValue: '6' },
-        { target: 'Scheduling Category', currentValue: backupValues.SchedulingCategory, newValue: 'High' },
-        { target: 'GPU Priority', currentValue: backupValues.GpuPriority, newValue: '8' }
-      ]
-      if (success) recordHistory({
-        fixId: 'fix-mmcss-games-priority', name: 'Set Games Scheduling Priority',
-        appliedAt: Date.now(), changes, backupValues, undoneAt: null
-      })
-      return { fixId: 'fix-mmcss-games-priority', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-games-priority', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-mmcss-games-priority')
-    if (!backup) return { fixId: 'fix-mmcss-games-priority', success: false, error: 'No backup' }
-    try {
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'Priority', parseInt(backup.Priority))
-      await regWriteSz('HKLM', MMCSS_GAMES_PATH, 'Scheduling Category', backup.SchedulingCategory)
-      await regWriteDword('HKLM', MMCSS_GAMES_PATH, 'GPU Priority', parseInt(backup.GpuPriority))
-      markUndone('fix-mmcss-games-priority')
-      return { fixId: 'fix-mmcss-games-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-mmcss-games-priority', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 4: Power Plan → High Performance ─────────────────────
-
-const HIGH_PERF_GUID = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
-
-const fixPowerPlan: Fix = {
-  id: 'fix-power-plan',
-  name: 'Switch to High Performance Power Plan',
-  description: 'Activates the High Performance power plan, preventing CPU/GPU clock-down during VR.',
-  requiresAdmin: false,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    let currentPlan = 'Unknown'
-    try {
-      const out = await runCmd('powercfg /getactivescheme')
-      const m = out.match(/GUID:\s*([a-f0-9-]+)\s+\((.+?)\)/i)
-      if (m) currentPlan = `${m[2].trim()} (${m[1]})`
-    } catch { /* ignore */ }
-    return {
-      fixId: 'fix-power-plan', name: 'Switch to High Performance Power Plan',
-      description: 'Prevents Windows from throttling CPU/GPU clocks to save power during VR sessions.',
-      changes: [{ target: 'Windows Power Plan', currentValue: currentPlan, newValue: `High Performance (${HIGH_PERF_GUID})` }],
-      requiresAdmin: false, requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    let previousGuid = ''
-    try {
-      const out = await runCmd('powercfg /getactivescheme')
-      const m = out.match(/GUID:\s*([a-f0-9-]+)/i)
-      if (m) previousGuid = m[1].trim()
-    } catch { /* ignore */ }
-    storeBackup('fix-power-plan', { previousGuid })
-    try {
-      await runCmd(`powercfg /setactive ${HIGH_PERF_GUID}`)
-      const verify = await runCmd('powercfg /getactivescheme')
-      const success = verify.toLowerCase().includes(HIGH_PERF_GUID)
-      if (success) recordHistory({
-        fixId: 'fix-power-plan', name: 'Switch to High Performance Power Plan',
-        appliedAt: Date.now(),
-        changes: [{ target: 'Power Plan GUID', currentValue: previousGuid, newValue: HIGH_PERF_GUID }],
-        backupValues: { previousGuid }, undoneAt: null
-      })
-      return { fixId: 'fix-power-plan', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-power-plan', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-power-plan')
-    const guid = backup?.previousGuid
-    if (!guid) return { fixId: 'fix-power-plan', success: false, error: 'No previous power plan backed up' }
-    try {
-      await runCmd(`powercfg /setactive ${guid}`)
-      markUndone('fix-power-plan')
-      return { fixId: 'fix-power-plan', success: true }
-    } catch (e) {
-      return { fixId: 'fix-power-plan', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 4b: Disable PCIe ASPM (Active State Power Management) ─
-//
-// ASPM = Active State Power Management: when idle, PCIe links drop into L0s/L1
-// low-power states. Transitioning back to L0 takes microseconds — tiny per-hop,
-// but VR's render → GPU → encoder → display pipeline crosses multiple PCIe
-// boundaries each frame, and the accumulated wake-up latency causes frame
-// pacing irregularities. Disabling ASPM is a well-documented VR fix for
-// NVIDIA and AMD alike (no vendor-specific code required).
-//
-// We write to the ACTIVE power plan's PCIe subgroup via powercfg:
-//   SUB_PCIEXPRESS   = 501a4d13-42af-4429-9fd1-a8218c268e20
-//   ASPM setting     = ee12f906-d277-404b-b6da-e5fa1a576df5
-//   Values: 0 = Off (maximum performance), 1 = Moderate, 2 = Maximum power savings
-
-const PCIE_SUB_GUID = '501a4d13-42af-4429-9fd1-a8218c268e20'
-const PCIE_ASPM_GUID = 'ee12f906-d277-404b-b6da-e5fa1a576df5'
-
-async function getActiveSchemeGuid(): Promise<string | null> {
-  try {
-    const out = await runCmd('powercfg /getactivescheme')
-    const m = out.match(/GUID:\s*([a-f0-9-]+)/i)
-    return m ? m[1].trim() : null
-  } catch { return null }
-}
-
-async function readPcieAspmValue(): Promise<number | null> {
-  try {
-    const out = await runCmd(`powercfg /query SCHEME_CURRENT ${PCIE_SUB_GUID} ${PCIE_ASPM_GUID}`)
-    // Parse "Current AC Power Setting Index: 0x00000000"
-    const m = out.match(/Current AC Power Setting Index:\s*0x([0-9a-f]+)/i)
-    return m ? parseInt(m[1], 16) : null
-  } catch { return null }
-}
-
-function aspmLabel(val: number | null): string {
-  if (val === null) return 'Unknown'
-  if (val === 0) return 'Off (max performance)'
-  if (val === 1) return 'Moderate power savings'
-  if (val === 2) return 'Maximum power savings'
-  return `Unknown (${val})`
-}
-
-const fixPcieAspmDisable: Fix = {
-  id: 'fix-pcie-aspm-disable',
-  name: 'Disable PCIe ASPM Power Savings',
-  description:
-    'Sets PCI Express Link State Power Management to Off in the active power plan. ' +
-    'Prevents PCIe links from entering low-power states during VR, eliminating the wake-up ' +
-    'microsecond cost on every CPU→GPU and GPU→encoder transfer.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = await readPcieAspmValue()
-    return {
-      fixId: 'fix-pcie-aspm-disable',
-      name: 'Disable PCIe ASPM Power Savings',
-      description:
-        'Disables PCIe Active State Power Management in the active power plan. Well-documented VR latency fix; ' +
-        'affects AC-power policy only (battery behavior unchanged).',
-      changes: [{
-        target: `Power Plan → PCI Express → Link State Power Management (AC)`,
-        currentValue: aspmLabel(current),
-        newValue: 'Off (max performance)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const schemeGuid = await getActiveSchemeGuid()
-    const backupValue = await readPcieAspmValue()
-    storeBackup('fix-pcie-aspm-disable', {
-      schemeGuid: schemeGuid ?? '',
-      previousAspm: String(backupValue ?? 0)
-    })
-    try {
-      // Set both AC and DC to 0 (Off). VR sessions typically happen on AC, but
-      // setting DC too means laptop users don't get surprised on battery.
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${PCIE_SUB_GUID} ${PCIE_ASPM_GUID} 0`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${PCIE_SUB_GUID} ${PCIE_ASPM_GUID} 0`)
-      // Re-activate the scheme so the setting takes effect immediately
-      if (schemeGuid) await runCmd(`powercfg /setactive ${schemeGuid}`)
-
-      const verify = await readPcieAspmValue()
-      const success = verify === 0
-
-      if (success) recordHistory({
-        fixId: 'fix-pcie-aspm-disable',
-        name: 'Disable PCIe ASPM Power Savings',
-        appliedAt: Date.now(),
-        changes: [{
-          target: 'PCIe Link State Power Management',
-          currentValue: aspmLabel(backupValue),
-          newValue: 'Off (max performance)'
-        }],
-        backupValues: {
-          schemeGuid: schemeGuid ?? '',
-          previousAspm: String(backupValue ?? 0)
-        },
-        undoneAt: null
-      })
-
-      return { fixId: 'fix-pcie-aspm-disable', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-pcie-aspm-disable', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-pcie-aspm-disable')
-    const prev = parseInt(backup?.previousAspm ?? '1')
-    const schemeGuid = await getActiveSchemeGuid()
-    try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${PCIE_SUB_GUID} ${PCIE_ASPM_GUID} ${prev}`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${PCIE_SUB_GUID} ${PCIE_ASPM_GUID} ${prev}`)
-      if (schemeGuid) await runCmd(`powercfg /setactive ${schemeGuid}`)
-      markUndone('fix-pcie-aspm-disable')
-      return { fixId: 'fix-pcie-aspm-disable', success: true }
-    } catch (e) {
-      return { fixId: 'fix-pcie-aspm-disable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 5: Windows Defender VR Exclusions ────────────────────
-
-const VR_EXCLUSION_PATHS = [
-  'C:\\Program Files (x86)\\Steam\\steamapps\\common',
-  'C:\\Program Files\\Oculus\\Software\\Software',
-  'C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR',
-  'C:\\Program Files\\Meta\\Horizon',
-  'C:\\Users\\Public\\Documents\\Meta'
-]
-
-const fixDefenderExclusions: Fix = {
-  id: 'fix-defender-exclusions',
-  name: 'Add VR Paths to Defender Exclusions',
-  description: 'Adds Steam, SteamVR, and Oculus directories to Windows Defender exclusions to eliminate real-time scan overhead during VR.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => ({
-    fixId: 'fix-defender-exclusions', name: 'Add VR Paths to Defender Exclusions',
-    description: 'Windows Defender scanning VR game files causes micro-stutters. Excluding known VR paths removes this overhead.',
-    changes: VR_EXCLUSION_PATHS.map((p) => ({ target: 'Defender Exclusion', currentValue: 'Not excluded', newValue: p })),
-    requiresAdmin: true, requiresReboot: false
-  }),
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-defender-exclusions', { applied: 'true' })
-    const pathList = VR_EXCLUSION_PATHS.map((p) => `'${p}'`).join(', ')
-    try {
-      await runPowerShell(`Add-MpPreference -ExclusionPath @(${pathList}) -Force`)
-      recordHistory({
-        fixId: 'fix-defender-exclusions', name: 'Add VR Paths to Defender Exclusions',
-        appliedAt: Date.now(),
-        changes: VR_EXCLUSION_PATHS.map((p) => ({ target: 'Exclusion', currentValue: 'none', newValue: p })),
-        backupValues: { paths: pathList }, undoneAt: null
-      })
-      return { fixId: 'fix-defender-exclusions', success: true }
-    } catch (e) {
-      return { fixId: 'fix-defender-exclusions', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const pathList = VR_EXCLUSION_PATHS.map((p) => `'${p}'`).join(', ')
-    try {
-      await runPowerShell(`Remove-MpPreference -ExclusionPath @(${pathList}) -Force`)
-      markUndone('fix-defender-exclusions')
-      return { fixId: 'fix-defender-exclusions', success: true }
-    } catch (e) {
-      return { fixId: 'fix-defender-exclusions', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 6: Enable Game Mode ───────────────────────────────────
 
 const fixEnableGameMode: Fix = {
   id: 'fix-game-mode-disabled',
@@ -576,77 +140,23 @@ const fixEnableGameMode: Fix = {
   }
 }
 
-// ── Fix 7: Disable Wi-Fi Power Saving ────────────────────────
+// The amd3dvcacheSvc registry approach depends on AMD's scheduler service
+// timing, which is not guaranteed. Writing the launch option directly into
+// Steam's localconfig.vdf is reliable: it is applied at process spawn before
+// the scheduler can place the threads anywhere. The mask itself is computed
+// per-CPU by buildLaunchOption — only single-CCD X3D parts get an /affinity
+// portion in v0.2.9 because shipping a wrong mask on a dual-CCD chip would
+// silently push VR threads onto the non-V-Cache die.
 
-const fixWifiPowerSaving: Fix = {
-  id: 'fix-wifi-power-saving',
-  name: 'Disable Wi-Fi Adapter Power Saving',
-  description: 'Prevents the Wi-Fi adapter from dozing between packets, eliminating wake-up latency spikes in wireless VR.',
-  requiresAdmin: false,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => ({
-    fixId: 'fix-wifi-power-saving', name: 'Disable Wi-Fi Adapter Power Saving',
-    description: 'Wi-Fi power management causes 10-50ms wake-up spikes that appear as glitches in wireless VR.',
-    changes: [{ target: 'Wi-Fi Adapter Power Management', currentValue: 'AllowComputerToTurnOffDevice = Enabled', newValue: 'Disabled' }],
-    requiresAdmin: false, requiresReboot: false
-  }),
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-wifi-power-saving', { applied: 'true' })
-    try {
-      await runPowerShell(`
-        $adapters = Get-NetAdapter | Where-Object { $_.PhysicalMediaType -like '*802.11*' }
-        foreach ($a in $adapters) {
-          Set-NetAdapterPowerManagement -Name $a.Name -AllowComputerToTurnOffDevice Disabled -EA SilentlyContinue
-        }
-      `)
-      recordHistory({
-        fixId: 'fix-wifi-power-saving', name: 'Disable Wi-Fi Adapter Power Saving',
-        appliedAt: Date.now(),
-        changes: [{ target: 'Wi-Fi Power Management', currentValue: 'Enabled', newValue: 'Disabled' }],
-        backupValues: { applied: 'true' }, undoneAt: null
-      })
-      return { fixId: 'fix-wifi-power-saving', success: true }
-    } catch (e) {
-      return { fixId: 'fix-wifi-power-saving', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    try {
-      await runPowerShell(`
-        $adapters = Get-NetAdapter | Where-Object { $_.PhysicalMediaType -like '*802.11*' }
-        foreach ($a in $adapters) {
-          Set-NetAdapterPowerManagement -Name $a.Name -AllowComputerToTurnOffDevice Enabled -EA SilentlyContinue
-        }
-      `)
-      markUndone('fix-wifi-power-saving')
-      return { fixId: 'fix-wifi-power-saving', success: true }
-    } catch (e) {
-      return { fixId: 'fix-wifi-power-saving', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 8: VRChat V-Cache Affinity via Steam Launch Option ───────────────
-// Sets VRChat's Steam launch option to pin it to V-Cache cores (FFFF = first
-// 16 logical processors = V-Cache CCD on 7950X3D/9950X3D) and High priority.
-// This is the only reliable method — the amd3dvcacheSvc registry approach
-// depends on AMD's scheduler service timing which is not guaranteed.
-//
-// Steam launch option: cmd /c start /affinity FFFF /high "" %command%
-
-const VCACHE_LAUNCH_OPTION = 'cmd /c start /affinity FFFF /high "" %command%'
 const VRCHAT_APP_ID = '438100'
+const STEAM_RUNNING_MESSAGE =
+  'Close Steam before applying this fix. Steam rewrites the config file on exit and would overwrite VOS\'s change.'
 
 function findSteamInstallPath(): string | null {
-  // Try registry first
   try {
     const regPath = readRegistry('HKCU', 'SOFTWARE\\Valve\\Steam', 'SteamPath')
     if (regPath && existsSync(regPath)) return regPath.replace(/\//g, '\\')
   } catch { /* ignore */ }
-  // Common fallbacks
   for (const p of [
     'C:\\Program Files (x86)\\Steam',
     'C:\\Program Files\\Steam',
@@ -657,6 +167,10 @@ function findSteamInstallPath(): string | null {
   return null
 }
 
+function localConfigPathFor(steamPath: string, userId: string): string {
+  return join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+}
+
 function findSteamUserId(steamPath: string): string | null {
   const userdataPath = join(steamPath, 'userdata')
   if (!existsSync(userdataPath)) return null
@@ -664,17 +178,15 @@ function findSteamUserId(steamPath: string): string | null {
     const dirs = readdirSync(userdataPath, { withFileTypes: true })
       .filter(d => d.isDirectory() && /^\d+$/.test(d.name) && d.name !== '0')
       .map(d => d.name)
-    // Prefer the one that already has VRChat app data
     for (const uid of dirs) {
-      const configPath = join(userdataPath, uid, 'config', 'localconfig.vdf')
+      const configPath = localConfigPathFor(steamPath, uid)
       if (existsSync(configPath)) {
         const content = readFileSync(configPath, 'utf8')
         if (content.includes(`"${VRCHAT_APP_ID}"`)) return uid
       }
     }
-    // Fallback: return first valid user dir that has a localconfig.vdf
     for (const uid of dirs) {
-      if (existsSync(join(userdataPath, uid, 'config', 'localconfig.vdf'))) return uid
+      if (existsSync(localConfigPathFor(steamPath, uid))) return uid
     }
     return dirs[0] ?? null
   } catch {
@@ -682,50 +194,70 @@ function findSteamUserId(steamPath: string): string | null {
   }
 }
 
+type VdfNode = string | { [key: string]: VdfNode }
+
+// localconfig.vdf nests VRChat under
+// UserLocalConfigStore.Software.Valve.Steam.apps."438100".LaunchOptions
+// but capitalisation has drifted across Steam versions, so resolve keys
+// case-insensitively while leaving the rest of the document untouched.
+function findChild(node: { [key: string]: VdfNode }, name: string): { [key: string]: VdfNode } | null {
+  const target = name.toLowerCase()
+  for (const key of Object.keys(node)) {
+    if (key.toLowerCase() === target) {
+      const v = node[key]
+      if (typeof v === 'object') return v as { [key: string]: VdfNode }
+    }
+  }
+  return null
+}
+
+function findVRChatAppNode(root: { [key: string]: VdfNode }): { [key: string]: VdfNode } | null {
+  const store = findChild(root, 'UserLocalConfigStore') ?? root
+  const software = findChild(store, 'Software')
+  if (!software) return null
+  const valve = findChild(software, 'Valve')
+  if (!valve) return null
+  const steam = findChild(valve, 'Steam')
+  if (!steam) return null
+  const apps = findChild(steam, 'apps') ?? findChild(steam, 'Apps')
+  if (!apps) return null
+  return findChild(apps, VRCHAT_APP_ID)
+}
+
 function readVRChatLaunchOption(steamPath: string, userId: string): string | null {
-  const configPath = join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+  const configPath = localConfigPathFor(steamPath, userId)
   if (!existsSync(configPath)) return null
   try {
-    const content = readFileSync(configPath, 'utf8')
-    // Find VRChat section and extract LaunchOptions
-    // VDF format: "438100"\n{\n\t"LaunchOptions"\t"value"\n}
-    const match = content.match(new RegExp(
-      `"${VRCHAT_APP_ID}"[^{]*\\{[^}]*?"LaunchOptions"\\s+"([^"]*)"`,
-      's'
-    ))
-    return match ? match[1] : null
+    const parsed = vdf.parse(readFileSync(configPath, 'utf8')) as { [key: string]: VdfNode }
+    const app = findVRChatAppNode(parsed)
+    if (!app) return null
+    for (const k of Object.keys(app)) {
+      if (k.toLowerCase() === 'launchoptions') {
+        const v = app[k]
+        return typeof v === 'string' ? v : null
+      }
+    }
+    return null
   } catch {
     return null
   }
 }
 
-function setVRChatLaunchOptionInFile(steamPath: string, userId: string, option: string, backup: string | null): boolean {
-  const configPath = join(steamPath, 'userdata', userId, 'config', 'localconfig.vdf')
+function writeVRChatLaunchOption(steamPath: string, userId: string, option: string): boolean {
+  const configPath = localConfigPathFor(steamPath, userId)
   if (!existsSync(configPath)) return false
   try {
-    let content = readFileSync(configPath, 'utf8')
-
-    // Case 1: LaunchOptions key already exists for this app — replace it
-    const replacer = new RegExp(
-      `("${VRCHAT_APP_ID}"[^{]*\\{[^}]*?)"LaunchOptions"(\\s+)"[^"]*"`,
-      's'
-    )
-    if (replacer.test(content)) {
-      content = content.replace(replacer, `$1"LaunchOptions"$2"${option}"`)
-      writeFileSync(configPath, content, 'utf8')
-      return true
+    const raw = readFileSync(configPath, 'utf8')
+    const parsed = vdf.parse(raw) as { [key: string]: VdfNode }
+    const app = findVRChatAppNode(parsed)
+    if (!app) return false
+    let key: string | null = null
+    for (const k of Object.keys(app)) {
+      if (k.toLowerCase() === 'launchoptions') { key = k; break }
     }
-
-    // Case 2: App section exists but no LaunchOptions — insert it
-    const inserter = new RegExp(`("${VRCHAT_APP_ID}"[^{]*\\{)`, 's')
-    if (inserter.test(content)) {
-      content = content.replace(inserter, `$1\n\t\t\t\t\t\t"LaunchOptions"\t\t"${option}"`)
-      writeFileSync(configPath, content, 'utf8')
-      return true
-    }
-
-    // Case 3: App section doesn't exist — can't auto-apply, return false
-    return false
+    app[key ?? 'LaunchOptions'] = option
+    writeFileSync(configPath, vdf.dump(parsed), 'utf8')
+    return true
   } catch {
     return false
   }
@@ -733,17 +265,32 @@ function setVRChatLaunchOptionInFile(steamPath: string, userId: string, option: 
 
 async function isSteamRunning(): Promise<boolean> {
   try {
-    const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq steam.exe" /FO CSV /NH', { timeout: 5000 })
-    return stdout.toLowerCase().includes('steam.exe')
+    const procs = await psList()
+    return procs.some(p => p.name.toLowerCase() === 'steam.exe')
   } catch {
     return false
   }
 }
 
+async function detectCpuModel(): Promise<string | null> {
+  try {
+    const key = await readKey('HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0')
+    const name = key?.values['ProcessorNameString']
+    if (name && name.type === 'REG_SZ') return name.data.trim()
+  } catch { /* ignore */ }
+  return null
+}
+
+async function buildVRChatLaunchOption(): Promise<string | null> {
+  const model = await detectCpuModel()
+  if (!model) return null
+  return buildLaunchOption({ model })
+}
+
 const fixVCacheAffinity: Fix = {
   id: 'fix-vcache-affinity',
   name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
-  description: 'Sets VRChat\'s Steam launch option to pin it to V-Cache cores with High CPU priority. This is the reliable method — works at process spawn time, before the scheduler can assign it elsewhere.',
+  description: 'Sets VRChat\'s Steam launch option to give the process High CPU priority, plus a per-CPU affinity mask on single-CCD X3D parts. Takes effect the next time VRChat launches from Steam.',
   requiresAdmin: false,
   requiresReboot: false,
 
@@ -752,19 +299,30 @@ const fixVCacheAffinity: Fix = {
     const userId = steamPath ? findSteamUserId(steamPath) : null
     const currentOption = steamPath && userId ? readVRChatLaunchOption(steamPath, userId) : null
     const steamFound = !!steamPath && !!userId
+    const target = await buildVRChatLaunchOption()
+    const steamRunning = await isSteamRunning()
+
+    let description: string
+    if (!target) {
+      description = 'CPU not recognised by VOS, so this fix does not apply. No changes will be made.'
+    } else if (steamRunning) {
+      description = STEAM_RUNNING_MESSAGE
+    } else if (steamFound) {
+      description = `Will write VRChat's Steam launch option to: ${target}`
+    } else {
+      description = `Steam installation not found. Copy this launch option into Steam manually: ${target}`
+    }
 
     return {
       fixId: 'fix-vcache-affinity',
       name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
-      description: steamFound
-        ? 'Will set VRChat\'s Steam launch option to pin it to the first 16 logical cores (V-Cache CCD on 7950X3D/9950X3D) and High CPU priority. Change takes effect next time VRChat is launched from Steam.'
-        : 'Steam installation not found. Will show manual instructions — you can copy the launch option and paste it into Steam manually.',
+      description,
       changes: [{
         target: steamFound
           ? `Steam → VRChat (App ${VRCHAT_APP_ID}) → Launch Options`
           : 'Steam → Library → VRChat → Properties → Launch Options',
         currentValue: currentOption ?? '(none / not set)',
-        newValue: VCACHE_LAUNCH_OPTION
+        newValue: target ?? '(no change)'
       }],
       requiresAdmin: false,
       requiresReboot: false
@@ -772,31 +330,44 @@ const fixVCacheAffinity: Fix = {
   },
 
   apply: async (): Promise<FixResult> => {
+    const target = await buildVRChatLaunchOption()
+    if (!target) {
+      return {
+        fixId: 'fix-vcache-affinity',
+        success: false,
+        error: 'CPU not recognised by VOS; no launch option to apply.'
+      }
+    }
+
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
+
     const steamPath = findSteamInstallPath()
     const userId = steamPath ? findSteamUserId(steamPath) : null
-
     if (!steamPath || !userId) {
       return {
         fixId: 'fix-vcache-affinity',
         success: false,
-        error: `Steam not found. Apply manually: In Steam → Library → right-click VRChat → Properties → Launch Options, paste: ${VCACHE_LAUNCH_OPTION}`
+        error: `Steam not found. Apply manually: In Steam → Library → right-click VRChat → Properties → Launch Options, paste: ${target}`
       }
     }
 
-    // Back up current value
     const current = readVRChatLaunchOption(steamPath, userId)
     storeBackup('fix-vcache-affinity', { launchOption: current ?? '' })
 
-    // Check if Steam is running (it will overwrite localconfig.vdf on exit)
-    const steamRunning = await isSteamRunning()
+    // Re-check Steam right before the write; the user might have launched it
+    // while we were doing the path probe and reading the previous value.
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
 
-    const applied = setVRChatLaunchOptionInFile(steamPath, userId, VCACHE_LAUNCH_OPTION, current)
-
+    const applied = writeVRChatLaunchOption(steamPath, userId, target)
     if (!applied) {
       return {
         fixId: 'fix-vcache-affinity',
         success: false,
-        error: `Could not auto-apply. Set manually in Steam → Library → VRChat → Properties → Launch Options:\n${VCACHE_LAUNCH_OPTION}`
+        error: `Could not auto-apply. Set manually in Steam → Library → VRChat → Properties → Launch Options:\n${target}`
       }
     }
 
@@ -804,107 +375,32 @@ const fixVCacheAffinity: Fix = {
       fixId: 'fix-vcache-affinity',
       name: 'Pin VRChat to V-Cache Cores (Steam Launch Option)',
       appliedAt: Date.now(),
-      changes: [{ target: `VRChat Launch Options`, currentValue: current ?? '(none)', newValue: VCACHE_LAUNCH_OPTION }],
+      changes: [{ target: 'VRChat Launch Options', currentValue: current ?? '(none)', newValue: target }],
       backupValues: { launchOption: current ?? '' },
       undoneAt: null
     })
 
-    const warning = steamRunning
-      ? ' Note: Steam is currently running — restart Steam for the change to be saved permanently.'
-      : ''
-
-    return {
-      fixId: 'fix-vcache-affinity',
-      success: true,
-      error: warning || undefined
-    }
+    return { fixId: 'fix-vcache-affinity', success: true }
   },
 
   undo: async (): Promise<FixResult> => {
+    if (await isSteamRunning()) {
+      return { fixId: 'fix-vcache-affinity', success: false, error: STEAM_RUNNING_MESSAGE }
+    }
     const steamPath = findSteamInstallPath()
     const userId = steamPath ? findSteamUserId(steamPath) : null
-    const backup = getBackup('fix-vcache-affinity')
-    const original = backup?.launchOption ?? ''
-
     if (!steamPath || !userId) {
       return { fixId: 'fix-vcache-affinity', success: false, error: 'Steam not found for undo' }
     }
 
-    if (original === '') {
-      // Remove the launch option entirely by setting to empty string
-      setVRChatLaunchOptionInFile(steamPath, userId, '', null)
-    } else {
-      setVRChatLaunchOptionInFile(steamPath, userId, original, null)
-    }
-
+    const backup = getBackup('fix-vcache-affinity')
+    const original = backup?.launchOption ?? ''
+    writeVRChatLaunchOption(steamPath, userId, original)
     markUndone('fix-vcache-affinity')
     return { fixId: 'fix-vcache-affinity', success: true }
   }
 }
 
-// ── Fix 9: Enable HAGS ────────────────────────────────────────
-const HAGS_REG_PATH = 'SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers'
-
-const fixHagsEnable: Fix = {
-  id: 'fix-hags-enable',
-  name: 'Enable Hardware-Accelerated GPU Scheduling (HAGS)',
-  description: 'Moves GPU scheduling from the CPU driver to a dedicated hardware unit, reducing GPU-induced frame latency by 1-3ms in VR.',
-  requiresAdmin: true,
-  requiresReboot: true,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', HAGS_REG_PATH, 'HwSchMode') ?? 0
-    // Detect GPU name for a more informative preview
-    let gpuName = 'your GPU'
-    try {
-      const out = await runCmd('wmic path Win32_VideoController get Name /value')
-      const m = out.match(/Name=(.+)/i)
-      if (m) gpuName = m[1].trim()
-    } catch { /* ignore */ }
-    return {
-      fixId: 'fix-hags-enable',
-      name: 'Enable Hardware-Accelerated GPU Scheduling (HAGS)',
-      description: `HAGS lets ${gpuName} manage its own scheduling queue instead of routing through the CPU driver, reducing frame time variance. Supported on NVIDIA GTX 10xx+, AMD RX 400+, Intel Arc/Xe, and most WDDM 2.7+ GPUs. Safe to apply — Windows ignores the setting if unsupported.`,
-      changes: [{
-        target: `Registry: HKLM\\${HAGS_REG_PATH}\\HwSchMode`,
-        currentValue: current === 2 ? '2 (already enabled)' : `${current} (disabled)`,
-        newValue: '2 (enabled) — requires reboot'
-      }],
-      requiresAdmin: true,
-      requiresReboot: true
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backup = readRegistryDword('HKLM', HAGS_REG_PATH, 'HwSchMode') ?? 0
-    storeBackup('fix-hags-enable', { HwSchMode: String(backup) })
-    try {
-      await regWriteDword('HKLM', HAGS_REG_PATH, 'HwSchMode', 2)
-      recordHistory({
-        fixId: 'fix-hags-enable', name: 'Enable HAGS',
-        appliedAt: Date.now(),
-        changes: [{ target: `HwSchMode`, currentValue: String(backup), newValue: '2' }],
-        backupValues: { HwSchMode: String(backup) }, undoneAt: null
-      })
-      return { fixId: 'fix-hags-enable', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-hags-enable', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-hags-enable')
-    try {
-      await regWriteDword('HKLM', HAGS_REG_PATH, 'HwSchMode', parseInt(backup?.HwSchMode ?? '0'))
-      markUndone('fix-hags-enable')
-      return { fixId: 'fix-hags-enable', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-hags-enable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 10: Reset SteamVR Supersampling ──────────────────────
 function getSteamVRSettingsPath(): string {
   return join(process.env.LOCALAPPDATA ?? '', 'openvr', 'steamvr.vrsettings')
 }
@@ -986,7 +482,6 @@ const fixSteamVRSupersampling: Fix = {
   }
 }
 
-// ── Fix 11: Enable SteamVR Motion Smoothing ──────────────────
 const fixSteamVRMotionSmoothing: Fix = {
   id: 'fix-steamvr-motion-smoothing',
   name: 'Enable SteamVR Motion Smoothing',
@@ -1050,7 +545,6 @@ const fixSteamVRMotionSmoothing: Fix = {
   }
 }
 
-// ── Fix 12: Optimize VRChat Cache Size ───────────────────────
 function getVRChatConfigPath(): string {
   return join(homedir(), 'AppData', 'LocalLow', 'VRChat', 'VRChat', 'config.json')
 }
@@ -1128,7 +622,6 @@ const fixVRChatCacheSize: Fix = {
   }
 }
 
-// ── Fix 13: Disable Xbox Game Bar & DVR ──────────────────────
 
 const fixDisableXboxDvr: Fix = {
   id: 'fix-disable-xbox-dvr',
@@ -1201,7 +694,6 @@ const fixDisableXboxDvr: Fix = {
   }
 }
 
-// ── Fix 14: Disable Known Bloat Startup Programs ──────────────
 
 const STARTUP_BLOAT_NAMES = [
   'OneDrive', 'OneDriveSetup', 'Microsoft Teams', 'Teams',
@@ -1214,17 +706,16 @@ const STARTUP_REG_PATH = 'Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 interface StartupEntry { Name: string; Value: string }
 
 async function enumerateStartupBloat(): Promise<StartupEntry[]> {
-  const script = `$items = Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -EA SilentlyContinue\n$items.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' -and $_.Name -notmatch '^PS' } | Select-Object Name, Value | ConvertTo-Json -Compress`
-  let raw = ''
-  try { raw = await runPowerShell(script) } catch { return [] }
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as StartupEntry | StartupEntry[]
-    const all: StartupEntry[] = Array.isArray(parsed) ? parsed : [parsed]
-    return all.filter((e) =>
-      STARTUP_BLOAT_NAMES.some((b) => e.Name.toLowerCase().includes(b.toLowerCase()))
-    )
-  } catch { return [] }
+  const key = await readKey(`HKCU\\${STARTUP_REG_PATH}`).catch(() => null)
+  if (!key) return []
+  const all: StartupEntry[] = []
+  for (const [name, value] of Object.entries(key.values)) {
+    if (value.type !== 'REG_SZ' && value.type !== 'REG_EXPAND_SZ') continue
+    all.push({ Name: name, Value: value.data })
+  }
+  return all.filter((e) =>
+    STARTUP_BLOAT_NAMES.some((b) => e.Name.toLowerCase().includes(b.toLowerCase()))
+  )
 }
 
 const fixDisableStartupBloat: Fix = {
@@ -1259,7 +750,7 @@ const fixDisableStartupBloat: Fix = {
     storeBackup('fix-disable-startup-bloat', backupValues)
     try {
       for (const e of found) {
-        await runPowerShell(`Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name '${e.Name.replace(/'/g, "''")}' -EA SilentlyContinue`)
+        await tryRegExe(['delete', `HKCU\\${STARTUP_REG_PATH}`, '/v', e.Name, '/f'])
       }
       recordHistory({
         fixId: 'fix-disable-startup-bloat',
@@ -1290,17 +781,15 @@ const fixDisableStartupBloat: Fix = {
   }
 }
 
-// ── Fix 15: Disable USB Selective Suspend ────────────────────
 
 const USB_SUBGROUP = '2a737441-1930-4402-8d77-b2bebba308a3'
 const USB_SUSPEND_SETTING = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
 
 async function getUsbSuspendIndex(): Promise<number | null> {
-  try {
-    const out = await runCmd(`powercfg /query SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING}`)
-    const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
-    if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
-  } catch { /* ignore */ }
+  const out = await powercfgExe(['/query', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING])
+  if (!out) return null
+  const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
+  if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
   return null
 }
 
@@ -1331,9 +820,9 @@ const fixUsbSelectiveSuspend: Fix = {
     const current = await getUsbSuspendIndex()
     storeBackup('fix-usb-selective-suspend', { previousIndex: String(current ?? 1) })
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} 0`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} 0`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, '0'])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, '0'])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       recordHistory({
         fixId: 'fix-usb-selective-suspend',
         name: 'Disable USB Selective Suspend',
@@ -1352,9 +841,9 @@ const fixUsbSelectiveSuspend: Fix = {
     const backup = getBackup('fix-usb-selective-suspend')
     const prev = backup?.previousIndex ?? '1'
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} ${prev}`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT ${USB_SUBGROUP} ${USB_SUSPEND_SETTING} ${prev}`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, prev])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', USB_SUBGROUP, USB_SUSPEND_SETTING, prev])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       markUndone('fix-usb-selective-suspend')
       return { fixId: 'fix-usb-selective-suspend', success: true }
     } catch (e) {
@@ -1363,14 +852,12 @@ const fixUsbSelectiveSuspend: Fix = {
   }
 }
 
-// ── Fix 16: Disable CPU Core Parking ─────────────────────────
 
 async function getCpuCoreParking(): Promise<number | null> {
-  try {
-    const out = await runCmd('powercfg /query SCHEME_CURRENT SUB_PROCESSOR CPMINCORES')
-    const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
-    if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
-  } catch { /* ignore */ }
+  const out = await powercfgExe(['/query', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES'])
+  if (!out) return null
+  const m = out.match(/Power Setting Index:\s*(0x[0-9a-fA-F]+|\d+)/i)
+  if (m) return parseInt(m[1], m[1].startsWith('0x') ? 16 : 10)
   return null
 }
 
@@ -1401,9 +888,9 @@ const fixCoreParkingDisable: Fix = {
     const current = await getCpuCoreParking()
     storeBackup('fix-core-parking-disable', { previousCpMinCores: String(current ?? 0) })
     try {
-      await runCmd('powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100')
-      await runCmd('powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100')
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', '100'])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', '100'])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       recordHistory({
         fixId: 'fix-core-parking-disable',
         name: 'Disable CPU Core Parking',
@@ -1422,9 +909,9 @@ const fixCoreParkingDisable: Fix = {
     const backup = getBackup('fix-core-parking-disable')
     const prev = backup?.previousCpMinCores ?? '0'
     try {
-      await runCmd(`powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES ${prev}`)
-      await runCmd(`powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR CPMINCORES ${prev}`)
-      await runCmd('powercfg /setactive SCHEME_CURRENT')
+      await powercfgExe(['/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', prev])
+      await powercfgExe(['/setdcvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'CPMINCORES', prev])
+      await powercfgExe(['/setactive', 'SCHEME_CURRENT'])
       markUndone('fix-core-parking-disable')
       return { fixId: 'fix-core-parking-disable', success: true }
     } catch (e) {
@@ -1433,83 +920,6 @@ const fixCoreParkingDisable: Fix = {
   }
 }
 
-// ── Fix 17: Disable TCP Nagle Algorithm ──────────────────────
-
-const fixNagleDisable: Fix = {
-  id: 'fix-nagle-disable',
-  name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-  description: 'Disables Nagle\'s algorithm on all network adapters. Nagle batches small TCP packets together — great for throughput but adds latency. Disabling it reduces VR streaming latency.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    let needsFixCount = 0
-    try {
-      const out = await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `$needsFix = $interfaces | Where-Object {\n` +
-        `  (Get-ItemProperty $_.PSPath -Name 'TcpAckFrequency' -EA SilentlyContinue).TcpAckFrequency -ne 1\n` +
-        `} | Measure-Object\n` +
-        `Write-Output $needsFix.Count`
-      )
-      needsFixCount = parseInt(out.trim()) || 0
-    } catch { /* ignore */ }
-    return {
-      fixId: 'fix-nagle-disable',
-      name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-      description: 'Sets TcpAckFrequency=1 and TCPNoDelay=1 on all network adapter interfaces to eliminate Nagle batching delay.',
-      changes: [{
-        target: 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\* → TcpAckFrequency, TCPNoDelay',
-        currentValue: `${needsFixCount} interface(s) without Nagle disabled`,
-        newValue: 'TcpAckFrequency=1, TCPNoDelay=1 on all interfaces'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-nagle-disable', { applied: 'true' })
-    try {
-      await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `foreach ($iface in $interfaces) {\n` +
-        `  Set-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -Value 1 -Type DWord -Force -EA SilentlyContinue\n` +
-        `  Set-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -Value 1 -Type DWord -Force -EA SilentlyContinue\n` +
-        `}`
-      )
-      recordHistory({
-        fixId: 'fix-nagle-disable',
-        name: 'Disable TCP Nagle Algorithm (Lower Network Latency)',
-        appliedAt: Date.now(),
-        changes: [{ target: 'All TCP interfaces', currentValue: 'Nagle enabled', newValue: 'TcpAckFrequency=1, TCPNoDelay=1' }],
-        backupValues: { applied: 'true' },
-        undoneAt: null
-      })
-      return { fixId: 'fix-nagle-disable', success: true }
-    } catch (e) {
-      return { fixId: 'fix-nagle-disable', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    try {
-      await runPowerShell(
-        `$interfaces = Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces' -EA SilentlyContinue\n` +
-        `foreach ($iface in $interfaces) {\n` +
-        `  Remove-ItemProperty -Path $iface.PSPath -Name 'TcpAckFrequency' -EA SilentlyContinue\n` +
-        `  Remove-ItemProperty -Path $iface.PSPath -Name 'TCPNoDelay' -EA SilentlyContinue\n` +
-        `}`
-      )
-      markUndone('fix-nagle-disable')
-      return { fixId: 'fix-nagle-disable', success: true }
-    } catch (e) {
-      return { fixId: 'fix-nagle-disable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 18: Disable Fullscreen Optimizations for VR Apps ─────
 
 const FS_OPT_REG_PATH = 'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers'
 const FS_OPT_FLAG = '~ DISABLEDXMAXIMIZEDWINDOWEDMODE'
@@ -1594,9 +1004,7 @@ const fixDisableFullscreenOptimizations: Fix = {
     try {
       for (const [exePath, originalValue] of Object.entries(backup)) {
         if (originalValue === '') {
-          await runPowerShell(
-            `Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers' -Name '${exePath.replace(/'/g, "''")}' -EA SilentlyContinue`
-          )
+          await tryRegExe(['delete', `HKCU\\${FS_OPT_REG_PATH}`, '/v', exePath, '/f'])
         } else {
           await regWriteSz('HKCU', FS_OPT_REG_PATH, exePath, originalValue)
         }
@@ -1609,82 +1017,6 @@ const fixDisableFullscreenOptimizations: Fix = {
   }
 }
 
-// ── Fix 19: Disable Hyper-V ───────────────────────────────────
-
-const fixHyperVDisable: Fix = {
-  id: 'fix-hyper-v-disable',
-  name: 'Disable Hyper-V Virtualization Layer',
-  description: 'Hyper-V makes Windows run in a VM on top of its own hypervisor, adding CPU interrupt latency even when no VMs are running. Disabling it restores "bare metal" Windows scheduling — important for VR frame timing.',
-  requiresAdmin: true,
-  requiresReboot: true,
-
-  preview: async (): Promise<FixPreview> => {
-    let hyperVState = 'unknown'
-    let hypervisorLaunchType = 'unknown'
-    try {
-      hyperVState = await runPowerShell(
-        `$feature = Get-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V-All -Online -EA SilentlyContinue\nWrite-Output $feature.State`
-      )
-    } catch { /* ignore */ }
-    try {
-      const bcdedit = await runCmd('bcdedit /enum {current}')
-      const m = bcdedit.match(/hypervisorlaunchtype\s+(\S+)/i)
-      if (m) hypervisorLaunchType = m[1].trim()
-    } catch { /* ignore */ }
-    return {
-      fixId: 'fix-hyper-v-disable',
-      name: 'Disable Hyper-V Virtualization Layer',
-      description: 'Disables Hyper-V hypervisor to restore bare-metal CPU scheduling for VR frame timing.',
-      changes: [
-        { target: 'Windows Feature: Microsoft-Hyper-V-All', currentValue: hyperVState, newValue: 'Disabled' },
-        { target: 'BCD hypervisorlaunchtype', currentValue: hypervisorLaunchType, newValue: 'off' }
-      ],
-      requiresAdmin: true,
-      requiresReboot: true
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    storeBackup('fix-hyper-v-disable', { applied: 'true' })
-    try {
-      await runPowerShell(
-        `try {\n` +
-        `  Disable-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V-All -Online -NoRestart -EA Stop | Out-Null\n` +
-        `} catch { Write-Output 'feature_not_found' }`
-      )
-      await runCmd('bcdedit /set hypervisorlaunchtype off')
-      recordHistory({
-        fixId: 'fix-hyper-v-disable',
-        name: 'Disable Hyper-V Virtualization Layer',
-        appliedAt: Date.now(),
-        changes: [
-          { target: 'Microsoft-Hyper-V-All', currentValue: 'Enabled', newValue: 'Disabled' },
-          { target: 'hypervisorlaunchtype', currentValue: 'auto', newValue: 'off' }
-        ],
-        backupValues: { applied: 'true' },
-        undoneAt: null
-      })
-      return { fixId: 'fix-hyper-v-disable', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-hyper-v-disable', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    try {
-      await runPowerShell(
-        `Enable-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V-All -Online -NoRestart -EA SilentlyContinue | Out-Null`
-      )
-      await runCmd('bcdedit /set hypervisorlaunchtype auto')
-      markUndone('fix-hyper-v-disable')
-      return { fixId: 'fix-hyper-v-disable', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-hyper-v-disable', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 20: Enable SteamVR Async Reprojection ─────────────────
 
 const fixSteamVRAsyncReprojection: Fix = {
   id: 'fix-steamvr-async-reprojection',
@@ -1772,8 +1104,9 @@ const fixSteamVRAsyncReprojection: Fix = {
   }
 }
 
-// ── Fix 21: VRChat Avatar Distance Culling ────────────────────
 
+// FIXME: undo path doesn't restore avatar_culling_distance if it was unset
+// before. Backup stringifies undefined → ''; restore writes '' back. Maybe.
 const fixVRChatAvatarCulling: Fix = {
   id: 'fix-vrchat-avatar-culling',
   name: 'Enable VRChat Avatar Distance Culling',
@@ -1855,447 +1188,6 @@ const fixVRChatAvatarCulling: Fix = {
   }
 }
 
-// ── Fix 22: Enable High-Resolution System Timer (Win 11) ──────
-
-const KERNEL_PATH = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel'
-
-const fixWindowsTimerResolution: Fix = {
-  id: 'fix-windows-timer-resolution',
-  name: 'Enable High-Resolution System Timer (Win 11)',
-  description: 'Allows VR processes to request 0.5ms timer resolution system-wide on Windows 11 22H2+. The default 15.6ms timer tick causes VR frame scheduling to be imprecise. This fix enables the kernel flag so VR runtimes can take advantage of it.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests') ?? 0
-    return {
-      fixId: 'fix-windows-timer-resolution',
-      name: 'Enable High-Resolution System Timer (Win 11)',
-      description: 'Enables GlobalTimerResolutionRequests so VR runtimes can request 0.5ms timer precision on Windows 11 22H2+. Requires Windows 11 22H2 or later.',
-      changes: [{
-        target: `Registry: HKLM\\${KERNEL_PATH}\\GlobalTimerResolutionRequests`,
-        currentValue: `${current} (${current === 1 ? 'already enabled' : '0 = default 15.6ms tick'})`,
-        newValue: '1 (enabled — allows 0.5ms timer resolution requests) — Win 11 22H2+ required'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backup = readRegistryDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests') ?? 0
-    storeBackup('fix-windows-timer-resolution', { GlobalTimerResolutionRequests: String(backup) })
-    try {
-      await regWriteDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests', 1)
-      recordHistory({
-        fixId: 'fix-windows-timer-resolution',
-        name: 'Enable High-Resolution System Timer (Win 11)',
-        appliedAt: Date.now(),
-        changes: [{ target: 'GlobalTimerResolutionRequests', currentValue: String(backup), newValue: '1' }],
-        backupValues: { GlobalTimerResolutionRequests: String(backup) },
-        undoneAt: null
-      })
-      return { fixId: 'fix-windows-timer-resolution', success: true }
-    } catch (e) {
-      return { fixId: 'fix-windows-timer-resolution', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-windows-timer-resolution')
-    try {
-      await regWriteDword('HKLM', KERNEL_PATH, 'GlobalTimerResolutionRequests', parseInt(backup?.GlobalTimerResolutionRequests ?? '0'))
-      markUndone('fix-windows-timer-resolution')
-      return { fixId: 'fix-windows-timer-resolution', success: true }
-    } catch (e) {
-      return { fixId: 'fix-windows-timer-resolution', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 23: GPU Interrupt Priority ────────────────────────────
-
-async function getGpuPnpIdForFix(): Promise<string | null> {
-  try {
-    const out = await runPowerShell(
-      "Get-CimInstance Win32_VideoController | Where-Object { $_.PNPDeviceID -match '^PCI\\\\' } | Select-Object -First 1 -ExpandProperty PNPDeviceID"
-    )
-    return out?.trim() || null
-  } catch { return null }
-}
-
-const fixGpuInterruptPriority: Fix = {
-  id: 'fix-gpu-interrupt-priority',
-  name: 'Optimize GPU Interrupt Priority (MSI + High DevicePriority)',
-  description: 'Enables Message Signaled Interrupt (MSI) mode and sets DevicePriority=3 (High) for the primary GPU. GPU frame-completion signals are processed immediately rather than waiting in the normal interrupt queue, reducing frame latency by 1-2ms.',
-  requiresAdmin: true,
-  requiresReboot: true,
-
-  preview: async (): Promise<FixPreview> => {
-    const pnpId = await getGpuPnpIdForFix()
-    const affinityPath = pnpId
-      ? `SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\Affinity Policy`
-      : null
-    const currentPriority = affinityPath
-      ? (readRegistryDword('HKLM', affinityPath, 'DevicePriority') ?? 'not set')
-      : 'GPU not detected'
-    return {
-      fixId: 'fix-gpu-interrupt-priority',
-      name: 'Optimize GPU Interrupt Priority (MSI + High DevicePriority)',
-      description: 'Sets MSISupported=1 and DevicePriority=3 in the GPU interrupt management registry keys. Requires reboot.',
-      changes: [
-        {
-          target: pnpId
-            ? `HKLM\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties\\MSISupported`
-            : 'GPU PNP registry path (GPU not detected)',
-          currentValue: 'varies / not set',
-          newValue: '1 (MSI enabled)'
-        },
-        {
-          target: pnpId
-            ? `HKLM\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\Affinity Policy\\DevicePriority`
-            : 'GPU PNP registry path (GPU not detected)',
-          currentValue: String(currentPriority),
-          newValue: '3 (High) — requires reboot'
-        }
-      ],
-      requiresAdmin: true,
-      requiresReboot: true
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const pnpId = await getGpuPnpIdForFix()
-    if (!pnpId) {
-      return { fixId: 'fix-gpu-interrupt-priority', success: false, error: 'Could not detect GPU PNP device ID via WMI' }
-    }
-
-    const affinityPath = `SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\Affinity Policy`
-    const msiPath = `SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties`
-
-    const backupPriority = readRegistryDword('HKLM', affinityPath, 'DevicePriority')
-    storeBackup('fix-gpu-interrupt-priority', {
-      pnpId,
-      DevicePriority: String(backupPriority ?? '')
-    })
-
-    try {
-      // Use runPowerShell directly — paths contain dynamic device IDs with backslashes
-      // Single-quoted PS strings treat backslashes as literal
-      await runPowerShell(
-        `$msiP = 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties'\n` +
-        `if (!(Test-Path $msiP)) { New-Item -Path $msiP -Force | Out-Null }\n` +
-        `Set-ItemProperty -Path $msiP -Name 'MSISupported' -Value 1 -Type DWord -Force\n` +
-        `$affP = 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\Affinity Policy'\n` +
-        `if (!(Test-Path $affP)) { New-Item -Path $affP -Force | Out-Null }\n` +
-        `Set-ItemProperty -Path $affP -Name 'DevicePriority' -Value 3 -Type DWord -Force`
-      )
-      recordHistory({
-        fixId: 'fix-gpu-interrupt-priority',
-        name: 'Optimize GPU Interrupt Priority (MSI + High DevicePriority)',
-        appliedAt: Date.now(),
-        changes: [
-          { target: 'MSISupported', currentValue: 'varies', newValue: '1' },
-          { target: 'DevicePriority', currentValue: String(backupPriority ?? 'not set'), newValue: '3' }
-        ],
-        backupValues: { pnpId, DevicePriority: String(backupPriority ?? '') },
-        undoneAt: null
-      })
-      return { fixId: 'fix-gpu-interrupt-priority', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-gpu-interrupt-priority', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-gpu-interrupt-priority')
-    if (!backup?.pnpId) return { fixId: 'fix-gpu-interrupt-priority', success: false, error: 'No backup found' }
-    const pnpId = backup.pnpId
-    try {
-      const msiP = `HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties`
-      const affP = `HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\${pnpId}\\Device Parameters\\Interrupt Management\\Affinity Policy`
-      // Remove MSISupported (restore to default = no MSI override)
-      await runPowerShell(
-        `Remove-ItemProperty -Path '${msiP}' -Name 'MSISupported' -EA SilentlyContinue`
-      )
-      if (backup.DevicePriority === '') {
-        // Key didn't exist before — remove the value
-        await runPowerShell(
-          `Remove-ItemProperty -Path '${affP}' -Name 'DevicePriority' -EA SilentlyContinue`
-        )
-      } else {
-        await runPowerShell(
-          `Set-ItemProperty -Path '${affP}' -Name 'DevicePriority' -Value ${parseInt(backup.DevicePriority)} -Type DWord -Force`
-        )
-      }
-      markUndone('fix-gpu-interrupt-priority')
-      return { fixId: 'fix-gpu-interrupt-priority', success: true, requiresReboot: true }
-    } catch (e) {
-      return { fixId: 'fix-gpu-interrupt-priority', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 24: VR Process CPU Priority via IFEO ──────────────────
-
-const VR_IFEO_EXES = [
-  'vrserver.exe',
-  'vrcompositor.exe',
-  'vrclient.exe',
-  'VRChat.exe',
-  'OVRServer_x64.exe'
-]
-const IFEO_BASE = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options'
-
-const fixVrProcessPriority: Fix = {
-  id: 'fix-vr-process-priority',
-  name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-  description: 'Uses Windows Image File Execution Options (IFEO) PerfOptions\\CpuPriorityClass = 3 to force vrserver, vrcompositor, VRChat, and other VR processes to start at High CPU priority class — persistently, without any manual intervention each session.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const changes = VR_IFEO_EXES.map((exe) => {
-      const current = readRegistryDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass')
-      return {
-        target: `HKLM\\${IFEO_BASE}\\${exe}\\PerfOptions\\CpuPriorityClass`,
-        currentValue: current != null ? String(current) : 'not set (default Normal)',
-        newValue: '3 (High)'
-      }
-    })
-    return {
-      fixId: 'fix-vr-process-priority',
-      name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-      description: 'Sets CpuPriorityClass=3 (High) via IFEO PerfOptions for all major VR runtime executables. Takes effect on next process launch.',
-      changes,
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const backupValues: Record<string, string> = {}
-    for (const exe of VR_IFEO_EXES) {
-      const val = readRegistryDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass')
-      backupValues[exe] = val != null ? String(val) : ''
-    }
-    storeBackup('fix-vr-process-priority', backupValues)
-    try {
-      for (const exe of VR_IFEO_EXES) {
-        await regWriteDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass', 3)
-      }
-      const changes = VR_IFEO_EXES.map((exe) => ({
-        target: `${exe}\\PerfOptions\\CpuPriorityClass`,
-        currentValue: backupValues[exe] || 'not set',
-        newValue: '3'
-      }))
-      recordHistory({
-        fixId: 'fix-vr-process-priority',
-        name: 'Set VR Processes to High CPU Priority at Launch (IFEO)',
-        appliedAt: Date.now(),
-        changes,
-        backupValues,
-        undoneAt: null
-      })
-      return { fixId: 'fix-vr-process-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-vr-process-priority', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-vr-process-priority')
-    if (!backup) return { fixId: 'fix-vr-process-priority', success: false, error: 'No backup found' }
-    try {
-      for (const exe of VR_IFEO_EXES) {
-        const prev = backup[exe]
-        if (prev === '' || prev == null) {
-          // Value didn't exist — remove it (and clean up empty PerfOptions key if possible)
-          await runPowerShell(
-            `Remove-ItemProperty -Path 'HKLM:\\${IFEO_BASE}\\${exe}\\PerfOptions' -Name 'CpuPriorityClass' -EA SilentlyContinue`
-          )
-        } else {
-          await regWriteDword('HKLM', `${IFEO_BASE}\\${exe}\\PerfOptions`, 'CpuPriorityClass', parseInt(prev))
-        }
-      }
-      markUndone('fix-vr-process-priority')
-      return { fixId: 'fix-vr-process-priority', success: true }
-    } catch (e) {
-      return { fixId: 'fix-vr-process-priority', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 25: Disable Windows Update Auto-Restart ───────────────
-
-const WU_AU_PATH = 'SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU'
-
-const fixDisableWuReboot: Fix = {
-  id: 'fix-disable-wu-reboot',
-  name: 'Prevent Windows Update Auto-Restart During VR Sessions',
-  description: 'Sets NoAutoRebootWithLoggedOnUsers=1 and AUOptions=2 (notify before download) in the Windows Update policy registry keys. Prevents forced reboots while any user is logged in and stops background downloads during VR.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const noReboot = readRegistryDword('HKLM', WU_AU_PATH, 'NoAutoRebootWithLoggedOnUsers')
-    const auOptions = readRegistryDword('HKLM', WU_AU_PATH, 'AUOptions')
-    return {
-      fixId: 'fix-disable-wu-reboot',
-      name: 'Prevent Windows Update Auto-Restart During VR Sessions',
-      description: 'Sets group-policy registry values to prevent Windows Update from force-restarting while a user is logged in.',
-      changes: [
-        {
-          target: `HKLM\\${WU_AU_PATH}\\NoAutoRebootWithLoggedOnUsers`,
-          currentValue: noReboot != null ? String(noReboot) : 'not set (auto-reboot allowed)',
-          newValue: '1 (reboot suppressed while logged in)'
-        },
-        {
-          target: `HKLM\\${WU_AU_PATH}\\AUOptions`,
-          currentValue: auOptions != null ? String(auOptions) : 'not set (default)',
-          newValue: '2 (notify before download)'
-        }
-      ],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const noReboot = readRegistryDword('HKLM', WU_AU_PATH, 'NoAutoRebootWithLoggedOnUsers')
-    const auOptions = readRegistryDword('HKLM', WU_AU_PATH, 'AUOptions')
-    storeBackup('fix-disable-wu-reboot', {
-      NoAutoRebootWithLoggedOnUsers: noReboot != null ? String(noReboot) : '',
-      AUOptions: auOptions != null ? String(auOptions) : ''
-    })
-    try {
-      await regWriteDword('HKLM', WU_AU_PATH, 'NoAutoRebootWithLoggedOnUsers', 1)
-      await regWriteDword('HKLM', WU_AU_PATH, 'AUOptions', 2)
-      const verify = readRegistryDword('HKLM', WU_AU_PATH, 'NoAutoRebootWithLoggedOnUsers')
-      const success = verify === 1
-      if (success) recordHistory({
-        fixId: 'fix-disable-wu-reboot',
-        name: 'Prevent Windows Update Auto-Restart During VR Sessions',
-        appliedAt: Date.now(),
-        changes: [
-          { target: 'NoAutoRebootWithLoggedOnUsers', currentValue: noReboot != null ? String(noReboot) : 'not set', newValue: '1' },
-          { target: 'AUOptions', currentValue: auOptions != null ? String(auOptions) : 'not set', newValue: '2' }
-        ],
-        backupValues: {
-          NoAutoRebootWithLoggedOnUsers: noReboot != null ? String(noReboot) : '',
-          AUOptions: auOptions != null ? String(auOptions) : ''
-        },
-        undoneAt: null
-      })
-      return { fixId: 'fix-disable-wu-reboot', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-disable-wu-reboot', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-disable-wu-reboot')
-    if (!backup) return { fixId: 'fix-disable-wu-reboot', success: false, error: 'No backup found' }
-    try {
-      const restoreOrDelete = async (name: string): Promise<void> => {
-        const prev = backup[name]
-        if (prev === '' || prev == null) {
-          await runPowerShell(
-            `Remove-ItemProperty -Path 'HKLM:\\${WU_AU_PATH}' -Name '${name}' -EA SilentlyContinue`
-          )
-        } else {
-          await regWriteDword('HKLM', WU_AU_PATH, name, parseInt(prev))
-        }
-      }
-      await restoreOrDelete('NoAutoRebootWithLoggedOnUsers')
-      await restoreOrDelete('AUOptions')
-      markUndone('fix-disable-wu-reboot')
-      return { fixId: 'fix-disable-wu-reboot', success: true }
-    } catch (e) {
-      return { fixId: 'fix-disable-wu-reboot', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 26: Disable Delivery Optimization P2P ─────────────────
-
-const DO_PATH = 'SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization'
-
-const fixDisableDeliveryOptimization: Fix = {
-  id: 'fix-disable-delivery-optimization',
-  name: 'Disable Windows Delivery Optimization P2P Seeding',
-  description: 'Sets DODownloadMode=0 (HTTP only, no peer-to-peer) to stop Windows from uploading updates to other PCs using your internet connection during VR gameplay.',
-  requiresAdmin: true,
-  requiresReboot: false,
-
-  preview: async (): Promise<FixPreview> => {
-    const current = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-    const modeLabel = current === null
-      ? 'not set (default — P2P active)'
-      : current === 0 ? '0 (HTTP only — already optimal)'
-      : current === 1 ? '1 (LAN peers — P2P active)'
-      : current === 2 ? '2 (Group peers — P2P active)'
-      : current === 3 ? '3 (Internet peers — P2P active)'
-      : `${current} (unknown mode)`
-    return {
-      fixId: 'fix-disable-delivery-optimization',
-      name: 'Disable Windows Delivery Optimization P2P Seeding',
-      description: 'Sets DODownloadMode=0 to stop P2P upload activity during VR gameplay.',
-      changes: [{
-        target: `HKLM\\${DO_PATH}\\DODownloadMode`,
-        currentValue: modeLabel,
-        newValue: '0 (HTTP only — no P2P seeding)'
-      }],
-      requiresAdmin: true,
-      requiresReboot: false
-    }
-  },
-
-  apply: async (): Promise<FixResult> => {
-    const current = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-    storeBackup('fix-disable-delivery-optimization', {
-      DODownloadMode: current != null ? String(current) : ''
-    })
-    try {
-      await regWriteDword('HKLM', DO_PATH, 'DODownloadMode', 0)
-      const verify = readRegistryDword('HKLM', DO_PATH, 'DODownloadMode')
-      const success = verify === 0
-      if (success) recordHistory({
-        fixId: 'fix-disable-delivery-optimization',
-        name: 'Disable Windows Delivery Optimization P2P Seeding',
-        appliedAt: Date.now(),
-        changes: [{ target: 'DODownloadMode', currentValue: current != null ? String(current) : 'not set', newValue: '0' }],
-        backupValues: { DODownloadMode: current != null ? String(current) : '' },
-        undoneAt: null
-      })
-      return { fixId: 'fix-disable-delivery-optimization', success, unverified: !success }
-    } catch (e) {
-      return { fixId: 'fix-disable-delivery-optimization', success: false, error: (e as Error).message }
-    }
-  },
-
-  undo: async (): Promise<FixResult> => {
-    const backup = getBackup('fix-disable-delivery-optimization')
-    if (!backup) return { fixId: 'fix-disable-delivery-optimization', success: false, error: 'No backup found' }
-    try {
-      const prev = backup.DODownloadMode
-      if (prev === '' || prev == null) {
-        // Key didn't exist — remove it (restoring default P2P behaviour)
-        await runPowerShell(
-          `Remove-ItemProperty -Path 'HKLM:\\${DO_PATH}' -Name 'DODownloadMode' -EA SilentlyContinue`
-        )
-      } else {
-        await regWriteDword('HKLM', DO_PATH, 'DODownloadMode', parseInt(prev))
-      }
-      markUndone('fix-disable-delivery-optimization')
-      return { fixId: 'fix-disable-delivery-optimization', success: true }
-    } catch (e) {
-      return { fixId: 'fix-disable-delivery-optimization', success: false, error: (e as Error).message }
-    }
-  }
-}
-
-// ── Fix 27: VRChat per-avatar physics caps ───────────────────
 // Note on naming: the config keys are still `dynamic_bone_max_*` for legacy
 // reasons — VRChat used the Dynamic Bone Unity asset before 2022 and kept
 // the keys when they swapped to their in-house PhysBones system. Same caps,
@@ -2406,7 +1298,6 @@ const fixVRChatDynamicBoneLimits: Fix = {
   }
 }
 
-// ── Fix 28: VRChat MSAA Reduction ─────────────────────────────
 
 const VRCHAT_PREFS_PATH = 'SOFTWARE\\VRChat\\VRChat'
 
@@ -2459,9 +1350,7 @@ const fixVRChatMsaa: Fix = {
     try {
       const prev = backup?.QualitySettings_antiAliasing
       if (prev === '' || prev == null) {
-        await runPowerShell(
-          `Remove-ItemProperty -Path 'HKCU:\\${VRCHAT_PREFS_PATH}' -Name 'QualitySettings_antiAliasing' -EA SilentlyContinue`
-        )
+        await tryRegExe(['delete', `HKCU\\${VRCHAT_PREFS_PATH}`, '/v', 'QualitySettings_antiAliasing', '/f'])
       } else {
         await regWriteDword('HKCU', VRCHAT_PREFS_PATH, 'QualitySettings_antiAliasing', parseInt(prev))
       }
@@ -2473,23 +1362,18 @@ const fixVRChatMsaa: Fix = {
   }
 }
 
-// ── Fix Registry ─────────────────────────────────────────────
 
+// fixMmcssNetworkThrottling, fixMmcssGamesPriority, fixWifiPowerSaving,
+// fixNagleDisable, and fixWindowsTimerResolution were removed when the admin
+// requirement was dropped. All five wrote HKLM, which standard users can't
+// touch, so they would silently fail. Their detection rules remain (where the
+// underlying signal is real) so the user is still told the condition exists.
 const ALL_FIXES: Fix[] = [
-  fixMmcssResponsiveness,
-  fixMmcssNetworkThrottling,
-  fixMmcssGamesPriority,
-  fixPowerPlan,
-  fixPcieAspmDisable,
-  fixDefenderExclusions,
   fixEnableGameMode,
-  fixWifiPowerSaving,
   fixVCacheAffinity,
-  fixHagsEnable,
   fixSteamVRSupersampling,
   fixSteamVRMotionSmoothing,
   fixVRChatCacheSize,
-  // NEW — Fixes 13-22:
   fixDisableXboxDvr,
   // fixDisableStartupBloat — removed. Removing HKCU\Run entries was too broad
   // (killed legitimate startup entries the user wanted) and produced no
@@ -2498,26 +1382,17 @@ const ALL_FIXES: Fix[] = [
   // fixCoreParkingDisable — removed. powercfg CPMINCORES=100 setting persisted
   // but VR frame-pacing data showed no change; modern Windows schedulers
   // don't park cores under VR workloads in practice.
-  fixNagleDisable,
   // fixDisableFullscreenOptimizations — removed. AppCompatFlags
   // DISABLEDXMAXIMIZEDWINDOWEDMODE only affects legacy fullscreen; VR runtimes
   // use DXGI flip model regardless, so the flag made no observable difference.
-  fixHyperVDisable,
   fixSteamVRAsyncReprojection,
   fixVRChatAvatarCulling,
-  fixWindowsTimerResolution,
-  // NEW — Fixes 23-26:
-  fixGpuInterruptPriority,
-  fixVrProcessPriority,
-  fixDisableWuReboot,
-  fixDisableDeliveryOptimization,
   fixVRChatDynamicBoneLimits,
   fixVRChatMsaa
 ]
 
 const fixMap = new Map<string, Fix>(ALL_FIXES.map((f) => [f.id, f]))
 
-// ── Public API ────────────────────────────────────────────────
 
 export function getFix(fixId: string): Fix | null {
   return fixMap.get(fixId) ?? null
@@ -2559,7 +1434,6 @@ export async function previewFix(fixId: string): Promise<FixPreview | { error: s
   }
 }
 
-// ── Pre-fix auto-backup (System Restore Point) ───────────────
 //
 // Throttled to one restore point per 24 hours to avoid filling the
 // snapshot store. Wrapped so a restore-point creation failure never blocks
@@ -2567,26 +1441,14 @@ export async function previewFix(fixId: string): Promise<FixPreview | { error: s
 
 const LAST_RESTORE_POINT_KEY = 'lastRestorePointAt'
 
-async function createRestorePointIfDue(reason: string): Promise<{ created: boolean; error?: string }> {
-  try {
-    const now = Date.now()
-    const last = (fixStore.get(LAST_RESTORE_POINT_KEY) as number | undefined) ?? 0
-    const ageHours = (now - last) / (1000 * 60 * 60)
-    if (ageHours < 24) {
-      return { created: false, error: 'Skipped — restore point created within last 24h' }
-    }
-    const description = reason.replace(/'/g, '').slice(0, 240)
-    // Checkpoint-Computer: requires elevation + SystemRestore enabled.
-    // Run quietly — non-fatal if it fails.
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "Checkpoint-Computer -Description 'Vryionics: ${description}' -RestorePointType MODIFY_SETTINGS -ErrorAction SilentlyContinue"`,
-      { timeout: 60_000 }
-    )
-    fixStore.set(LAST_RESTORE_POINT_KEY, now)
-    return { created: true }
-  } catch (e) {
-    return { created: false, error: (e as Error).message }
-  }
+async function createRestorePointIfDue(_reason: string): Promise<{ created: boolean; error?: string }> {
+  // The only Win32 entry point for creating a system restore point is
+  // SRClient.dll's CreateRestorePoint, which is reachable from this process
+  // through WMI (SystemRestore.CreateRestorePoint) or via P/Invoke. Both
+  // paths are off the table for this app, so we no longer create a restore
+  // point automatically. Each individual fix already stores its own backup
+  // and supports undo, which is the primary recovery surface.
+  return { created: false, error: 'restore-point creation is unavailable in this build' }
 }
 
 export async function applyFix(fixId: string): Promise<FixResult> {

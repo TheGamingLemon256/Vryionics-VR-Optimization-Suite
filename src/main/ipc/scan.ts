@@ -1,6 +1,3 @@
-// VR Optimization Suite — Scan IPC Handlers
-// Connects renderer scan requests to the scan engine and rules engine.
-
 import { ipcMain, BrowserWindow } from 'electron'
 import { runScan } from '../scanner/engine'
 import { evaluateRules, getAllRuleSummaries } from '../rules/engine'

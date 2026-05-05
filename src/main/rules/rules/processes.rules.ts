@@ -1,5 +1,3 @@
-// VR Optimization Suite — Process Diagnostic Rules
-
 import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 import { dedupeProcesses, summariseProcessList } from '../process-dedupe'

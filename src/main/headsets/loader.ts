@@ -6,7 +6,6 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { HeadsetProfile, HeadsetProfileSummary, ConnectionArchetype } from './types'
 
-// ── Static JSON Imports (bundled at compile time) ─────────────
 // Vite/Rollup inlines these — no path resolution issues in dev, build, or packaged app.
 
 // Original 10
@@ -39,7 +38,6 @@ import lenovoExplorer from './profiles/lenovo-explorer.json'
 // was halting the setup wizard. Profile file renamed to _steam-link.json.disabled
 // on disk so the dev-scan also skips it. Re-enable by restoring both.
 // import steamLink from './profiles/steam-link.json'
-// Phase-4 expansion — legacy, prosumer, and 2024/2025 flagships
 import metaRiftCv1 from './profiles/meta-rift-cv1.json'
 import metaRiftS from './profiles/meta-rift-s.json'
 import htcViveOriginal from './profiles/htc-vive-original.json'
@@ -112,11 +110,9 @@ const BUNDLED_PROFILES: unknown[] = [
   genericUnlisted
 ]
 
-// ── Profile Cache ─────────────────────────────────────────────
 
 let profileCache: HeadsetProfile[] | null = null
 
-// ── Validation ────────────────────────────────────────────────
 
 function validateProfile(data: unknown, source: string): string | null {
   if (!data || typeof data !== 'object') {
@@ -169,7 +165,6 @@ function validateProfile(data: unknown, source: string): string | null {
   return null
 }
 
-// ── Dev-mode filesystem scan ──────────────────────────────────
 
 /**
  * In development, also scan the source profiles directory so new JSON files
@@ -217,7 +212,6 @@ function loadDevProfiles(bundledIds: Set<string>): HeadsetProfile[] {
   return extra
 }
 
-// ── Public API ────────────────────────────────────────────────
 
 export function loadAllProfiles(forceReload = false): HeadsetProfile[] {
   if (profileCache && !forceReload) return profileCache

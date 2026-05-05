@@ -1,6 +1,3 @@
-// VR Optimization Suite — Status Dot
-// Severity-colored indicator dot with optional pulse animation.
-
 import React from 'react'
 
 export type DotStatus = 'healthy' | 'warning' | 'critical' | 'scanning' | 'unknown' | 'error'

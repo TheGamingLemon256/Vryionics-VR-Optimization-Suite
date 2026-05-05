@@ -1,113 +1,99 @@
 // VR Optimization Suite — System Compatibility Scanner
 //
 // Collects cross-cutting flags that affect VR but don't fit any single
-// existing scanner module:
-//   • Hybrid GPU / laptop form factor (affects Link routing and power)
-//   • HVCI / Core Isolation / VBS (can interfere with older VR drivers)
-//   • SteamVR branch (stable vs beta — beta introduces regressions)
-//   • Installed-but-not-running VR streaming tools (VD, ALVR, Sunshine)
-//
-// One PowerShell pipeline per signal, all run concurrently. Every check
-// is defensive — a failed signal returns `null` rather than failing the
-// module, because most users will have some of these and not others.
+// existing scanner module: hybrid GPU / laptop form factor, HVCI / Core
+// Isolation / VBS, SteamVR branch, installed-but-not-running streaming
+// tools, and motherboard / BIOS info.
 
-import { tryRunPowerShell } from '../../utils/powershell'
 import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { readKey, readValue } from '../../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../../utils/registry'
+import { enumerateProcesses } from '../../utils/process'
 import type { ScanModuleResult, VrCompatibilityData } from '../types'
 import { findMotherboardChipset } from '../../data/motherboard-chipset-database'
 
-// ── Hybrid GPU detection ──────────────────────────────────────
-//
-// Laptops with discrete GPUs expose TWO Win32_VideoController entries: the
-// integrated GPU (Intel UHD / AMD Radeon Graphics) and the discrete GPU
-// (NVIDIA / AMD Radeon RX). We detect this because:
-//   1. VR apps must render on the discrete GPU — many laptops default
-//      SteamVR or Oculus to the iGPU, killing performance silently.
-//   2. NVIDIA Optimus power routing can be misconfigured.
+// Display class GUID. Each subkey under
+// HKLM\SYSTEM\CurrentControlSet\Control\Class\<DISPLAY_CLASS_GUID> is a
+// driver instance; DriverDesc holds the user-facing GPU name.
+const DISPLAY_CLASS_GUID = '{4d36e968-e325-11ce-bfc1-08002be10318}'
+
+async function enumerateGpuNames(): Promise<string[]> {
+  const subkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    `SYSTEM\\CurrentControlSet\\Control\\Class\\${DISPLAY_CLASS_GUID}`
+  )
+  const names: string[] = []
+  for (const sk of subkeys) {
+    if (!/^\d{4}$/.test(sk)) continue
+    const v = await readValue(
+      `HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\${DISPLAY_CLASS_GUID}\\${sk}`,
+      'DriverDesc'
+    )
+    if (v && (v.type === 'REG_SZ' || v.type === 'REG_EXPAND_SZ') && v.data) {
+      names.push(v.data.trim())
+    }
+  }
+  return names
+}
 
 async function detectHybridGpu(): Promise<{ hasHybridGpu: boolean; isLaptop: boolean }> {
-  const out = await tryRunPowerShell(
-    `$gpus = Get-CimInstance Win32_VideoController -EA SilentlyContinue | ` +
-    `Select-Object Name, PNPDeviceID\n` +
-    `$battery = Get-CimInstance Win32_Battery -EA SilentlyContinue\n` +
-    `$chassis = (Get-CimInstance Win32_SystemEnclosure -EA SilentlyContinue).ChassisTypes\n` +
-    `$gpuNames = ($gpus | ForEach-Object { $_.Name }) -join '|'\n` +
-    `$hasBattery = if ($battery) { 'true' } else { 'false' }\n` +
-    `$chassisStr = $chassis -join ','\n` +
-    `"gpus:$gpuNames|battery:$hasBattery|chassis:$chassisStr"`,
-    10_000
-  )
-  if (!out) return { hasHybridGpu: false, isLaptop: false }
+  const gpuNames = await enumerateGpuNames()
 
-  const gpusMatch  = out.match(/gpus:([^|]*)/)
-  const battMatch  = out.match(/battery:(\w+)/)
-  const chasMatch  = out.match(/chassis:([\d,]*)/)
-  const gpuList    = gpusMatch ? gpusMatch[1].split('|').filter(Boolean) : []
-  const hasBattery = battMatch ? battMatch[1].toLowerCase() === 'true' : false
-  // Win32 chassis types: 8/9/10/14/30/31/32 are laptop / notebook / tablet / convertible
-  const laptopChassisTypes = new Set(['8', '9', '10', '14', '30', '31', '32'])
-  const chassisIsLaptop = chasMatch
-    ? chasMatch[1].split(',').some((c) => laptopChassisTypes.has(c.trim()))
-    : false
-
-  // Hybrid = at least one iGPU + one dGPU (distinct vendor / naming pattern)
-  const hasIGpu = gpuList.some((n) =>
-    /intel|amd radeon graphics|intel.*uhd|intel.*iris/i.test(n)
-    && !/arc/i.test(n)
+  // Battery presence is a cheap laptop heuristic. The battery class GUID
+  // {72631e54-78a4-11d0-bcf7-00aa00b7b32a} has subkeys only when an OS
+  // power-managed battery exists.
+  const BATTERY_GUID = '{72631e54-78a4-11d0-bcf7-00aa00b7b32a}'
+  const batterySubkeys = enumerateRegistrySubkeys(
+    'HKLM',
+    `SYSTEM\\CurrentControlSet\\Control\\Class\\${BATTERY_GUID}`
   )
-  const hasDGpu = gpuList.some((n) =>
-    /nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|arc/i.test(n)
-    && !/radeon graphics(?!\sprocessor)/i.test(n)
+  const hasBattery = batterySubkeys.some((sk) => /^\d{4}$/.test(sk))
+
+  const hasIGpu = gpuNames.some(
+    (n) =>
+      /intel|amd radeon graphics|intel.*uhd|intel.*iris/i.test(n) && !/arc/i.test(n)
+  )
+  const hasDGpu = gpuNames.some(
+    (n) =>
+      /nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|arc/i.test(n) &&
+      !/radeon graphics(?!\sprocessor)/i.test(n)
   )
 
   return {
     hasHybridGpu: hasIGpu && hasDGpu,
-    isLaptop: chassisIsLaptop || hasBattery,
+    isLaptop: hasBattery,
   }
 }
-
-// ── Core Isolation / HVCI / VBS ───────────────────────────────
 
 async function detectCoreIsolation(): Promise<{
   coreIsolationEnabled: boolean | null
   hvciEnabled: boolean | null
   vbsRunning: boolean | null
 }> {
-  // Query HVCI/VBS state via plain registry reads instead of the
-  // Win32_DeviceGuard CIM class. The CIM class is one of the WMI classes
-  // sandbox-detection malware uses to identify managed environments,
-  // and naming it inline triggers a heuristic signal even though our
-  // use is purely diagnostic. Registry reads of the same Microsoft-
-  // documented values are functionally identical and read as benign.
-  const regKey = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard'
-  const out = await tryRunPowerShell(
-    `$base = '${regKey}'\n` +
-    `$hvciVal = (Get-ItemProperty -Path "Registry::$base\\Scenarios\\HypervisorEnforcedCodeIntegrity" -Name 'Enabled' -EA SilentlyContinue).Enabled\n` +
-    `$vbsVal  = (Get-ItemProperty -Path "Registry::$base" -Name 'EnableVirtualizationBasedSecurity' -EA SilentlyContinue).EnableVirtualizationBasedSecurity\n` +
-    `$hvci = if ($hvciVal -eq 1) { 'true' } elseif ($hvciVal -eq 0) { 'false' } else { 'unknown' }\n` +
-    `$vbs  = if ($vbsVal  -eq 1) { 'true' } elseif ($vbsVal  -eq 0) { 'false' } else { 'unknown' }\n` +
-    `"hvci:$hvci|vbs:$vbs"`,
-    10_000
+  // Both values live under HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard.
+  // The Win32_DeviceGuard CIM class would surface the same data but is one
+  // of the WMI classes sandbox-detection malware uses, so AV heuristics
+  // weight it more aggressively. Plain registry reads are equivalent.
+  const hvciVal = await readValue(
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity',
+    'Enabled'
   )
-  if (!out) return { coreIsolationEnabled: null, hvciEnabled: null, vbsRunning: null }
+  const vbsVal = await readValue(
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard',
+    'EnableVirtualizationBasedSecurity'
+  )
 
-  const hvciMatch = out.match(/hvci:(\w+)/)
-  const vbsMatch  = out.match(/vbs:(\w+)/)
-  const hvci = hvciMatch ? (hvciMatch[1] === 'true' ? true : hvciMatch[1] === 'false' ? false : null) : null
-  const vbs  = vbsMatch  ? (vbsMatch[1]  === 'true' ? true : vbsMatch[1]  === 'false' ? false : null) : null
-  // "Core Isolation" is the user-facing toggle; HVCI is its main component.
-  const coreIsolation = hvci === null ? null : hvci
-  return { coreIsolationEnabled: coreIsolation, hvciEnabled: hvci, vbsRunning: vbs }
+  const hvci =
+    hvciVal && hvciVal.type === 'REG_DWORD' ? hvciVal.data === 1 : null
+  const vbs =
+    vbsVal && vbsVal.type === 'REG_DWORD' ? vbsVal.data === 1 : null
+
+  return {
+    coreIsolationEnabled: hvci,
+    hvciEnabled: hvci,
+    vbsRunning: vbs,
+  }
 }
-
-// ── SteamVR branch ─────────────────────────────────────────────
-//
-// Steam tracks the selected branch per app in
-//   <Steam>/steamapps/appmanifest_250820.acf
-// which contains a UserConfig block with a "BetaKey" field. When empty /
-// missing, the user is on stable. When set, they're on beta (the exact
-// string varies: "public-beta", "beta", etc.).
 
 function detectSteamVrBranch(): 'stable' | 'beta' | 'unknown' {
   const candidates = [
@@ -121,31 +107,23 @@ function detectSteamVrBranch(): 'stable' | 'beta' | 'unknown' {
     if (!existsSync(path)) continue
     try {
       const content = readFileSync(path, 'utf8')
-      // Look for BetaKey inside UserConfig: `"BetaKey"    "public-beta"`
       const match = content.match(/"BetaKey"\s+"([^"]*)"/i)
       if (!match) return 'stable'
       const key = match[1].trim()
       if (!key) return 'stable'
       return 'beta'
     } catch {
-      // manifest unreadable — try next candidate
+      // try next candidate
     }
   }
   return 'unknown'
 }
 
-// ── Installed VR tools ─────────────────────────────────────────
-//
-// Checks well-known install paths for VR streaming / runtime tools. This
-// catches users who HAVE Virtual Desktop installed but aren't running it —
-// useful when troubleshooting "AirLink is bad" complaints from users who
-// already own a better option they forgot about.
-
 interface InstalledToolSpec {
   id: string
   label: string
-  paths: string[]            // Absolute paths to check (first-hit wins)
-  runningProcessNames: string[]  // Process names that indicate it's active right now
+  paths: string[]
+  runningProcessNames: string[]
 }
 
 const INSTALLED_TOOL_SPECS: InstalledToolSpec[] = [
@@ -232,17 +210,8 @@ const INSTALLED_TOOL_SPECS: InstalledToolSpec[] = [
 ]
 
 async function getRunningProcessSet(): Promise<Set<string>> {
-  const out = await tryRunPowerShell(
-    `Get-Process -EA SilentlyContinue | Select-Object -ExpandProperty Name | ` +
-    `Sort-Object -Unique | ConvertTo-Json -Compress`,
-    8_000
-  )
-  if (!out) return new Set()
-  try {
-    const parsed = JSON.parse(out)
-    const list: string[] = Array.isArray(parsed) ? parsed : [String(parsed)]
-    return new Set(list.map((s) => s.toLowerCase()))
-  } catch { return new Set() }
+  const procs = await enumerateProcesses()
+  return new Set(procs.map((p) => p.name.toLowerCase()))
 }
 
 async function detectInstalledVrTools(): Promise<VrCompatibilityData['installedVrTools']> {
@@ -262,60 +231,68 @@ async function detectInstalledVrTools(): Promise<VrCompatibilityData['installedV
   return installed
 }
 
-// ── Motherboard / BIOS detection ────────────────────────────────
-//
-// Win32_BaseBoard gives us Manufacturer + Product (the board model, e.g.
-// "MAG B650 TOMAHAWK WIFI") and BIOS versioning info. We parse the chipset
-// name out of the Product string so rules can key off it.
+// UPS units, USB-attached accessory batteries, and a few enterprise rigs
+// surface in the ACPI battery class on otherwise-clearly-desktop machines
+// and trip the battery-presence laptop heuristic. The motherboard chipset
+// database only catalogs desktop chipsets (AM4/AM5/LGA1700/etc.), so a
+// hit there is a positive desktop signal that should override the battery
+// reading.
+export function applyDesktopChipsetOverride(rawIsLaptop: boolean, chipsetName: string | null): boolean {
+  return chipsetName ? false : rawIsLaptop
+}
 
 async function detectMotherboard(): Promise<VrCompatibilityData['motherboard']> {
-  const out = await tryRunPowerShell(
-    `$bb = Get-CimInstance Win32_BaseBoard -EA SilentlyContinue\n` +
-    `$bios = Get-CimInstance Win32_BIOS -EA SilentlyContinue\n` +
-    `if ($bb -or $bios) {\n` +
-    `  $mfg = if ($bb) { $bb.Manufacturer } else { '' }\n` +
-    `  $prod = if ($bb) { $bb.Product } else { '' }\n` +
-    `  $bios_ver = if ($bios) { $bios.SMBIOSBIOSVersion } else { '' }\n` +
-    `  $bios_date = if ($bios) { $bios.ReleaseDate } else { '' }\n` +
-    `  "mfg:$mfg|prod:$prod|biosver:$bios_ver|biosdate:$bios_date"\n` +
-    `}`,
-    10_000
-  )
-  if (!out) return null
+  // SMBIOS data is mirrored into HKLM\HARDWARE\DESCRIPTION\System\BIOS
+  // by the Windows ACPI/SMBIOS subsystem on every boot. Same fields as
+  // Win32_BaseBoard / Win32_BIOS but without going through CIM.
+  const biosKey = await readKey('HKLM\\HARDWARE\\DESCRIPTION\\System\\BIOS').catch(() => null)
+  if (!biosKey) return null
 
-  const mfgMatch  = out.match(/mfg:([^|]*)/)
-  const prodMatch = out.match(/prod:([^|]*)/)
-  const biosMatch = out.match(/biosver:([^|]*)/)
-  const dateMatch = out.match(/biosdate:([^|]*)/)
+  const mfgVal = biosKey.values['BaseBoardManufacturer']
+  const prodVal = biosKey.values['BaseBoardProduct']
+  const biosVerVal = biosKey.values['BIOSVersion']
+  const biosDateVal = biosKey.values['BIOSReleaseDate']
 
-  const manufacturer = mfgMatch  ? mfgMatch[1].trim()  : ''
-  const model        = prodMatch ? prodMatch[1].trim() : ''
-  const biosVersion  = biosMatch ? biosMatch[1].trim() : ''
-  const biosDateRaw  = dateMatch ? dateMatch[1].trim() : ''
-
+  const manufacturer =
+    mfgVal && (mfgVal.type === 'REG_SZ' || mfgVal.type === 'REG_EXPAND_SZ') ? mfgVal.data.trim() : ''
+  const model =
+    prodVal && (prodVal.type === 'REG_SZ' || prodVal.type === 'REG_EXPAND_SZ') ? prodVal.data.trim() : ''
   if (!manufacturer && !model) return null
 
-  // Parse chipset from model using the motherboard database's match patterns
+  let biosVersion: string | null = null
+  if (biosVerVal) {
+    if (biosVerVal.type === 'REG_SZ' || biosVerVal.type === 'REG_EXPAND_SZ') {
+      biosVersion = biosVerVal.data.trim() || null
+    } else if (biosVerVal.type === 'REG_MULTI_SZ' && biosVerVal.data.length) {
+      biosVersion = biosVerVal.data[0].trim() || null
+    }
+  }
+
+  // BIOSReleaseDate is a string like "12/15/2024". Normalise to ISO.
+  let biosDate: string | null = null
+  if (
+    biosDateVal &&
+    (biosDateVal.type === 'REG_SZ' || biosDateVal.type === 'REG_EXPAND_SZ')
+  ) {
+    const m = biosDateVal.data.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (m) {
+      const mm = m[1].padStart(2, '0')
+      const dd = m[2].padStart(2, '0')
+      biosDate = `${m[3]}-${mm}-${dd}`
+    }
+  }
+
   const chipsetEntry = findMotherboardChipset(model)
   const chipset = chipsetEntry?.name ?? null
-
-  // WMI BIOS ReleaseDate format: "20241215000000.000000+000"
-  let biosDate: string | null = null
-  if (biosDateRaw) {
-    const m = biosDateRaw.match(/^(\d{4})(\d{2})(\d{2})/)
-    if (m) biosDate = `${m[1]}-${m[2]}-${m[3]}`
-  }
 
   return {
     manufacturer,
     model,
     chipset,
-    biosVersion: biosVersion || null,
+    biosVersion,
     biosDate,
   }
 }
-
-// ── Scan entry point ───────────────────────────────────────────
 
 export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData>> {
   console.log('[scan:compat] Running VR compatibility checks...')
@@ -328,8 +305,10 @@ export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData
     ])
     const steamvrBranch = detectSteamVrBranch()
 
+    const isLaptop = applyDesktopChipsetOverride(gpuState.isLaptop, motherboard?.chipset ?? null)
+
     console.log(
-      `[scan:compat] hybrid=${gpuState.hasHybridGpu} laptop=${gpuState.isLaptop} ` +
+      `[scan:compat] hybrid=${gpuState.hasHybridGpu} laptop=${isLaptop} ` +
       `HVCI=${coreIsolation.hvciEnabled} VBS=${coreIsolation.vbsRunning} ` +
       `steamvrBranch=${steamvrBranch} installedTools=${installedVrTools.length} ` +
       `chipset=${motherboard?.chipset ?? 'unknown'}`
@@ -339,7 +318,7 @@ export async function scanCompat(): Promise<ScanModuleResult<VrCompatibilityData
       success: true,
       data: {
         hasHybridGpu: gpuState.hasHybridGpu,
-        isLaptop: gpuState.isLaptop,
+        isLaptop,
         hvciEnabled: coreIsolation.hvciEnabled,
         coreIsolationEnabled: coreIsolation.coreIsolationEnabled,
         vbsRunning: coreIsolation.vbsRunning,

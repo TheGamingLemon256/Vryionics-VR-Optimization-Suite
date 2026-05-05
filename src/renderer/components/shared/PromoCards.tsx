@@ -21,7 +21,6 @@ function openExternal(url: string): void {
   }
 }
 
-// ── Individual cards ──────────────────────────────────────────
 
 export function VmscPromoCard({ compact = false }: { compact?: boolean }): React.ReactElement {
   return (
@@ -157,7 +156,6 @@ export function PatreonPromoCard({ compact = false }: { compact?: boolean }): Re
   )
 }
 
-// ── Combined layouts ──────────────────────────────────────────
 
 /**
  * Side-by-side pair for footers of main pages (Dashboard, Executive Summary).

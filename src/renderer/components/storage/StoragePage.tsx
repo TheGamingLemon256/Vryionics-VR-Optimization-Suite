@@ -1,5 +1,3 @@
-// VR Optimization Suite — Storage Cleanup Page
-
 import React from 'react'
 import StorageDebloatPanel from '../summary/StorageDebloatPanel'
 import VRGamesPanel from '../summary/VRGamesPanel'

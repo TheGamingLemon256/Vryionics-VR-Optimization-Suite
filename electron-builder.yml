@@ -34,7 +34,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   artifactName: "Vryionics-VR-Optimization-Suite-Setup-${version}.exe"
-  allowElevation: true
+  allowElevation: false
 asar: true
 extraResources:
   # The app-side .gh-token bundle was used when the repo was private —
@@ -55,12 +55,10 @@ extraResources:
   # credential-stealer heuristics on AV scanners.
   - from: update-server/storage-categories.json
     to: storage-categories.json
-  # PowerShell helper module — contains all the .NET P/Invoke (Add-Type)
-  # blocks. Kept out of the compiled JS bundle so DllImport / kernel32 /
-  # ntdll / advapi32 / atiadlxx import patterns don't appear as embedded
-  # strings inside the Electron main-process binary.
-  - from: update-server/ps-helpers
-    to: ps-helpers
+  # Live Optimizer trigger and allowlist data. Shipped as JSON so the
+  # detection lists can be tweaked without a code change.
+  - from: resources/
+    to: resources/
 publish:
   - provider: github
     owner: TheGamingLemon256

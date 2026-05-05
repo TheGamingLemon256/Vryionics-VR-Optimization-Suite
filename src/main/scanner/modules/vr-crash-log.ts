@@ -18,7 +18,6 @@ const MAX_LOG_BYTES = 2 * 1024 * 1024
 // can produce hundreds of nearly-identical entries.
 const MAX_EVENTS_PER_FILE = 25
 
-// ── Known SteamVR log locations ──────────────────────────────
 
 const STEAM_LOG_CANDIDATES = [
   'C:\\Program Files (x86)\\Steam\\logs',
@@ -34,7 +33,6 @@ const LOG_FILES: Array<{ name: string; source: VrCrashEvent['source'] }> = [
   { name: 'vrmonitor.txt',    source: 'vrmonitor'    },
 ]
 
-// ── Signature matchers ────────────────────────────────────────
 // Ordered by specificity — the first match wins, so put precise codes first.
 
 interface SignatureMatcher {
@@ -85,7 +83,6 @@ function classifyLine(lineLower: string): VrCrashSignature | null {
   return null
 }
 
-// ── Timestamp parsing ────────────────────────────────────────
 //
 // SteamVR log lines typically start with "Tue Apr 15 2025 18:44:02.512" or
 // "Wed Jan 03 2024 09:11:55.200". Date.parse handles that directly on Windows.
@@ -99,7 +96,6 @@ function tryParseTimestamp(line: string, fallbackMs: number): number {
   return Number.isFinite(parsed) ? parsed : fallbackMs
 }
 
-// ── Log directory discovery ──────────────────────────────────
 
 function findSteamLogDir(): string | null {
   for (const p of STEAM_LOG_CANDIDATES) {
@@ -108,7 +104,6 @@ function findSteamLogDir(): string | null {
   return null
 }
 
-// ── Read a single log and extract events ─────────────────────
 
 function scanLogFile(path: string, source: VrCrashEvent['source']): VrCrashEvent[] {
   let size = 0
@@ -165,7 +160,6 @@ function scanLogFile(path: string, source: VrCrashEvent['source']): VrCrashEvent
   return out
 }
 
-// ── Public entrypoint ────────────────────────────────────────
 
 export function scanVrCrashEvents(): VrCrashEvent[] {
   const dir = findSteamLogDir()

@@ -1,10 +1,8 @@
-// VR Optimization Suite — Process Enumeration Utilities
-// See CODING-RULES-DICTIONARY.md Section 13: Process Management
+// Process enumeration. See CODING-RULES-DICTIONARY.md §13.
 
-import { runPowerShellJson, tryRunPowerShell } from './powershell'
+import psList from './ps-list'
 import type { ProcessInfo } from '../scanner/types'
 
-// ── VR Process Classification ────────────────────────────────
 
 /** Processes critical to VR runtime operation */
 export const VR_CRITICAL_PROCESSES = new Set([
@@ -129,40 +127,31 @@ export const VR_SOFTWARE_ECOSYSTEM = {
   ])
 }
 
-// ── Process Enumeration ──────────────────────────────────────
-
-interface RawProcessInfo {
-  Name: string
-  Id: number
-  CPU: number | null
-  WorkingSet64: number
-  HandleCount: number
-  PriorityClass?: string
-  ProcessorAffinity?: number
-}
 
 /**
  * Get all running processes with basic info.
+ *
+ * ps-list on Windows is intentionally minimal: pid, name, ppid only. Memory
+ * usage, handle counts, CPU% and priority are not exposed. Rules that depend
+ * on ramMB / handles will see zero — preferable to keeping a Get-Process
+ * fallback that doubles process-enumeration latency on every scan.
  */
 export async function enumerateProcesses(): Promise<ProcessInfo[]> {
-  const script = `
-Get-Process | Select-Object Name, Id, CPU, WorkingSet64, HandleCount | ConvertTo-Json -Compress
-`
   try {
-    const raw = await runPowerShellJson<RawProcessInfo[]>(script)
-    const processes = Array.isArray(raw) ? raw : [raw]
-
-    return processes.map((p) => ({
-      name: p.Name?.toLowerCase() ?? '',
-      pid: p.Id ?? 0,
-      cpuPercent: 0, // CPU% requires sampling over time, not available in snapshot
-      ramMB: Math.round((p.WorkingSet64 ?? 0) / 1024 / 1024),
-      gpuIndex: null,
-      affinity: 0,
-      priority: 'Normal',
-      handles: p.HandleCount ?? 0,
-      gdiObjects: null
-    }))
+    const procs = await psList()
+    return procs.map((p) => {
+      return {
+        name: (p.name ?? '').toLowerCase(),
+        pid: p.pid ?? 0,
+        cpuPercent: 0,
+        ramMB: 0,
+        gpuIndex: null,
+        affinity: 0,
+        priority: 'Normal',
+        handles: 0,
+        gdiObjects: null,
+      }
+    })
   } catch (error) {
     console.error('[utils:process] Failed to enumerate processes:', (error as Error).message)
     return []

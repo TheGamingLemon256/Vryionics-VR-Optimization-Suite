@@ -31,7 +31,6 @@ interface TableEntry {
 }
 
 const TABLE: TableEntry[] = [
-  // ── Chipset ─────────────────────────────────────────────────
   {
     category: 'chipset', vendor: 'AMD', match: /.*/,
     link: {
@@ -47,7 +46,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── USB Controllers ─────────────────────────────────────────
   {
     category: 'usb', vendor: 'Intel', match: /.*/,
     link: {
@@ -91,7 +89,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── Audio ───────────────────────────────────────────────────
   {
     category: 'audio', match: /realtek/i,
     link: {
@@ -121,7 +118,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── Ethernet ────────────────────────────────────────────────
   {
     category: 'ethernet', vendor: 'Intel', match: /i2[235]\d|i3\d{2}|i21\d|i210|82\d{3}/i,
     link: {
@@ -158,7 +154,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── Wi-Fi ───────────────────────────────────────────────────
   {
     category: 'wifi', vendor: 'Intel', match: /be\s*20\d|ax21\d|ax20\d|ax41\d|ax16\d|wi-?fi\s*[67]/i,
     link: {
@@ -202,7 +197,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── Bluetooth ───────────────────────────────────────────────
   {
     category: 'bluetooth', vendor: 'Intel', match: /.*/,
     link: {
@@ -239,37 +233,6 @@ const TABLE: TableEntry[] = [
     },
   },
 
-  // ── Storage / HDC ───────────────────────────────────────────
-  {
-    category: 'storage', vendor: 'Intel', match: /rapid\s*storage|rst|vmd/i,
-    link: {
-      label: 'Intel Rapid Storage Technology (RST) / VMD',
-      url: 'https://www.intel.com/content/www/us/en/download/19512/intel-rapid-storage-technology-user-interface-and-driver.html',
-    },
-  },
-  {
-    category: 'storage', vendor: 'AMD', match: /raid|sata/i,
-    link: {
-      label: 'AMD RAID / SATA Controller (AMD Chipset package)',
-      url: 'https://www.amd.com/en/support/chipsets',
-    },
-  },
-  {
-    category: 'storage', match: /samsung.*nvme|samsung\s*(m\.2|ssd)/i,
-    link: {
-      label: 'Samsung NVMe Driver',
-      url: 'https://semiconductor.samsung.com/consumer-storage/support/tools/',
-    },
-  },
-  {
-    category: 'storage', match: /.*/,
-    link: {
-      label: 'Windows Update Catalog (Storage Controllers)',
-      url: 'https://www.catalog.update.microsoft.com/Search.aspx?q=Storage+Controller',
-    },
-  },
-
-  // ── GPU (fallback only — live sources are preferred) ────────
   {
     category: 'gpu', vendor: 'NVIDIA', match: /.*/,
     link: {

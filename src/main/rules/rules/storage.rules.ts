@@ -1,5 +1,3 @@
-// VR Optimization Suite — Storage Diagnostic Rules
-
 import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 

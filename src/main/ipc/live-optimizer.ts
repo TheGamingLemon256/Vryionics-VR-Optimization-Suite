@@ -1,119 +1,141 @@
-// VR Optimization Suite — Live Optimizer IPC Handlers
-
-import { ipcMain, app, BrowserWindow } from 'electron'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import type { LiveOptimizerConfig } from '../live-optimizer/types'
-import { DEFAULT_CONFIG } from '../live-optimizer/types'
+import { ipcMain, app, shell, BrowserWindow } from 'electron'
+import { promises as fs } from 'node:fs'
+import { join } from 'node:path'
+import { log } from '../logger'
+import { start, stop, isRunning, getStatus } from '../live-optimizer/optimizer'
+import * as activity from '../live-optimizer/activity-log'
 import {
-  startMonitoring, stopMonitoring, getStatus, updateConfig, forceOptimize, restore
-} from '../live-optimizer/optimizer'
-import {
-  startAutoEnableWatcher, stopAutoEnableWatcher, clearAutoEnableOwnership,
+  startAutoEnableWatcher, clearAutoEnableOwnership,
 } from '../live-optimizer/auto-enable'
 
-function getConfigPath(): string {
-  return join(app.getPath('userData'), 'liveopt-config.json')
+// extraResources lands files at process.resourcesPath/resources/ in production.
+// In dev they sit at the project root under resources/.
+const RESOURCE_DIR = process.env.NODE_ENV === 'development'
+  ? join(process.cwd(), 'resources')
+  : join(process.resourcesPath, 'resources')
+
+interface PersistedFlags {
+  enabled: boolean
+  disclosureAccepted: boolean
+  autoEnableOnVrDetected: boolean
 }
 
-function loadConfig(): LiveOptimizerConfig {
+const DEFAULT_FLAGS: PersistedFlags = {
+  enabled: false,
+  disclosureAccepted: false,
+  autoEnableOnVrDetected: true,
+}
+
+function flagsPath(): string {
+  return join(app.getPath('userData'), 'live-optimizer-flags.json')
+}
+
+async function loadFlags(): Promise<PersistedFlags> {
   try {
-    const raw = readFileSync(getConfigPath(), 'utf8')
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as LiveOptimizerConfig
+    const raw = await fs.readFile(flagsPath(), 'utf8')
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') {
+      return { ...DEFAULT_FLAGS, ...(parsed as Partial<PersistedFlags>) }
+    }
+    return { ...DEFAULT_FLAGS }
   } catch {
-    return { ...DEFAULT_CONFIG }
+    return { ...DEFAULT_FLAGS }
   }
 }
 
-function saveConfig(config: LiveOptimizerConfig): void {
+async function saveFlags(flags: PersistedFlags): Promise<void> {
   try {
-    writeFileSync(getConfigPath(), JSON.stringify(config, null, 2), 'utf8')
-  } catch { /* ignore */ }
+    await fs.writeFile(flagsPath(), JSON.stringify(flags, null, 2), 'utf8')
+  } catch (err: unknown) {
+    log.warn('liveopt:ipc', `failed to persist flags: ${(err as Error).message}`)
+  }
 }
 
 export function registerLiveOptimizerHandlers(mainWindow: BrowserWindow): void {
-  // Status push to renderer
-  const pushStatus = () => {
+  const pushStatus = (): void => {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send('liveopt:statusUpdate', getStatus())
     }
   }
 
-  // Load saved config and auto-start if enabled
-  const savedConfig = loadConfig()
-  console.log(`[liveopt:init] Config loaded — enabled=${savedConfig.enabled} autoEnable=${savedConfig.autoEnableOnVrDetected}`)
-  if (savedConfig.enabled) {
-    console.log('[liveopt:init] Auto-starting monitoring (was enabled at last shutdown)')
-    startMonitoring(savedConfig, pushStatus)
-  }
+  // Resume on launch only when the user previously enabled AND accepted the
+  // disclosure. The disclosure check is belt-and-suspenders; you can't reach
+  // enabled=true without accepting, but it makes the invariant explicit.
+  void (async (): Promise<void> => {
+    const flags = await loadFlags()
+    if (flags.enabled && flags.disclosureAccepted) {
+      log.info('liveopt:ipc', 'resuming optimizer (enabled at last shutdown)')
+      await start(pushStatus)
+    }
+  })()
 
-  // Background watcher: flip the optimizer on/off automatically as VR
-  // sessions begin and end. Hooks read live config every poll so changes
-  // to autoEnableOnVrDetected take effect without restarting the watcher.
   startAutoEnableWatcher({
-    shouldRun: () => loadConfig().autoEnableOnVrDetected !== false,
-    isOptimizerOn: () => getStatus().phase !== 'disabled',
+    shouldRun: () => true,
+    isOptimizerOn: () => isRunning(),
     enable: () => {
-      const cfg = loadConfig()
-      const updated = { ...cfg, enabled: true }
-      saveConfig(updated)
-      startMonitoring(updated, pushStatus)
-      pushStatus()
+      void (async (): Promise<void> => {
+        const flags = await loadFlags()
+        if (!flags.autoEnableOnVrDetected) return
+        if (!flags.disclosureAccepted) return
+        await saveFlags({ ...flags, enabled: true })
+        await start(pushStatus)
+        pushStatus()
+      })()
     },
-    disable: async () => {
-      const cfg = loadConfig()
-      const updated = { ...cfg, enabled: false }
-      saveConfig(updated)
-      try { await restore() } catch { /* ignore */ }
-      stopMonitoring()
-      pushStatus()
+    disable: () => {
+      void (async (): Promise<void> => {
+        const flags = await loadFlags()
+        await saveFlags({ ...flags, enabled: false })
+        await stop()
+        pushStatus()
+      })()
     },
   })
 
-  ipcMain.handle('liveopt:getStatus', () => getStatus())
+  ipcMain.handle('liveopt:status', () => ({
+    running: isRunning(),
+    status: getStatus(),
+  }))
 
-  ipcMain.handle('liveopt:getConfig', () => loadConfig())
-
-  ipcMain.handle('liveopt:setConfig', (_event, config: LiveOptimizerConfig) => {
-    console.log(`[liveopt:setConfig] Updating config — enabled=${config.enabled}`)
-    saveConfig(config)
-    updateConfig(config)
-  })
-
-  ipcMain.handle('liveopt:enable', () => {
-    console.log('[liveopt:enable] Enabling live optimizer')
-    const config = loadConfig()
-    const updated = { ...config, enabled: true }
-    saveConfig(updated)
-    startMonitoring(updated, pushStatus)
+  ipcMain.handle('liveopt:enable', async () => {
+    const flags = await loadFlags()
+    if (!flags.disclosureAccepted) {
+      throw new Error('disclosure must be accepted before enabling')
+    }
+    await saveFlags({ ...flags, enabled: true })
+    await start(pushStatus)
+    pushStatus()
   })
 
   ipcMain.handle('liveopt:disable', async () => {
-    console.log('[liveopt:disable] Disabling live optimizer — restoring settings')
-    const config = loadConfig()
-    const updated = { ...config, enabled: false }
-    saveConfig(updated)
-    await restore()
-    stopMonitoring()
-    // User explicitly disabled — clear watcher's "we own this" flag so the
-    // next VR detection doesn't immediately flip it back on against their
-    // intent. Watcher resumes auto-enable on the NEXT VR session.
+    const flags = await loadFlags()
+    await saveFlags({ ...flags, enabled: false })
+    await stop()
+    // The watcher will otherwise re-enable on the next poll. Reset its
+    // ownership flag so a manual disable sticks until the user re-enables.
     clearAutoEnableOwnership()
-    console.log('[liveopt:disable] Live optimizer stopped')
+    pushStatus()
   })
 
-  ipcMain.handle('liveopt:forceOptimize', async () => {
-    console.log('[liveopt:forceOptimize] Forcing manual optimization pass')
-    const config = loadConfig()
-    await forceOptimize(config)
-    pushStatus()
-    console.log('[liveopt:forceOptimize] Done')
+  ipcMain.handle('liveopt:getFlags', () => loadFlags())
+
+  ipcMain.handle('liveopt:setDisclosureAccepted', async (_e, accepted: boolean) => {
+    const flags = await loadFlags()
+    await saveFlags({ ...flags, disclosureAccepted: !!accepted })
   })
 
-  ipcMain.handle('liveopt:restore', async () => {
-    console.log('[liveopt:restore] Restoring pre-optimization settings')
-    await restore()
-    pushStatus()
-    console.log('[liveopt:restore] Restore complete')
+  ipcMain.handle('liveopt:setAutoEnable', async (_e, value: boolean) => {
+    const flags = await loadFlags()
+    await saveFlags({ ...flags, autoEnableOnVrDetected: !!value })
   })
+
+  ipcMain.handle('liveopt:openTriggerFile', () =>
+    shell.openPath(join(RESOURCE_DIR, 'live-optimizer-triggers.json')),
+  )
+
+  ipcMain.handle('liveopt:openAllowlistFile', () =>
+    shell.openPath(join(RESOURCE_DIR, 'live-optimizer-allowlist.json')),
+  )
+
+  ipcMain.handle('liveopt:readActivityLog', () => activity.loadRecent())
 }

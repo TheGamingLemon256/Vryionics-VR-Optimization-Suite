@@ -27,7 +27,6 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB cap before rotate
 const MAX_RING = 2000                   // lines held in memory
 const RETENTION_DAYS = 7                // keep a week of daily files
 
-// ── State ────────────────────────────────────────────────────
 const ring: string[] = []
 let logDir: string | null = null
 let currentFile: string | null = null
@@ -35,7 +34,6 @@ let currentDateKey: string | null = null
 let writeStream: fs.WriteStream | null = null
 let initFailed = false
 
-// ── Helpers ──────────────────────────────────────────────────
 
 function dateKey(d = new Date()): string {
   // YYYY-MM-DD — local time is fine for log rotation keys
@@ -156,7 +154,6 @@ function emit(level: LogLevel, namespace: string, args: unknown[]): void {
   sink(line)
 }
 
-// ── Public API ───────────────────────────────────────────────
 
 export const log = {
   debug: (namespace: string, ...args: unknown[]): void => emit('debug', namespace, args),

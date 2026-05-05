@@ -31,10 +31,13 @@ export const networkRules: Rule[] = [
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.network?.wifi) return null
       const signal = data.network.wifi.signalStrength
-      if (signal === null || signal >= 65) return null
+      // Raised threshold: only flag when actually weak. Most consumer adapters
+      // report 50-65 % at normal household distance and the previous bar fired
+      // way too eagerly.
+      if (signal === null || signal >= 50) return null
       return {
         ruleId: 'wifi-signal-weak',
-        severity: signal < 40 ? 'critical' : 'warning',
+        severity: signal < 30 ? 'critical' : 'warning',
         category: 'network',
         explanation: {
           simple: `Your headset's Wi-Fi signal strength is only ${signal}%. A weak signal causes packet drops that appear as visual glitches and freezes in wireless VR. Move your router closer to your play space, or reduce obstacles between them.`,
@@ -55,7 +58,7 @@ export const networkRules: Rule[] = [
       const myChannel = data.network.wifi.channel
       if (!myChannel) return null
       const competing = nearby.filter((n) => Math.abs(n.channel - myChannel) <= 2).length
-      if (competing < 3) return null
+      if (competing < 5) return null
       return {
         ruleId: 'wifi-channel-congested',
         severity: 'warning',
@@ -75,10 +78,13 @@ export const networkRules: Rule[] = [
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.network?.wifi) return null
       const linkSpeed = data.network.wifi.linkSpeed
-      if (!linkSpeed || linkSpeed >= 866) return null
+      // Raised: 866 was the Wi-Fi 5 2x2 ideal but plenty of usable VR setups
+      // negotiate around 600 Mbps and don't actually struggle. Only flag when
+      // the link is really constrained.
+      if (!linkSpeed || linkSpeed >= 600) return null
       return {
         ruleId: 'wifi-link-speed-low',
-        severity: linkSpeed < 433 ? 'critical' : 'warning',
+        severity: linkSpeed < 300 ? 'critical' : 'warning',
         category: 'network',
         explanation: {
           simple: `Your Wi-Fi connection speed is ${linkSpeed} Mbps — VR streaming needs at least 866 Mbps (Wi-Fi 5 on 5GHz). This limits the quality and smoothness of wireless VR. Upgrade to a Wi-Fi 6 or Wi-Fi 6E router.`,
@@ -100,10 +106,9 @@ export const networkRules: Rule[] = [
         severity: 'warning',
         category: 'network',
         explanation: {
-          simple: 'Your Wi-Fi adapter is in power-saving mode, which makes it "doze off" between packets to save battery. For wireless VR, this adds unpredictable delays. Disable it for a smoother experience.',
-          advanced: `Wi-Fi adapter power saving mode is enabled. Power management causes the adapter to enter low-power states between packet bursts, adding 10-50ms wake-up latency. For wireless VR, every packet must be received without delay. Disable via Device Manager → Wi-Fi adapter → Properties → Power Management → uncheck "Allow the computer to turn off this device to save power". Also set Wi-Fi adapter to Maximum Performance in Power Plan advanced settings.`
-        },
-        fixId: 'fix-wifi-power-saving'
+          simple: 'Your Wi-Fi adapter is in power-saving mode, which makes it doze briefly between packet bursts. For wireless VR that produces occasional 10-50ms wake-up spikes that show up as glitches in Virtual Desktop or AirLink. The toggle lives in Device Manager → your Wi-Fi adapter → Properties → Power Management. Changing it touches a system-wide adapter setting, so VOS no longer applies it automatically.',
+          advanced: 'Wi-Fi adapter has its PnPCapabilities power-management bit enabled. Between packet bursts the radio drops into a low-power state and pays a 10-50ms wake-up cost on the next packet, which is visible as jitter on VR streaming codecs. The fix is uncheck "Allow the computer to turn off this device to save power" in Device Manager, or write PnPCapabilities = 0x18 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}\\<adapter-id>. Both paths require admin and modify a class-driver setting that survives reboot, which is outside the safe-by-default scope; the recommended setting is also worth pairing with Power Plan -> Wireless Adapter Settings -> Maximum Performance.'
+        }
       }
     }
   },
@@ -115,10 +120,13 @@ export const networkRules: Rule[] = [
     evaluate: (data: ScanData): RuleResult | null => {
       if (!data.network) return null
       const latency = data.network.latency.gateway
-      if (!latency || latency <= 8) return null
+      // Raised: many consumer routers idle around 5-12ms gateway ping and the
+      // previous >8ms bar tripped on healthy networks. Real wireless-VR
+      // trouble starts higher.
+      if (!latency || latency <= 15) return null
       return {
         ruleId: 'network-gateway-latency',
-        severity: latency > 20 ? 'critical' : 'warning',
+        severity: latency > 35 ? 'critical' : 'warning',
         category: 'network',
         explanation: {
           simple: `Your connection to the Wi-Fi router has ${latency}ms of delay. For wireless VR, you want this under 5ms. High router latency means your head movements don't appear on screen fast enough, causing motion sickness.`,
@@ -170,7 +178,6 @@ export const networkRules: Rule[] = [
     }
   },
 
-  // ── Wi-Fi chipset quality for wireless VR ─────────────────────
   // Only fires when the user's connection archetype is wifi-wireless.
   // Rates the active Wi-Fi adapter by its chipset and nudges Realtek /
   // Broadcom users toward Intel / Qualcomm for better sustained throughput.

@@ -1,5 +1,3 @@
-// VR Optimization Suite — Scan Reports Log IPC Handlers
-
 import { ipcMain, app } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'

@@ -11,8 +11,7 @@ import { registerLiveOptimizerHandlers } from './ipc/live-optimizer'
 import { registerReportsHandlers } from './ipc/reports'
 import { registerMetricsHandlers } from './ipc/metrics'
 import { registerSupportHandlers } from './ipc/support'
-import { stopMonitoring, restore as restoreOptimizer } from './live-optimizer/optimizer'
-import { recoverStoppedServices } from './live-optimizer/service-recovery'
+import { stop as stopOptimizer } from './live-optimizer/optimizer'
 import { AutoUpdater } from './updater'
 import { log, installGlobalErrorHandlers, logFromRenderer, getCurrentLogFile, getLogDir } from './logger'
 import { driverUpdater } from './drivers/updater'
@@ -21,6 +20,7 @@ import { registerSessionHandlers } from './ipc/sessions'
 import * as sessionRecorder from './session-recorder'
 import { initTray, destroyTray } from './tray'
 import { startScheduler, getSchedulerConfig, setSchedulerConfig } from './scheduler'
+import { isHttpsUrl } from './utils/url-guard'
 import { exportProfile, importProfileFromDisk } from './profile-export'
 
 let mainWindow: BrowserWindow | null = null
@@ -58,7 +58,7 @@ function createOverlayWindow(): void {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -88,7 +88,7 @@ function createWindow(): void {
     backgroundColor: '#0a0a14',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -107,7 +107,11 @@ function createWindow(): void {
   // below still awaits service restoration before the process exits.
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (isHttpsUrl(details.url)) {
+      shell.openExternal(details.url)
+    } else {
+      console.warn(`[mainWindow] blocked window-open to non-https URL: ${details.url}`)
+    }
     return { action: 'deny' }
   })
 
@@ -118,13 +122,11 @@ function createWindow(): void {
   }
 }
 
-// ── IPC Handlers ──────────────────────────────────────────────
 
 function registerBaseHandlers(): void {
   ipcMain.handle('app:getVersion', () => app.getVersion())
   ipcMain.handle('app:isDevBuild', () => is.dev)
 
-  // ── Logging bridge (renderer → main log) ──────────────────
   // Lets the renderer forward console output + uncaught errors into the
   // unified log file, so bug reports contain both process sides together.
   ipcMain.handle('log:write', (_e, level: string, namespace: string, message: string) => {
@@ -152,7 +154,6 @@ function registerBaseHandlers(): void {
   })
 }
 
-// ── Auto-Updater ──────────────────────────────────────────────
 
 const updater = new AutoUpdater()
 
@@ -167,7 +168,6 @@ function registerUpdaterHandlers(): void {
   ipcMain.handle('updater:status', () => updater.getStatus())
 }
 
-// ── App Lifecycle ─────────────────────────────────────────────
 
 app.whenReady().then(() => {
   // Install global error handlers + open the log file FIRST so everything
@@ -176,17 +176,41 @@ app.whenReady().then(() => {
   log.info('app', `Vryionics VR Optimization Suite v${app.getVersion()} starting`)
   log.info('app', `Platform: ${process.platform} ${process.arch} | Electron: ${process.versions.electron} | Node: ${process.versions.node}`)
 
-  // CRITICAL safety net: if the previous session ended without a clean
-  // restore (crash, force-quit, OS shutdown), Live Optimizer may have left
-  // services like Audio / Search / Print Spooler stopped, leaving the
-  // user's desktop in a broken state. Reconcile pending services BEFORE
-  // anything else starts.
-  recoverStoppedServices().catch((err) => log.warn('app', 'Service recovery threw:', err as Error))
+  // The new optimizer never stops Windows services, so the v0.2.8
+  // service-recovery shim is no longer needed. Crash recovery now lives in
+  // optimizer.start() and only restores priorities, which is bounded and
+  // self-contained.
 
   electronApp.setAppUserModelId('com.vryionics.vr-optimization-suite')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // Lock down navigation across every webContents the app creates. Without
+  // this, a renderer could navigate to about:blank or a remote origin and
+  // we'd lose the contextIsolation + preload-only-API guarantee. Same hook
+  // also catches new-window attempts on the overlay window which doesn't
+  // wire its own setWindowOpenHandler.
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-navigate', (e, navUrl) => {
+      // Allow only the local file load and the dev server URL.
+      const allowedDevUrl = process.env['ELECTRON_RENDERER_URL']
+      const isLocalFile = navUrl.startsWith('file://')
+      const isDevUrl = !!allowedDevUrl && navUrl.startsWith(allowedDevUrl)
+      if (!isLocalFile && !isDevUrl) {
+        console.warn(`[web-contents] blocked navigation to ${navUrl}`)
+        e.preventDefault()
+      }
+    })
+    contents.setWindowOpenHandler((details) => {
+      if (isHttpsUrl(details.url)) {
+        shell.openExternal(details.url)
+      } else {
+        console.warn(`[web-contents] blocked window-open to ${details.url}`)
+      }
+      return { action: 'deny' }
+    })
   })
 
   registerBaseHandlers()
@@ -275,9 +299,8 @@ app.on('will-quit', (e) => {
   e.preventDefault()
   log.info('app', 'Will-quit: restoring optimizer state before exit...')
   const cleanup = (async (): Promise<void> => {
-    try { await Promise.race([restoreOptimizer(), new Promise((res) => setTimeout(res, 10_000))]) } catch { /* ignore */ }
-    stopMonitoring()
-    log.info('app', 'Cleanup complete — quitting')
+    try { await Promise.race([stopOptimizer(), new Promise((res) => setTimeout(res, 10_000))]) } catch { /* ignore */ }
+    log.info('app', 'Cleanup complete - quitting')
     app.exit(0)
   })()
   void cleanup

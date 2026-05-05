@@ -1,10 +1,18 @@
-// VR Optimization Suite — Windows Registry Utilities
-// See CODING-RULES-DICTIONARY.md Section 9: Windows Registry Access
-
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 
 export type RegistryHive = 'HKLM' | 'HKCU' | 'HKCR' | 'HKU' | 'HKCC'
 export type RegistryType = 'REG_SZ' | 'REG_DWORD' | 'REG_QWORD' | 'REG_EXPAND_SZ' | 'REG_MULTI_SZ' | 'REG_BINARY'
+
+// reg.exe accepts the short HKLM/HKCU/etc. forms as input but always echoes
+// the long HKEY_LOCAL_MACHINE/HKEY_CURRENT_USER/etc. forms in its stdout.
+// Anything that compares output lines against the input prefix has to expand.
+export const HIVE_LONG_FORM: Record<RegistryHive, string> = {
+  HKLM: 'HKEY_LOCAL_MACHINE',
+  HKCU: 'HKEY_CURRENT_USER',
+  HKCR: 'HKEY_CLASSES_ROOT',
+  HKU:  'HKEY_USERS',
+  HKCC: 'HKEY_CURRENT_CONFIG',
+}
 
 export interface RegistryValue {
   name: string
@@ -12,14 +20,15 @@ export interface RegistryValue {
   data: string
 }
 
-/**
- * Read a single registry value.
- * Returns null if the key/value doesn't exist or access is denied.
- */
+// reg.exe receives each token as a separate argv element, so cmd.exe is never
+// involved in parsing the path or value name. Quoting and shell metacharacters
+// in user-derived input become inert.
+const REG_EXEC_OPTS = { encoding: 'utf8' as const, timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] as const }
+
+/** Returns null if the key/value doesn't exist or access is denied. */
 export function readRegistry(hive: RegistryHive, path: string, name: string): string | null {
   try {
-    const cmd = `reg query "${hive}\\${path}" /v "${name}"`
-    const output = execSync(cmd, { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
+    const output = execFileSync('reg', ['query', `${hive}\\${path}`, '/v', name], REG_EXEC_OPTS)
     const match = output.match(/REG_(SZ|DWORD|QWORD|EXPAND_SZ|MULTI_SZ|BINARY)\s+(.+)/i)
     return match ? match[2].trim() : null
   } catch {
@@ -34,19 +43,13 @@ export function readRegistry(hive: RegistryHive, path: string, name: string): st
 export function readRegistryDword(hive: RegistryHive, path: string, name: string): number | null {
   const raw = readRegistry(hive, path, name)
   if (raw === null) return null
-  // Parse hex (0x...) or decimal
   const num = raw.startsWith('0x') ? parseInt(raw, 16) : parseInt(raw, 10)
   return isNaN(num) ? null : num
 }
 
-/**
- * Enumerate all values under a registry key.
- * Returns an array of {name, type, data} objects.
- */
 export function enumerateRegistryValues(hive: RegistryHive, path: string): RegistryValue[] {
   try {
-    const cmd = `reg query "${hive}\\${path}"`
-    const output = execSync(cmd, { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
+    const output = execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
     const results: RegistryValue[] = []
     const lines = output.split('\n')
 
@@ -68,20 +71,17 @@ export function enumerateRegistryValues(hive: RegistryHive, path: string): Regis
   }
 }
 
-/**
- * Enumerate subkey names under a registry key.
- */
 export function enumerateRegistrySubkeys(hive: RegistryHive, path: string): string[] {
   try {
-    const cmd = `reg query "${hive}\\${path}"`
-    const output = execSync(cmd, { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
-    const fullPath = `${hive}\\${path}\\`
+    const output = execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
+    // reg query output uses the long-form hive prefix even when we passed the
+    // short one. Compare against that.
+    const fullPath = `${HIVE_LONG_FORM[hive]}\\${path}\\`
     const subkeys: string[] = []
 
     for (const line of output.split('\n')) {
       const trimmed = line.trim()
       if (trimmed.startsWith(fullPath)) {
-        // Extract just the subkey name (last segment after the parent path)
         const subkeyName = trimmed.slice(fullPath.length)
         if (subkeyName && !subkeyName.includes('\\')) {
           subkeys.push(subkeyName)
@@ -95,23 +95,16 @@ export function enumerateRegistrySubkeys(hive: RegistryHive, path: string): stri
   }
 }
 
-/**
- * Check if a registry key exists.
- */
 export function registryKeyExists(hive: RegistryHive, path: string): boolean {
   try {
-    execSync(`reg query "${hive}\\${path}"`, {
-      encoding: 'utf8',
-      timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
+    execFileSync('reg', ['query', `${hive}\\${path}`], REG_EXEC_OPTS)
     return true
   } catch {
     return false
   }
 }
 
-// ── Common VR Registry Paths ─────────────────────────────────
+// Common VR registry paths consumed by the scanner and fix modules.
 
 export const VR_REGISTRY_PATHS = {
   mmcss: {

@@ -9,9 +9,11 @@
 //  3. Registry presence   — Oculus device registry, SteamVR device list
 //  4. App config files    — Virtual Desktop streamer config, ALVR session config
 
-import { tryRunPowerShell } from '../../utils/powershell'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { enumerateProcesses } from '../../utils/process'
+import { readKey } from '../../utils/registry-read'
+import { enumerateRegistrySubkeys } from '../../utils/registry'
 import type {
   ScanModuleResult,
   HeadsetConnectionData,
@@ -20,7 +22,6 @@ import type {
   VrConflictEntry,
 } from '../types'
 
-// ── Known VR Process Signatures ───────────────────────────────
 
 // Maps process name → what it means (in priority order)
 const VR_PROCESS_MAP: Record<string, { method: HeadsetConnectionMethod; label: string }> = {
@@ -92,7 +93,6 @@ const VR_PROCESS_MAP: Record<string, { method: HeadsetConnectionMethod; label: s
   'iVRyServer':   { method: 'alvr', label: 'iVRy Server (iPhone as VR HMD)' },
 }
 
-// ── VR Companion Apps (overlays, dashboards, tools) ───────────
 // These are NOT connection methods, but ARE relevant context — they reveal
 // what the user has running alongside VR. Detected separately so rules can
 // reason about them independently.
@@ -133,7 +133,6 @@ const VR_COMPANION_SIGNATURES: Array<{ process: string; label: string; category:
   { process: 'OyasumiVR',          label: 'Oyasumi VR',                   category: 'utility' },
 ]
 
-// ── Known overlay-conflict processes (CRASH RISK) ─────────────
 // These hook into the DirectX presentation path — SteamVR also controls that
 // path and reacts badly. Proactively warning the user beats triaging an
 // Error 306 / 0xc0000409 crash after the fact.
@@ -189,7 +188,6 @@ const CONFLICT_SIGNATURES: Array<{ process: string; label: string; severity: 'wa
   },
 ]
 
-// ── USB Device VR Signatures ──────────────────────────────────
 
 const VR_USB_SIGNATURES = [
   // Meta Quest (appears as Android composite device)
@@ -210,7 +208,6 @@ const VR_USB_SIGNATURES = [
   { pattern: /Bigscreen Beyond/i, device: 'Bigscreen Beyond' },
 ]
 
-// ── USB Controller Quality Check ──────────────────────────────
 
 const USB_CONTROLLER_QUALITY: Record<string, { gen: string; good: boolean }> = {
   'ASMedia': { gen: '3.1/3.2', good: true },
@@ -221,120 +218,122 @@ const USB_CONTROLLER_QUALITY: Record<string, { gen: string; good: boolean }> = {
   'Fresco Logic': { gen: '3.0', good: true },
 }
 
-// ── Helpers ───────────────────────────────────────────────────
 
-async function getRunningVrProcesses(): Promise<string[]> {
-  const out = await tryRunPowerShell(`
-$names = @(${Object.keys(VR_PROCESS_MAP).map((n) => `'${n}'`).join(',')})
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $names -contains $_.Name } |
-  Select-Object -ExpandProperty Name | Sort-Object -Unique | ConvertTo-Json -Compress
-`, 8000)
-  if (!out || !out.trim()) return []
-  try {
-    const parsed = JSON.parse(out)
-    return Array.isArray(parsed) ? parsed : [String(parsed)]
-  } catch { return [] }
+/**
+ * Match a running-process name list against a set of canonical signatures.
+ * enumerateProcesses normalises to lowercase and strips no extension, so we
+ * compare against lowercased signatures.
+ */
+function matchProcesses(running: Set<string>, candidates: string[]): string[] {
+  const hits: string[] = []
+  for (const c of candidates) {
+    const lowered = c.toLowerCase()
+    if (running.has(lowered) || running.has(`${lowered}.exe`)) hits.push(c)
+  }
+  return hits
 }
 
-/** Detect VR companion apps (overlays, tracking, haptics) currently running. */
-async function getRunningCompanionApps(): Promise<VrCompanionEntry[]> {
-  const names = VR_COMPANION_SIGNATURES.map((s) => s.process)
-  const out = await tryRunPowerShell(`
-$names = @(${names.map((n) => `'${n}'`).join(',')})
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $names -contains $_.Name } |
-  Select-Object -ExpandProperty Name | Sort-Object -Unique | ConvertTo-Json -Compress
-`, 8000)
-  if (!out || !out.trim()) return []
-  try {
-    const parsed = JSON.parse(out)
-    const running: string[] = Array.isArray(parsed) ? parsed : [String(parsed)]
-    const runningLower = new Set(running.map((r) => r.toLowerCase()))
-    return VR_COMPANION_SIGNATURES
-      .filter((s) => runningLower.has(s.process.toLowerCase()))
-      .map((s) => ({ process: s.process, label: s.label, category: s.category }))
-  } catch { return [] }
+function getRunningVrProcesses(running: Set<string>): string[] {
+  return matchProcesses(running, Object.keys(VR_PROCESS_MAP))
+}
+
+function getRunningCompanionApps(running: Set<string>): VrCompanionEntry[] {
+  return VR_COMPANION_SIGNATURES
+    .filter(s => running.has(s.process.toLowerCase()) || running.has(`${s.process.toLowerCase()}.exe`))
+    .map(s => ({ process: s.process, label: s.label, category: s.category }))
 }
 
 /**
- * Detect known SteamVR-conflicting processes currently running.
- *
- * Uses a case-insensitive prefix match so we catch "RTSS", "RTSSHooksLoader64",
- * "MSIAfterburner" and its helper "AfterburnerBoost" etc — without needing an
- * exhaustive list of every helper process each tool spawns.
+ * Detect known SteamVR-conflicting processes currently running. We prefix-match
+ * because tools like RTSS spawn helper processes (RTSSHooksLoader64) and we
+ * want to catch the whole family without enumerating every variant.
  */
-async function getActiveConflicts(): Promise<VrConflictEntry[]> {
-  const patterns = CONFLICT_SIGNATURES.map((s) => s.process)
-  const out = await tryRunPowerShell(`
-$patterns = @(${patterns.map((p) => `'${p}'`).join(',')})
-Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
-  $name = $_.Name
-  foreach ($p in $patterns) {
-    if ($name -like "$p*") { $name; break }
-  }
-} | Sort-Object -Unique | ConvertTo-Json -Compress
-`, 8000)
-  if (!out || !out.trim()) return []
-  try {
-    const parsed = JSON.parse(out)
-    const running: string[] = Array.isArray(parsed) ? parsed : [String(parsed)]
-    const hits: VrConflictEntry[] = []
-    for (const sig of CONFLICT_SIGNATURES) {
-      // Match if any running process starts with the signature's base name
-      const hit = running.some((r) => r.toLowerCase().startsWith(sig.process.toLowerCase()))
-      if (hit) {
-        hits.push({
-          process: sig.process,
-          label: sig.label,
-          severity: sig.severity,
-          reason: sig.reason,
-          solution: sig.solution,
-        })
-      }
+function getActiveConflicts(running: Set<string>): VrConflictEntry[] {
+  const hits: VrConflictEntry[] = []
+  for (const sig of CONFLICT_SIGNATURES) {
+    const prefix = sig.process.toLowerCase()
+    let matched = false
+    for (const r of running) {
+      if (r.startsWith(prefix)) { matched = true; break }
     }
-    return hits
-  } catch { return [] }
+    if (matched) {
+      hits.push({
+        process: sig.process,
+        label: sig.label,
+        severity: sig.severity,
+        reason: sig.reason,
+        solution: sig.solution,
+      })
+    }
+  }
+  return hits
 }
 
-async function getUsbVrDevices(): Promise<{ name: string; instanceId: string }[]> {
-  const out = await tryRunPowerShell(`
-Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
-  Where-Object { $_.FriendlyName -match 'Oculus|Meta Quest|Vive|Index|Pico|Pimax|Mixed Reality|PSVR|Bigscreen|Holographic' } |
-  Select-Object FriendlyName, InstanceId |
-  ConvertTo-Json -Compress
-`, 10000)
-  if (!out || !out.trim()) return []
-  try {
-    const parsed = JSON.parse(out)
-    const list = Array.isArray(parsed) ? parsed : [parsed]
-    return list.map((d: any) => ({
-      name: String(d.FriendlyName ?? ''),
-      instanceId: String(d.InstanceId ?? '')
-    }))
-  } catch { return [] }
+interface UsbDeviceHit {
+  name: string
+  instanceId: string
+}
+
+async function getUsbVrDevices(): Promise<UsbDeviceHit[]> {
+  const hits: UsbDeviceHit[] = []
+  const familyPattern = /Oculus|Meta Quest|Vive|Index|Pico|Pimax|Mixed Reality|PSVR|Bigscreen|Holographic/i
+
+  const families = enumerateRegistrySubkeys('HKLM', 'SYSTEM\\CurrentControlSet\\Enum\\USB')
+  for (const family of families) {
+    const instances = enumerateRegistrySubkeys('HKLM', `SYSTEM\\CurrentControlSet\\Enum\\USB\\${family}`)
+    for (const instance of instances) {
+      const path = `HKLM\\SYSTEM\\CurrentControlSet\\Enum\\USB\\${family}\\${instance}`
+      const key = await readKey(path).catch(() => null)
+      if (!key) continue
+
+      const friendly = key.values['FriendlyName']
+      const devDesc = key.values['DeviceDesc']
+      let name = ''
+      if (friendly && friendly.type === 'REG_SZ') name = friendly.data
+      else if (devDesc && devDesc.type === 'REG_SZ') {
+        const semi = devDesc.data.lastIndexOf(';')
+        name = semi >= 0 ? devDesc.data.slice(semi + 1) : devDesc.data
+      }
+      if (!name || !familyPattern.test(name)) continue
+
+      hits.push({ name, instanceId: `USB\\${family}\\${instance}` })
+    }
+  }
+  return hits
 }
 
 async function getUsbControllerInfo(): Promise<{ type: string; gen: string } | null> {
-  const out = await tryRunPowerShell(`
-Get-PnpDevice -Class USB -PresentOnly -ErrorAction SilentlyContinue |
-  Where-Object { $_.FriendlyName -match 'USB 3|xHCI|Host Controller' } |
-  Select-Object FriendlyName -First 3 |
-  ConvertTo-Json -Compress
-`, 8000)
-  if (!out || !out.trim()) return null
-  try {
-    const parsed = JSON.parse(out)
-    const list = Array.isArray(parsed) ? parsed : [parsed]
-    for (const item of list) {
-      const name = String(item.FriendlyName ?? '')
+  // Walk PCI for USB host controllers — Service is usbxhci on USB3, usbehci on USB2.
+  const pciFamilies = enumerateRegistrySubkeys('HKLM', 'SYSTEM\\CurrentControlSet\\Enum\\PCI')
+  for (const family of pciFamilies) {
+    const instances = enumerateRegistrySubkeys('HKLM', `SYSTEM\\CurrentControlSet\\Enum\\PCI\\${family}`)
+    for (const instance of instances) {
+      const key = await readKey(`HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\${family}\\${instance}`).catch(() => null)
+      if (!key) continue
+
+      const service = key.values['Service']
+      const svc = service && service.type === 'REG_SZ' ? service.data.toLowerCase() : ''
+      if (svc !== 'usbxhci' && svc !== 'usbehci') continue
+
+      const friendly = key.values['FriendlyName']
+      const devDesc = key.values['DeviceDesc']
+      let name = ''
+      if (friendly && friendly.type === 'REG_SZ') name = friendly.data
+      else if (devDesc && devDesc.type === 'REG_SZ') {
+        const semi = devDesc.data.lastIndexOf(';')
+        name = semi >= 0 ? devDesc.data.slice(semi + 1) : devDesc.data
+      }
+      if (!name) continue
+
       for (const [keyword, info] of Object.entries(USB_CONTROLLER_QUALITY)) {
         if (name.includes(keyword)) return { type: name, gen: info.gen }
       }
+      return { type: name, gen: svc === 'usbxhci' ? '3.x' : '2.0' }
     }
-    return list.length > 0 ? { type: String(list[0].FriendlyName ?? 'Unknown'), gen: '3.x' } : null
-  } catch { return null }
+  }
+  return null
 }
 
-/** Read Virtual Desktop streamer config to get bitrate */
 function getVirtualDesktopBitrate(): number | null {
   const vdPaths = [
     join(process.env.LOCALAPPDATA ?? '', 'VirtualDesktop.Streamer', 'settings.json'),
@@ -373,38 +372,33 @@ function getAlvrBitrate(): number | null {
   return null
 }
 
-/** Detect AirLink / USB Link from Meta registry */
-async function getMetaConnectionMode(vrProcesses: string[]): Promise<'airlink' | 'usb-link'> {
-  // If OVRServer is running: check USB devices — if Quest is listed as USB device, it's Link
-  if (vrProcesses.includes('OVRServer_x64') || vrProcesses.includes('OculusClient')) {
-    const usbDevices = await getUsbVrDevices()
-    const questUsb = usbDevices.find((d) =>
-      d.name.match(/Oculus|Meta Quest|Quest/i)
-    )
-    if (questUsb) return 'usb-link'
-    return 'airlink'
-  }
-  return 'airlink'
+function inferMetaConnectionMode(usbDevices: UsbDeviceHit[]): 'airlink' | 'usb-link' {
+  // If OVRServer is running and Quest is listed as a connected USB device, the
+  // session is using Link rather than Air Link.
+  const questUsb = usbDevices.find(d => /Oculus|Meta Quest|Quest/i.test(d.name))
+  return questUsb ? 'usb-link' : 'airlink'
 }
 
-// ── Main Export ───────────────────────────────────────────────
 
 export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetConnectionData>> {
   console.log('[scan:headset] Detecting VR headset connection...')
 
   try {
-    const [vrProcesses, usbDevices, usbController, companionApps, activeConflicts] = await Promise.all([
-      getRunningVrProcesses(),
+    const allProcs = await enumerateProcesses()
+    const runningSet = new Set(allProcs.map(p => p.name))
+
+    const [usbDevices, usbController] = await Promise.all([
       getUsbVrDevices(),
       getUsbControllerInfo(),
-      getRunningCompanionApps(),
-      getActiveConflicts()
     ])
+
+    const vrProcesses = getRunningVrProcesses(runningSet)
+    const companionApps = getRunningCompanionApps(runningSet)
+    const activeConflicts = getActiveConflicts(runningSet)
 
     console.log(`[scan:headset] VR processes: ${vrProcesses.join(', ') || 'none'}`)
     console.log(`[scan:headset] USB VR devices: ${usbDevices.map((d) => d.name).join(', ') || 'none'}`)
 
-    // ── Determine connection method ───────────────────────────
     let method: HeadsetConnectionMethod = 'none'
     let runtimeActive: string | null = null
     let detectedDeviceName: string | null = null
@@ -426,8 +420,7 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       method = 'psvr2-pc'
       runtimeActive = 'psvr2'
     } else if (vrProcesses.includes('OVRServer_x64') || vrProcesses.includes('OculusClient')) {
-      // Meta runtime active — determine if Air Link or USB Link
-      method = await getMetaConnectionMode(vrProcesses)
+      method = inferMetaConnectionMode(usbDevices)
       runtimeActive = 'oculus'
     } else if (vrProcesses.includes('vrserver') || vrProcesses.includes('vrcompositor')) {
       // SteamVR running — could be wired OR wireless via ALVR/VD (already caught above)
@@ -443,7 +436,6 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       method = 'unknown-wired'
     }
 
-    // ── Detect device name from USB ───────────────────────────
     if (!detectedDeviceName && usbDevices.length > 0) {
       for (const sig of VR_USB_SIGNATURES) {
         const match = usbDevices.find((d) => sig.pattern.test(d.name))
@@ -454,7 +446,6 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       }
     }
 
-    // ── Streaming bitrate detection ───────────────────────────
     let streamingBitrateMbps: number | null = null
     let encoderInUse: string | null = null
 
@@ -464,15 +455,13 @@ export async function scanHeadsetConnection(): Promise<ScanModuleResult<HeadsetC
       streamingBitrateMbps = getAlvrBitrate()
     }
 
-    // Infer encoder from GPU vendor
-    // (full GPU data not available here — the GPU module runs separately)
-    // We can check registry for NVENC capability
     if (method !== 'steamvr-usb' && method !== 'wmr' && method !== 'psvr2-pc') {
-      const gpuOut = await tryRunPowerShell(`
-(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000' -ErrorAction SilentlyContinue).ProviderName
-`, 5000)
-      if (gpuOut) {
-        const gn = gpuOut.trim().toLowerCase()
+      const adapterKey = await readKey(
+        'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\0000'
+      ).catch(() => null)
+      const provider = adapterKey?.values['ProviderName']
+      if (provider && provider.type === 'REG_SZ') {
+        const gn = provider.data.toLowerCase()
         if (gn.includes('nvidia')) encoderInUse = 'NVENC'
         else if (gn.includes('amd') || gn.includes('advanced micro')) encoderInUse = 'AMF'
         else encoderInUse = 'x264'

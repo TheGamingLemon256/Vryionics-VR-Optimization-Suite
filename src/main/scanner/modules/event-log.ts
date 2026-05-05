@@ -2,8 +2,46 @@
 // Reads Windows Event Log for GPU TDR events, WHEA hardware errors,
 // and SteamVR crash events from the last 7 days.
 
-import { tryRunPowerShell } from '../../utils/powershell'
+import { runExe } from '../../utils/exec'
 import type { ScanModuleResult, EventLogData } from '../types'
+
+// wevtutil.exe is the stock Windows event log query tool. We use the
+// /q (XPath) and /f:text format flags to get human-readable output and
+// then count occurrences.
+async function queryEvents(channel: string, xpath: string, max = 50, timeoutMs = 12000): Promise<string | null> {
+  return runExe(
+    'wevtutil',
+    ['qe', channel, `/q:${xpath}`, `/c:${max}`, '/rd:true', '/f:text'],
+    timeoutMs
+  )
+}
+
+// Number of milliseconds in 7 days, used inside the XPath
+// TimeCreated[timediff(@SystemTime) <= N] predicate.
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+function countEventBlocks(text: string): number {
+  // Each event block starts with "Event[N]:" or "Log Name:". Counting
+  // "Log Name:" lines is the most reliable signal in the /f:text output.
+  const matches = text.match(/^Log Name:/gm)
+  return matches ? matches.length : 0
+}
+
+function firstDate(text: string): string | null {
+  const m = text.match(/^Date:\s*(.+)$/m)
+  return m ? m[1].trim() : null
+}
+
+function firstMessages(text: string, limit: number): string[] {
+  const out: string[] = []
+  // Description: \r\n  <message>
+  const re = /^Description:\s*\r?\n([^\r\n]+)/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null && out.length < limit) {
+    out.push(m[1].trim())
+  }
+  return out
+}
 
 export async function scanEventLog(): Promise<ScanModuleResult<EventLogData>> {
   console.log('[scan:event-log] Starting event log scan (last 7 days)...')
@@ -14,92 +52,48 @@ export async function scanEventLog(): Promise<ScanModuleResult<EventLogData>> {
   const criticalErrors: string[] = []
 
   try {
-    // GPU TDR events (Event ID 4101 in System log — "Display driver stopped responding and has recovered")
-    const tdrOut = await tryRunPowerShell(`
-$since = (Get-Date).AddDays(-7)
-$events = Get-WinEvent -FilterHashtable @{
-  LogName = 'System'
-  Id = 4101
-  StartTime = $since
-} -EA SilentlyContinue -MaxEvents 50
-if ($events) {
-  Write-Output "count:$($events.Count)"
-  $latest = ($events | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
-  Write-Output "latest:$latest"
-  # Output first few messages
-  $events | Select-Object -First 3 | ForEach-Object { Write-Output "msg:$($_.Message.Split([char]10)[0])" }
-}
-`, 15000)
+    // Display TDR (Event ID 4101 in System log).
+    const tdrXpath = `*[System[(EventID=4101) and TimeCreated[timediff(@SystemTime) <= ${SEVEN_DAYS_MS}]]]`
+    const tdrOut = await queryEvents('System', tdrXpath, 50, 15000)
     if (tdrOut) {
-      const countMatch = tdrOut.match(/^count:(\d+)/m)
-      if (countMatch) gpuTdrEvents = parseInt(countMatch[1])
-      const latestMatch = tdrOut.match(/^latest:(.+)/m)
-      if (latestMatch) lastGpuTdrTime = latestMatch[1].trim()
-      const msgs = tdrOut.match(/^msg:(.+)/gm)
-      if (msgs) {
-        for (const m of msgs.slice(0, 2)) {
-          criticalErrors.push(m.replace('msg:', '').trim())
-        }
-      }
+      gpuTdrEvents = countEventBlocks(tdrOut)
+      lastGpuTdrTime = firstDate(tdrOut)
+      criticalErrors.push(...firstMessages(tdrOut, 2))
     }
 
-    // Also check Display log for TDR (ID 4101 may be in System or Application)
-    const tdrOut2 = await tryRunPowerShell(`
-$since = (Get-Date).AddDays(-7)
-$events = Get-WinEvent -FilterHashtable @{
-  LogName = 'Application'
-  Id = 1001
-  StartTime = $since
-} -EA SilentlyContinue -MaxEvents 20 |
-  Where-Object { $_.Message -like '*Display*' -or $_.Message -like '*GPU*' -or $_.Message -like '*video*' }
-if ($events) { Write-Output "count:$($events.Count)" }
-`, 12000)
-    if (tdrOut2) {
-      const m = tdrOut2.match(/^count:(\d+)/m)
-      if (m) gpuTdrEvents = Math.max(gpuTdrEvents, parseInt(m[1]))
+    // Application log: ID 1001 fault entries that mention display/GPU/video.
+    // wevtutil's XPath dialect doesn't support EventData substring matches
+    // reliably across locales, so we filter the text dump after the fact.
+    const tdr2Xpath = `*[System[(EventID=1001) and TimeCreated[timediff(@SystemTime) <= ${SEVEN_DAYS_MS}]]]`
+    const tdr2Out = await queryEvents('Application', tdr2Xpath, 50, 12000)
+    if (tdr2Out) {
+      const blocks = tdr2Out.split(/^Log Name:/gm).slice(1)
+      const matching = blocks.filter((b) => /display|gpu|video/i.test(b)).length
+      gpuTdrEvents = Math.max(gpuTdrEvents, matching)
     }
 
-    // WHEA hardware errors (Event ID 1, 18, 19 in Microsoft-Windows-WHEA-Logger/Operational)
-    const wheaOut = await tryRunPowerShell(`
-$since = (Get-Date).AddDays(-7)
-$events = Get-WinEvent -FilterHashtable @{
-  LogName = 'Microsoft-Windows-WHEA-Logger/Operational'
-  StartTime = $since
-} -EA SilentlyContinue -MaxEvents 50
-if ($events) {
-  Write-Output "count:$($events.Count)"
-  $events | Select-Object -First 2 | ForEach-Object { Write-Output "msg:$($_.Message.Split([char]10)[0])" }
-}
-`, 15000)
+    // WHEA-Logger Operational log: any event in the last week is a hardware
+    // error worth reporting.
+    const wheaXpath = `*[System[TimeCreated[timediff(@SystemTime) <= ${SEVEN_DAYS_MS}]]]`
+    const wheaOut = await queryEvents('Microsoft-Windows-WHEA-Logger/Operational', wheaXpath, 50, 15000)
     if (wheaOut) {
-      const m = wheaOut.match(/^count:(\d+)/m)
-      if (m) wheaErrors = parseInt(m[1])
-      const msgs = wheaOut.match(/^msg:(.+)/gm)
-      if (msgs) {
-        for (const msg of msgs.slice(0, 2)) {
-          criticalErrors.push('WHEA: ' + msg.replace('msg:', '').trim())
-        }
+      wheaErrors = countEventBlocks(wheaOut)
+      for (const m of firstMessages(wheaOut, 2)) {
+        criticalErrors.push('WHEA: ' + m)
       }
     }
 
-    // SteamVR crashes — look in Application log for vrserver crashes
-    const steamvrOut = await tryRunPowerShell(`
-$since = (Get-Date).AddDays(-7)
-$events = Get-WinEvent -FilterHashtable @{
-  LogName = 'Application'
-  StartTime = $since
-} -EA SilentlyContinue -MaxEvents 100 |
-  Where-Object { $_.Message -like '*vrserver*' -or $_.Message -like '*SteamVR*' -or $_.Message -like '*VRChat*' } |
-  Where-Object { $_.LevelDisplayName -eq 'Error' -or $_.LevelDisplayName -eq 'Critical' }
-if ($events) { Write-Output "count:$($events.Count)" }
-`, 15000)
+    // SteamVR crashes in Application log: error/critical level events whose
+    // text mentions vrserver/SteamVR/VRChat.
+    const steamvrXpath = `*[System[(Level=1 or Level=2) and TimeCreated[timediff(@SystemTime) <= ${SEVEN_DAYS_MS}]]]`
+    const steamvrOut = await queryEvents('Application', steamvrXpath, 100, 15000)
     if (steamvrOut) {
-      const m = steamvrOut.match(/^count:(\d+)/m)
-      if (m) steamvrCrashes = parseInt(m[1])
+      const blocks = steamvrOut.split(/^Log Name:/gm).slice(1)
+      steamvrCrashes = blocks.filter((b) => /vrserver|steamvr|vrchat/i.test(b)).length
     }
 
     console.log(
-      `[scan:event-log] Complete — gpuTDR=${gpuTdrEvents} lastTDR=${lastGpuTdrTime ?? 'none'} ` +
+      `[scan:event-log] Complete. gpuTDR=${gpuTdrEvents} lastTDR=${lastGpuTdrTime ?? 'none'} ` +
       `wheaErrors=${wheaErrors} steamvrCrashes=${steamvrCrashes} ` +
       `criticalErrors=${criticalErrors.length}`
     )
@@ -108,7 +102,7 @@ if ($events) { Write-Output "count:$($events.Count)" }
     }
     return {
       success: true,
-      data: { gpuTdrEvents, wheaErrors, steamvrCrashes, lastGpuTdrTime, criticalErrors }
+      data: { gpuTdrEvents, wheaErrors, steamvrCrashes, lastGpuTdrTime, criticalErrors },
     }
   } catch (error) {
     console.error(`[scan:event-log] Error: ${(error as Error).message}`)
@@ -116,7 +110,7 @@ if ($events) { Write-Output "count:$($events.Count)" }
       success: false,
       error: (error as Error).message,
       partial: true,
-      data: { gpuTdrEvents, wheaErrors, steamvrCrashes, lastGpuTdrTime, criticalErrors }
+      data: { gpuTdrEvents, wheaErrors, steamvrCrashes, lastGpuTdrTime, criticalErrors },
     }
   }
 }

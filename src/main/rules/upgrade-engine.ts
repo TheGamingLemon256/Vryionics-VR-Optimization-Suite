@@ -12,7 +12,6 @@ import {
 import type { ComponentTier, UpgradeProduct, UpgradeSuggestion } from '../data/upgrade-tiers'
 import type { ScanData } from '../scanner/types'
 
-// ── Public Types ──────────────────────────────────────────────
 
 export interface UpgradeRecommendation {
   id: string
@@ -26,7 +25,6 @@ export interface UpgradeRecommendation {
   estimatedPerformanceGain: string // e.g. "~30-50% more GPU headroom"
 }
 
-// ── Internal Helpers ──────────────────────────────────────────
 
 /** Returns the best-matching tier level for a display name, or null if unrecognised. */
 function detectTierLevel(name: string, tiers: ComponentTier[]): number | null {
@@ -77,7 +75,6 @@ function sortProductsByTier(products: UpgradeProduct[]): UpgradeProduct[] {
   return [...products].sort((a, b) => order[a.tier] - order[b.tier])
 }
 
-// ── GPU Detection & Recommendation ───────────────────────────
 
 function analyzeGpu(scanData: ScanData): UpgradeRecommendation | null {
   const gpuData = scanData.gpu
@@ -221,7 +218,6 @@ function analyzeGpu(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── CPU Detection & Recommendation ───────────────────────────
 
 function analyzeCpu(scanData: ScanData): UpgradeRecommendation | null {
   const cpu = scanData.cpu
@@ -322,13 +318,18 @@ function analyzeCpu(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── RAM Detection & Recommendation ───────────────────────────
 
-function detectRamTierLevel(scanData: ScanData): number | null {
+export function detectRamTierLevel(scanData: ScanData): number | null {
   const ram = scanData.ram
   if (!ram) return null
 
   const { totalGB, speed, type } = ram
+
+  // Capacity is plenty regardless of speed/type guesses. The only realistic
+  // upgrade path from 32 GB+ is a generational platform move, which we
+  // surface as tier 5+ only on confirmed DDR5. With unknown type+speed and
+  // 32 GB+ already installed, there's no meaningful recommendation to make.
+  if (totalGB >= 32 && (type !== 'DDR5' || speed === 0)) return null
 
   if (type === 'DDR5') {
     if (totalGB >= 64) return speed >= 6400 ? 8 : 7
@@ -336,7 +337,10 @@ function detectRamTierLevel(scanData: ScanData): number | null {
     return 4  // DDR5 but low capacity
   }
 
-  // DDR4
+  // DDR4 (or DDR4-shaped unknown). If we don't know the speed, skip rather
+  // than firing a "your RAM is slow" recommendation against fabricated zero.
+  if (speed === 0) return null
+
   if (totalGB < 12) return 1
   if (totalGB < 24) return speed >= 3200 ? 3 : 2
   // 24GB+
@@ -439,7 +443,6 @@ function analyzeRam(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── Storage Detection & Recommendation ───────────────────────
 // Storage tiers: 1 = HDD, 2 = SATA SSD, 3 = NVMe (no further sub-tiers without PCIe gen data)
 
 function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
@@ -472,7 +475,6 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     `size=${vrDrive.totalGB}GB free=${vrDrive.freeGB.toFixed(0)}GB (${freePercent.toFixed(0)}%)`
   )
 
-  // ── Low free space check — applies regardless of drive type ──
   if (freePercent < 10 && vrDrive.freeGB < 20) {
     console.log(`[upgrade:storage] → Low free space warning: ${vrDrive.freeGB.toFixed(0)}GB / ${freePercent.toFixed(0)}% remaining`)
     return {
@@ -506,7 +508,7 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 1: HDD — critical; include SATA SSD as affordable first step ──
+  // Tier 1: HDD. Critical, and we include SATA SSD as the affordable first step.
   if (storageTier === 1) {
     console.log('[upgrade:storage] → HDD detected — generating critical storage upgrade recommendation')
     const suggestion = findSuggestion('storage', 1, UPGRADE_SUGGESTIONS)
@@ -530,7 +532,7 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 2: SATA SSD — functional but NVMe meaningfully better for VR ──
+  // Tier 2: SATA SSD. Functional, but NVMe is meaningfully better for VR loading.
   if (storageTier === 2) {
     console.log('[upgrade:storage] → SATA SSD detected — generating eventual NVMe upgrade recommendation')
     const suggestion = findSuggestion('storage', 2, UPGRADE_SUGGESTIONS)
@@ -556,12 +558,10 @@ function analyzeStorage(scanData: ScanData): UpgradeRecommendation | null {
     }
   }
 
-  // ── Tier 3: NVMe — already optimal, no recommendation ──
   console.log('[upgrade:storage] NVMe detected with adequate free space — no storage upgrade needed')
   return null
 }
 
-// ── Network Detection & Recommendation ───────────────────────
 
 function analyzeNetwork(scanData: ScanData): UpgradeRecommendation | null {
   const network = scanData.network
@@ -672,7 +672,6 @@ function analyzeNetwork(scanData: ScanData): UpgradeRecommendation | null {
   }
 }
 
-// ── Main Engine Function ──────────────────────────────────────
 
 const URGENCY_ORDER: Record<UpgradeRecommendation['urgency'], number> = {
   now: 0,

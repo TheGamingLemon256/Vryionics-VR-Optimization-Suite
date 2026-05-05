@@ -2,7 +2,7 @@
 // Detects installed VR runtimes (SteamVR, Oculus, WMR) and the active OpenXR runtime.
 
 import { readRegistry, registryKeyExists } from '../../utils/registry'
-import { tryRunPowerShell } from '../../utils/powershell'
+import { readKey } from '../../utils/registry-read'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -145,40 +145,41 @@ export async function scanVrRuntime(): Promise<ScanModuleResult<VrRuntimeData>> 
       }
     }
 
-    // VRChat Unity PlayerPrefs from registry
+    // VRChat Unity PlayerPrefs from registry. Unity stores prefs under
+    // HKCU\SOFTWARE\<company>\<product> with hashed value names like
+    // "QualitySettings_antiAliasing_h2389470". We pattern-match against the
+    // value names rather than knowing the hash up front.
     let vrchatMsaa: number | null = null
     let vrchatPhysicsFps: number | null = null
-    try {
-      const prefsOut = await tryRunPowerShell(`
-$k = 'HKCU:\\SOFTWARE\\VRChat\\VRChat'
-if (Test-Path $k) {
-  $props = Get-ItemProperty -Path $k -EA SilentlyContinue
-  # MSAA stored as "QualitySettings_antiAliasing_h..." or similar Unity key
-  $msaaKeys = $props.PSObject.Properties | Where-Object { $_.Name -like '*antiAlias*' -or $_.Name -like '*msaa*' -or $_.Name -like '*AA*' }
-  if ($msaaKeys) { Write-Output "msaa:$($msaaKeys | Select-Object -First 1 -ExpandProperty Value)" }
-  # Physics timestep stored as fixedDeltaTime or PhysicsTimeStep
-  $physKeys = $props.PSObject.Properties | Where-Object { $_.Name -like '*physics*' -or $_.Name -like '*fixedDelta*' -or $_.Name -like '*PhysicsTime*' }
-  if ($physKeys) { Write-Output "physics:$($physKeys | Select-Object -First 1 -ExpandProperty Value)" }
-  # Also check direct MSAA key
-  if ($props.'QualitySettings_antiAliasing') { Write-Output "msaa:$($props.'QualitySettings_antiAliasing')" }
-}
-`, 8000)
-      if (prefsOut) {
-        const msaaMatch = prefsOut.match(/^msaa:(.+)/m)
-        if (msaaMatch) {
-          const v = parseInt(msaaMatch[1].trim())
-          if (!isNaN(v)) vrchatMsaa = v
-        }
-        const physicsMatch = prefsOut.match(/^physics:(.+)/m)
-        if (physicsMatch) {
-          // fixedDeltaTime is in seconds (e.g. 0.02 = 50Hz physics), convert to Hz
-          const v = parseFloat(physicsMatch[1].trim())
-          if (!isNaN(v)) {
-            vrchatPhysicsFps = v < 1 ? Math.round(1 / v) : Math.round(v)
+    const prefsKey = await readKey('HKCU\\SOFTWARE\\VRChat\\VRChat').catch(() => null)
+    if (prefsKey) {
+      const directMsaa = prefsKey.values['QualitySettings_antiAliasing']
+      if (directMsaa && directMsaa.type === 'REG_DWORD') {
+        vrchatMsaa = directMsaa.data
+      } else {
+        for (const [name, value] of Object.entries(prefsKey.values)) {
+          if (vrchatMsaa !== null) break
+          if (/antialias|msaa|_AA/i.test(name) && value.type === 'REG_DWORD') {
+            vrchatMsaa = value.data
           }
         }
       }
-    } catch { /* registry read failure — non-critical */ }
+      for (const [name, value] of Object.entries(prefsKey.values)) {
+        if (vrchatPhysicsFps !== null) break
+        if (!/physics|fixeddelta|physicstime/i.test(name)) continue
+        // Unity stores floats as REG_BINARY (the IEEE-754 bytes). Treat
+        // DWORD-stored values as raw frequencies; binary-stored values as
+        // fixedDeltaTime seconds.
+        if (value.type === 'REG_DWORD') {
+          vrchatPhysicsFps = Math.round(value.data)
+        } else if (value.type === 'REG_BINARY' && value.data.length >= 4) {
+          const seconds = value.data.readFloatLE(0)
+          if (Number.isFinite(seconds) && seconds > 0) {
+            vrchatPhysicsFps = seconds < 1 ? Math.round(1 / seconds) : Math.round(seconds)
+          }
+        }
+      }
+    }
 
     // Parse SteamVR log files for recent crashes / fatal errors
     let crashEvents: VrRuntimeData['crashEvents'] = []

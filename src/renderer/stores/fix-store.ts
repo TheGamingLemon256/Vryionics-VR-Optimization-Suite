@@ -1,6 +1,3 @@
-// VR Optimization Suite — Fix Store
-// Tracks applied fixes and undo history.
-
 import { create } from 'zustand'
 
 export interface FixHistoryEntry {

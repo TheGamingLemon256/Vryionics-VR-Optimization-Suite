@@ -1,4 +1,3 @@
-// VR Optimization Suite — Display Rules
 import type { Rule, RuleResult } from '../types'
 import type { ScanData } from '../../scanner/types'
 

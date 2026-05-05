@@ -1,5 +1,4 @@
-// VR Optimization Suite — Upgrades Page
-// Wrapper that fetches upgrade recommendations via IPC and renders UpgradesPanel.
+// Fetches upgrade recommendations via IPC, renders UpgradesPanel.
 
 import React, { useState, useEffect } from 'react'
 import { useScanStore } from '../../stores/scan-store'
